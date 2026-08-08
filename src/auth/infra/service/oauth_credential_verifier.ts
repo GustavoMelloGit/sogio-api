@@ -1,4 +1,5 @@
 import { UnauthorizedError } from "../../../core/application/error/unauthorized_error";
+import { revokeConsentCascade } from "../../application/service/consent_cascade";
 import type {
   CredentialVerifier,
   Requester,
@@ -6,6 +7,7 @@ import type {
 import type { AuthRepository } from "../../domain/repository/auth_repository";
 import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
 import type { IssuedCredentialRepository } from "../../domain/repository/delegated_access/issued_credential_repository";
+import { isConsentExpired } from "../../domain/service/consent_expiry_policy";
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 
 /**
@@ -32,10 +34,22 @@ import type { DelegatedSecretService } from "../../domain/service/delegated_secr
  * 4. **Audiência errada** — `resource` da credencial não é a URL canônica
  *    do `/mcp` (RFC 8707 / Decisão Arquitetural 9), ainda que autorização e
  *    verificação rodem no mesmo processo.
+ * 5. **Consentimento expirado (E9)** — vida absoluta ou inatividade
+ *    vencidas (`isConsentExpired`). Avaliado aqui, no caminho de
+ *    verificação, porque o projeto não tem scheduler (ver
+ *    `RegisterAppUseCase`): a regra precisa valer na *próxima* chamada de
+ *    um agente ainda ativo, não apenas quando alguma faxina periódica rodar
+ *    — que não existe. Ao detectar, revoga de verdade
+ *    (`revokeConsentCascade`, a mesma cascata de `RevokeConsentUseCase`) em
+ *    vez de só rejeitar, para que o estado fique persistido e a checagem
+ *    seja autocurativa: uma segunda chamada não paga o custo de reavaliar
+ *    a expiração, só encontra `revoked_at` já setado no passo 3.
  *
  * `expectedResource` chega pelo construtor, montado pelo container de DI
  * (`MiddlewareDi`) a partir de `apiBaseUrl`/`MCP_RESOURCE_PATH` — esta
- * classe nunca importa nada de `presentation/`.
+ * classe nunca importa nada de `presentation/`. `consentAbsoluteLifetimeMs`/
+ * `consentInactivityTtlMs` chegam da mesma forma, a partir de
+ * `environments.ts`.
  *
  * Em sucesso, registra o último uso do Consentimento
  * (`ConsentRepository.touchLastUsedAt`) — o dado que a tela de aplicativos
@@ -48,7 +62,9 @@ export class OAuthCredentialVerifier implements CredentialVerifier {
     private readonly consentRepository: ConsentRepository,
     private readonly authRepository: AuthRepository,
     private readonly secretService: DelegatedSecretService,
-    private readonly expectedResource: string
+    private readonly expectedResource: string,
+    private readonly consentAbsoluteLifetimeMs: number,
+    private readonly consentInactivityTtlMs: number
   ) {}
 
   async verify(accessToken: string): Promise<Requester> {
@@ -77,6 +93,21 @@ export class OAuthCredentialVerifier implements CredentialVerifier {
     );
 
     if (!consent || consent.revoked_at) {
+      throw new UnauthorizedError("Unauthorized");
+    }
+
+    if (
+      isConsentExpired(
+        consent,
+        this.consentAbsoluteLifetimeMs,
+        this.consentInactivityTtlMs
+      )
+    ) {
+      await revokeConsentCascade(
+        consent.id,
+        this.consentRepository,
+        this.issuedCredentialRepository
+      );
       throw new UnauthorizedError("Unauthorized");
     }
 

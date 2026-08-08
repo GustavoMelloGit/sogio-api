@@ -87,6 +87,33 @@ const envSchema = z
       .int()
       .positive()
       .default(20),
+    /**
+     * Absolute lifetime of a Consent, in seconds (E9 — "vida absoluta ...
+     * mesmo em uso contínuo. Vencido, o usuário reautoriza"). Measured from
+     * `granted_at`, which a reconnection (task 10) never resets, so this is
+     * genuinely the age of the original grant. Defaulted to 180 days — long
+     * enough not to nag a daily user, bounded enough that a grant can't live
+     * forever.
+     */
+    CONSENT_ABSOLUTE_LIFETIME_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(60 * 60 * 24 * 180),
+    /**
+     * Inactivity lifetime of a Consent, in seconds (E9 — "consentimento sem
+     * uso por um período é encerrado sozinho ... limpa o aplicativo que o
+     * usuário testou e largou"). Measured from `last_used_at`, touched by
+     * every successful credential verification and by the reconnection
+     * shortcut (task 10). Defaulted to 30 days, the same order of magnitude
+     * as `REFRESH_TOKEN_TTL_SECONDS` — an app that goes quiet for that long
+     * has usually already let its refresh token lapse too.
+     */
+    CONSENT_INACTIVITY_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(60 * 60 * 24 * 30),
   })
   .refine(data => data.NODE_ENV === "development" || !!data.API_BASE_URL, {
     message: "API_BASE_URL is required outside development",
@@ -120,3 +147,8 @@ export const accessTokenTtlMs = env.ACCESS_TOKEN_TTL_SECONDS * 1000;
 export const refreshTokenTtlMs = env.REFRESH_TOKEN_TTL_SECONDS * 1000;
 export const refreshRotationGraceWindowMs =
   env.REFRESH_ROTATION_GRACE_WINDOW_SECONDS * 1000;
+
+/** Consent expiry thresholds (E9), in milliseconds. */
+export const consentAbsoluteLifetimeMs =
+  env.CONSENT_ABSOLUTE_LIFETIME_SECONDS * 1000;
+export const consentInactivityTtlMs = env.CONSENT_INACTIVITY_TTL_SECONDS * 1000;

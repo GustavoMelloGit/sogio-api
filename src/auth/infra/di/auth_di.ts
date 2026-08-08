@@ -35,6 +35,7 @@ import { ExchangeAuthorizationCodeUseCase } from "../../application/use_case/exc
 import { RefreshAccessTokenUseCase } from "../../application/use_case/refresh_access_token";
 import { RevokeTokenUseCase } from "../../application/use_case/revoke_token";
 import { RevokeConsentUseCase } from "../../application/use_case/revoke_consent";
+import { ListConnectedAppsUseCase } from "../../application/use_case/list_connected_apps";
 import { TokenController } from "../../presentation/controller/delegated_access/token.controller";
 import { RevokeController } from "../../presentation/controller/delegated_access/revoke.controller";
 import {
@@ -47,6 +48,8 @@ import { RegisterAppController } from "../../presentation/controller/delegated_a
 import { AuthorizeController } from "../../presentation/controller/delegated_access/authorize.controller";
 import { GetPendingAuthorizationRequestController } from "../../presentation/controller/delegated_access/get_pending_authorization_request.controller";
 import { DecideAuthorizationRequestController } from "../../presentation/controller/delegated_access/decide_authorization_request.controller";
+import { ListConnectedAppsController } from "../../presentation/controller/delegated_access/list_connected_apps.controller";
+import { DisconnectAppController } from "../../presentation/controller/delegated_access/disconnect_app.controller";
 import { AuthMiddleware } from "../../presentation/middleware/auth.middleware";
 import type { Logger } from "../../../core/application/logger/logger";
 import type { RateLimiter } from "../../../core/application/rate_limit/rate_limiter";
@@ -55,6 +58,8 @@ import {
   accessTokenTtlMs,
   refreshTokenTtlMs,
   refreshRotationGraceWindowMs,
+  consentAbsoluteLifetimeMs,
+  consentInactivityTtlMs,
 } from "../../../core/infra/config/environments";
 
 export class AuthDi {
@@ -265,16 +270,42 @@ export class AuthDi {
   }
 
   /**
-   * Consent-cascade revocation mechanism (task 12) — not wired to any route
-   * by this task. Task 14's "connected apps" screen is the intended
-   * consumer: authenticated by the app's own session, and responsible for
-   * confirming the consent being disconnected belongs to the requesting
-   * user before calling this.
+   * Consent-cascade revocation mechanism (task 12), consumed directly by
+   * `DisconnectAppController` (task 14): authenticated by the app's own
+   * session, and the use case itself confirms the consent being
+   * disconnected belongs to the requesting user before revoking anything.
    */
   makeRevokeConsentUseCase() {
     return new RevokeConsentUseCase(
       this.#consentRepository,
       this.#issuedCredentialRepository
     );
+  }
+
+  // Delegated Access — connected apps screen: list and disconnect (task 14)
+  makeListConnectedAppsUseCase() {
+    return new ListConnectedAppsUseCase(
+      this.#consentRepository,
+      this.#appRegistrationRepository,
+      this.#issuedCredentialRepository,
+      this.#authorizationRequestRepository,
+      this.#authorizationCodeRepository,
+      consentAbsoluteLifetimeMs,
+      consentInactivityTtlMs,
+      this.#logger
+    );
+  }
+
+  makeListConnectedAppsController() {
+    return new ListConnectedAppsController(this.makeListConnectedAppsUseCase());
+  }
+
+  /**
+   * "Desconectar" reuses `RevokeConsentUseCase` as-is (task 12) — no
+   * wrapping use case, since ownership enforcement and the revocation
+   * cascade already live there and this task must not reimplement either.
+   */
+  makeDisconnectAppController() {
+    return new DisconnectAppController(this.makeRevokeConsentUseCase());
   }
 }

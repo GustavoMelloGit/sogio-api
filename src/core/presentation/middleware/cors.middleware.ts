@@ -109,13 +109,28 @@ export class CorsMiddleware {
    * authorization plan): the two discovery documents respond to any origin,
    * with no `Access-Control-Allow-Credentials` — they carry no session and
    * no secret, so there is nothing a credentialed request would protect.
+   *
+   * `/mcp` (task 14) reuses this same policy instead of a third CORS mode:
+   * it needs the same "any origin, no ambient credential" shape, since a
+   * browser-based MCP client isn't `stayhub-front` and can't be restricted
+   * to its origin. `/mcp` carries no cookie or other ambient browser
+   * credential to protect — the bearer token is attached explicitly by the
+   * caller's own JavaScript, not sent automatically the way a cookie would
+   * be — so a wildcard origin here doesn't open a cross-site request
+   * forgery vector the way it would for cookie-backed auth. `POST`/`DELETE`
+   * and `Authorization` exist for `/mcp`'s sake; harmless on the two
+   * GET-only discovery documents, which never register a handler for
+   * anything else.
    */
   private getPublicCorsHeaders(): Headers {
     const headers = new Headers();
 
     headers.set("Access-Control-Allow-Origin", "*");
-    headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Content-Type, Accept");
+    headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    headers.set(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Accept, Authorization"
+    );
     headers.set("Access-Control-Max-Age", "86400"); // 24 hours
 
     return headers;

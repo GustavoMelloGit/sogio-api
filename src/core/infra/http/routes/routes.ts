@@ -136,6 +136,14 @@ const authControllers: Route[] = [
     authenticated: true,
     controller: authDi.makePurgeUserDataController(),
   },
+  {
+    authenticated: true,
+    controller: authDi.makeListConnectedAppsController(),
+  },
+  {
+    authenticated: true,
+    controller: authDi.makeDisconnectAppController(),
+  },
 ];
 
 const discoveryControllers: Route[] = [
@@ -267,6 +275,15 @@ routeMap.set("/mcp", {
   [HttpControllerMethod.POST]: handleMcpRequest,
   [HttpControllerMethod.GET]: handleMcpRequest,
   [HttpControllerMethod.DELETE]: handleMcpRequest,
+  /**
+   * `Authorization` and a JSON `Content-Type` are both non-simple for CORS,
+   * so a browser-based MCP client preflights every call with `OPTIONS`
+   * before it. Without this handler the preflight itself 404s and the
+   * browser never sends the real request — the E8 gap task 13 left open
+   * (see the comment on `unauthorizedResponse` in `mcp/routes.ts`).
+   */
+  [HttpControllerMethod.OPTIONS]: async (request: Request) =>
+    corsMiddleware.handlePreflightRequest(request, "public"),
 });
 
 const openApiSpec = new OpenApiBuilder(controllers).build();

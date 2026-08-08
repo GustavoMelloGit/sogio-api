@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import {
   Consent,
   type ConsentData,
@@ -71,6 +71,17 @@ export class ConsentPostgresRepository implements ConsentRepository {
     });
 
     return row ? Consent.reconstitute(rowToConsentData(row)) : null;
+  }
+
+  async findActiveByUser(userId: string): Promise<Consent[]> {
+    const rows = await db.query.consentsTable.findMany({
+      where: and(
+        eq(consentsTable.user_id, userId),
+        isNull(consentsTable.revoked_at)
+      ),
+    });
+
+    return rows.map(row => Consent.reconstitute(rowToConsentData(row)));
   }
 
   async touchLastUsedAt(id: string): Promise<void> {

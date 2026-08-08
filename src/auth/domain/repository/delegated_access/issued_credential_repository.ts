@@ -45,4 +45,13 @@ export interface IssuedCredentialRepository {
   revokeById(id: string): Promise<void>;
   /** Cascata de revogação do Consentimento (ação explícita do usuário ou E9). */
   revokeAllByConsent(consentId: string): Promise<void>;
+  /**
+   * Expurgo de linhas mortas (E9): remove credenciais já revogadas —
+   * qualquer forma (`revokeById`/`revokeFamily`/`revokeAllByConsent` gravam
+   * a mesma coluna) — ou cuja credencial de renovação já expirou
+   * (`refresh_token_expires_at` antes de `before`), caso em que nenhuma das
+   * duas metades do par ainda tem caminho de uso. Retorna o número de
+   * linhas removidas.
+   */
+  deleteExpiredOrRevoked(before: Date): Promise<number>;
 }

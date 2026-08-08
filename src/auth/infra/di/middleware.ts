@@ -1,4 +1,8 @@
-import { apiBaseUrl } from "../../../core/infra/config/environments";
+import {
+  apiBaseUrl,
+  consentAbsoluteLifetimeMs,
+  consentInactivityTtlMs,
+} from "../../../core/infra/config/environments";
 import {
   SessionManager,
   type ISessionManager,
@@ -50,7 +54,9 @@ export class MiddlewareDi {
       this.#consentRepository,
       this.#authRepository,
       this.#delegatedSecretService,
-      `${apiBaseUrl}${MCP_RESOURCE_PATH}`
+      `${apiBaseUrl}${MCP_RESOURCE_PATH}`,
+      consentAbsoluteLifetimeMs,
+      consentInactivityTtlMs
     );
   }
 }

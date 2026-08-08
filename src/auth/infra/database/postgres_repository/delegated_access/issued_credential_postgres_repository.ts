@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
 import {
   IssuedCredential,
   type IssuedCredentialData,
@@ -210,5 +210,19 @@ export class IssuedCredentialPostgresRepository
           isNull(issuedCredentialsTable.revoked_at)
         )
       );
+  }
+
+  async deleteExpiredOrRevoked(before: Date): Promise<number> {
+    const result = await db
+      .delete(issuedCredentialsTable)
+      .where(
+        or(
+          isNotNull(issuedCredentialsTable.revoked_at),
+          lt(issuedCredentialsTable.refresh_token_expires_at, before)
+        )
+      )
+      .returning({ id: issuedCredentialsTable.id });
+
+    return result.length;
   }
 }

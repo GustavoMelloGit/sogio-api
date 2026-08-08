@@ -10,6 +10,7 @@ import type { PropertyManagementDi } from "../../../property_management/infra/di
 import { UnauthorizedError } from "../../application/error/unauthorized_error";
 import type { Logger } from "../../application/logger/logger";
 import { CoreDi } from "../di/core_di";
+import { CorsMiddleware } from "../../presentation/middleware/cors.middleware";
 import { McpIdentityResolver } from "./identity_resolver";
 import { createMcpServer } from "./mcp_server";
 import type { McpToolDefinition } from "./mcp_tool";
@@ -66,6 +67,16 @@ export type McpRouteDependencies = {
  * transport-level concern, logged here by allowlist (E7), not something a
  * tool handler needs.
  *
+ * Every response — success or 401 — carries public CORS headers (task 14,
+ * closing the E8 gap task 13 left open): `/mcp` never sits behind
+ * `BunHttpControllerAdapter`/`CorsMiddleware` the way a regular `Controller`
+ * does, so without this it would have no `Access-Control-Allow-Origin` at
+ * all, and a cross-origin browser fetch would fail the CORS check before
+ * JavaScript ever got to inspect a status code or a header — `WWW-Authenticate`
+ * exposure alone (already in place since task 13) is not reachable without
+ * it. See `CorsMiddleware.getPublicCorsHeaders` for why the wildcard origin
+ * is safe here.
+ *
  * Only the `McpServer`/transport pair is rebuilt per request:
  * `WebStandardStreamableHTTPServerTransport` refuses to be reused once it
  * has handled a request in stateless mode (`sessionIdGenerator: undefined`),
@@ -84,6 +95,7 @@ export function makeMcpRequestHandler(
     middlewareDi.makeCredentialVerifier()
   );
   const logger: Logger = new CoreDi().makeLogger();
+  const corsMiddleware = new CorsMiddleware();
 
   const tools: McpToolDefinition<z.ZodRawShape>[] = [
     makeListPropertiesTool(dependencies.propertyManagementDi),
@@ -93,6 +105,7 @@ export function makeMcpRequestHandler(
   ];
 
   return async function handleMcpRequest(request: Request): Promise<Response> {
+    const origin = request.headers.get("Origin");
     const authorizationHeader =
       request.headers.get("authorization") ?? undefined;
 
@@ -102,7 +115,11 @@ export function makeMcpRequestHandler(
     } catch (error) {
       if (error instanceof UnauthorizedError) {
         logger.warn("mcp", { endpoint: "mcp", result: "unauthorized" });
-        return unauthorizedResponse(request, authorizationHeader !== undefined);
+        return corsMiddleware.addCorsHeaders(
+          unauthorizedResponse(request, authorizationHeader !== undefined),
+          origin,
+          "public"
+        );
       }
 
       throw error;
@@ -128,7 +145,11 @@ export function makeMcpRequestHandler(
       await server.connect(transport);
       const response = await transport.handleRequest(request);
 
-      return closeServerWhenResponseEnds(response, server);
+      return corsMiddleware.addCorsHeaders(
+        closeServerWhenResponseEnds(response, server),
+        origin,
+        "public"
+      );
     } catch (error) {
       await server.close();
       throw error;
@@ -160,7 +181,11 @@ export function makeMcpRequestHandler(
  * actually read `WWW-Authenticate` off a cross-origin response (E8) —
  * without it, the header exists on the wire but is invisible to
  * `fetch`/`XMLHttpRequest`, and the 401 never triggers the client's OAuth
- * flow.
+ * flow. That alone isn't sufficient, though: without
+ * `Access-Control-Allow-Origin` the browser fails the response's CORS check
+ * before JavaScript can read anything off it, exposed or not — the caller
+ * (`handleMcpRequest`) adds that via `CorsMiddleware.addCorsHeaders` (task
+ * 14), which preserves this header untouched.
  */
 function unauthorizedResponse(
   request: Request,
