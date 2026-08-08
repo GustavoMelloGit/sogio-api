@@ -1,0 +1,31 @@
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { ConflictError } from "../../application/error/conflict_error";
+import { ForbiddenError } from "../../application/error/forbidden_error";
+import { IllegalStateError } from "../../application/error/illegal_state_error";
+import { ResourceNotFoundError } from "../../application/error/resource_not_found_error";
+import { UnauthorizedError } from "../../application/error/unauthorized_error";
+import { ValidationError } from "../../application/error/validation_error";
+
+const domainErrorNames = new Set<string>([
+  ConflictError.name,
+  ForbiddenError.name,
+  IllegalStateError.name,
+  ResourceNotFoundError.name,
+  UnauthorizedError.name,
+  ValidationError.name,
+]);
+
+export function mapErrorToToolResult(error: unknown): CallToolResult {
+  if (Error.isError(error) && domainErrorNames.has(error.name)) {
+    return toolErrorResult(error.message);
+  }
+
+  return toolErrorResult("Internal server error");
+}
+
+function toolErrorResult(message: string): CallToolResult {
+  return {
+    isError: true,
+    content: [{ type: "text", text: message }],
+  };
+}
