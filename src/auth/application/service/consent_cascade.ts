@@ -1,3 +1,4 @@
+import type { Consent } from "../../domain/entity/delegated_access/consent";
 import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
 import type { IssuedCredentialRepository } from "../../domain/repository/delegated_access/issued_credential_repository";
 
@@ -29,4 +30,28 @@ export async function revokeConsentCascade(
 ): Promise<void> {
   await issuedCredentialRepository.revokeAllByConsent(consentId);
   await consentRepository.revoke(consentId);
+}
+
+/**
+ * Achado 3 da revisão pós-implementação: a variante que os caminhos guiados
+ * por `Consent#isUsable` chamam quando o predicado dá `false` — a
+ * verificação de credencial do `/mcp`, a troca de código e a renovação.
+ * Recascatear um Consentimento já revogado por ação explícita do usuário só
+ * carimbaria um novo `revoked_at` sobre um que já está correto; o cascade
+ * só roda quando a causa da não-usabilidade é a expiração de E9 (vida
+ * absoluta ou inatividade), que ainda não foi persistida em lugar nenhum.
+ */
+export async function revokeConsentCascadeIfNotAlreadyRevoked(
+  consent: Pick<Consent, "id" | "revoked_at">,
+  consentRepository: ConsentRepository,
+  issuedCredentialRepository: IssuedCredentialRepository
+): Promise<void> {
+  if (consent.revoked_at) {
+    return;
+  }
+  await revokeConsentCascade(
+    consent.id,
+    consentRepository,
+    issuedCredentialRepository
+  );
 }

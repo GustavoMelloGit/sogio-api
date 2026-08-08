@@ -1,9 +1,11 @@
 import { IssuedCredential } from "../../domain/entity/delegated_access/issued_credential";
 import type { AuthorizationCodeRepository } from "../../domain/repository/delegated_access/authorization_code_repository";
+import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
 import type { IssuedCredentialRepository } from "../../domain/repository/delegated_access/issued_credential_repository";
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 import { redirectUriMatches } from "../../domain/service/redirect_uri_policy";
 import { verifyPkceS256 } from "../../domain/service/pkce_policy";
+import { revokeConsentCascadeIfNotAlreadyRevoked } from "../service/consent_cascade";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 import type { TokenExchangeResult } from "./token_exchange_result";
 
@@ -64,6 +66,15 @@ export type ExchangeAuthorizationCodeInput = {
  * validated against the canonical `/mcp` URL) — re-checked here against
  * `expectedResource` as defense in depth, not because `/authorize` could
  * plausibly have let anything else through.
+ *
+ * **Vigência do Consentimento (Achado 3 da revisão pós-implementação).**
+ * Antes de emitir, `claimed.consent_id` é resolvido e checado via
+ * `Consent#isUsable` — nem revogado, nem vencido por E9. Sem isso, um
+ * código minted (60s de vida, E4) sobrevivia a uma revogação explícita do
+ * usuário que aconteça nesse intervalo, e a troca emitia credencial nova
+ * sob um Consentimento já morto. Não usável cai no mesmo `invalid_grant`
+ * genérico das demais falhas (risco #4) — nunca revela ao chamador que o
+ * motivo foi vigência do Consentimento, não o código em si.
  */
 export class ExchangeAuthorizationCodeUseCase
   implements UseCase<ExchangeAuthorizationCodeInput, TokenExchangeResult>
@@ -71,9 +82,12 @@ export class ExchangeAuthorizationCodeUseCase
   constructor(
     private readonly authorizationCodeRepository: AuthorizationCodeRepository,
     private readonly issuedCredentialRepository: IssuedCredentialRepository,
+    private readonly consentRepository: ConsentRepository,
     private readonly secretService: DelegatedSecretService,
     private readonly accessTokenTtlMs: number,
-    private readonly refreshTokenTtlMs: number
+    private readonly refreshTokenTtlMs: number,
+    private readonly consentAbsoluteLifetimeMs: number,
+    private readonly consentInactivityTtlMs: number
   ) {}
 
   async execute(
@@ -104,6 +118,25 @@ export class ExchangeAuthorizationCodeUseCase
     }
 
     if (!verifyPkceS256(input.codeVerifier, claimed.code_challenge)) {
+      return { outcome: "invalid_grant" };
+    }
+
+    const consent = await this.consentRepository.findById(claimed.consent_id);
+    if (!consent) {
+      return { outcome: "invalid_grant" };
+    }
+
+    if (
+      !consent.isUsable(
+        this.consentAbsoluteLifetimeMs,
+        this.consentInactivityTtlMs
+      )
+    ) {
+      await revokeConsentCascadeIfNotAlreadyRevoked(
+        consent,
+        this.consentRepository,
+        this.issuedCredentialRepository
+      );
       return { outcome: "invalid_grant" };
     }
 

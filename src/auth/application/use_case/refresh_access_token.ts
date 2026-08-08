@@ -1,8 +1,10 @@
 import { IssuedCredential } from "../../domain/entity/delegated_access/issued_credential";
+import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
 import type { IssuedCredentialRepository } from "../../domain/repository/delegated_access/issued_credential_repository";
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 import type { RefreshRotationGraceCache } from "../../domain/service/refresh_rotation_grace_cache";
 import { OAUTH_MCP_SCOPE } from "../../domain/service/oauth_scope_policy";
+import { revokeConsentCascadeIfNotAlreadyRevoked } from "../service/consent_cascade";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 import type { TokenExchangeResult } from "./token_exchange_result";
 
@@ -40,17 +42,29 @@ export type RefreshAccessTokenInput = {
  * was superseded, and the cache entry keyed to it (populated only at that
  * moment, with the same short TTL) will already have expired by the time
  * any realistic client-driven refresh cadence reaches it.
+ *
+ * **Vigência do Consentimento (Achado 3 da revisão pós-implementação).**
+ * Antes desta correção, esta classe só checava a própria credencial
+ * (`revoked_at`/expiração) — nunca o Consentimento sob ela. Agora, logo
+ * após esses dois checks e antes de decidir entre rotacionar ou honrar a
+ * graça, `Consent#isUsable` decide se o Consentimento ainda está de pé;
+ * caso não esteja, a família inteira é revogada via
+ * `revokeConsentCascadeIfNotAlreadyRevoked` (que também cobre a credencial
+ * atual) e a resposta é o mesmo `invalid_grant` genérico das demais causas.
  */
 export class RefreshAccessTokenUseCase
   implements UseCase<RefreshAccessTokenInput, TokenExchangeResult>
 {
   constructor(
     private readonly issuedCredentialRepository: IssuedCredentialRepository,
+    private readonly consentRepository: ConsentRepository,
     private readonly secretService: DelegatedSecretService,
     private readonly graceCache: RefreshRotationGraceCache,
     private readonly accessTokenTtlMs: number,
     private readonly refreshTokenTtlMs: number,
-    private readonly graceWindowMs: number
+    private readonly graceWindowMs: number,
+    private readonly consentAbsoluteLifetimeMs: number,
+    private readonly consentInactivityTtlMs: number
   ) {}
 
   async execute(input: RefreshAccessTokenInput): Promise<TokenExchangeResult> {
@@ -68,6 +82,25 @@ export class RefreshAccessTokenUseCase
       current.revoked_at ||
       current.refresh_token_expires_at.getTime() <= Date.now()
     ) {
+      return { outcome: "invalid_grant" };
+    }
+
+    const consent = await this.consentRepository.findById(current.consent_id);
+    if (!consent) {
+      return { outcome: "invalid_grant" };
+    }
+
+    if (
+      !consent.isUsable(
+        this.consentAbsoluteLifetimeMs,
+        this.consentInactivityTtlMs
+      )
+    ) {
+      await revokeConsentCascadeIfNotAlreadyRevoked(
+        consent,
+        this.consentRepository,
+        this.issuedCredentialRepository
+      );
       return { outcome: "invalid_grant" };
     }
 

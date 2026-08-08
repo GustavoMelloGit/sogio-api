@@ -17,7 +17,7 @@ const outputSchema = z.array(
     consent_id: z.string().uuid(),
     app_display_name: z.string(),
     app_display_name_verified: z.literal(false),
-    redirect_host: z.string(),
+    redirect_hosts: z.array(z.string()),
     granted_at: z.string().datetime(),
     last_used_at: z.string().datetime(),
   })
@@ -43,7 +43,7 @@ export class ListConnectedAppsController implements Controller {
   openApiSpec: OpenApiOperation = {
     summary: "List connected apps",
     description:
-      "Lists the authenticated user's connected MCP apps: one entry per unrevoked Consent, with the app's self-declared (unverified) name, its registered redirect host, and when it was granted/last used.",
+      "Lists the authenticated user's connected MCP apps: one entry per unrevoked Consent, with the app's self-declared (unverified) name, all of its registered redirect hosts, and when it was granted/last used.",
     tags: ["Auth"],
     responses: {
       "200": responseFromZod("List of connected apps", outputSchema),
@@ -60,7 +60,7 @@ export class ListConnectedAppsController implements Controller {
       consent_id: app.consentId,
       app_display_name: app.appDisplayName,
       app_display_name_verified: app.appDisplayNameVerified,
-      redirect_host: app.redirectHost,
+      redirect_hosts: app.redirectHosts,
       granted_at: app.grantedAt,
       last_used_at: app.lastUsedAt,
     }));

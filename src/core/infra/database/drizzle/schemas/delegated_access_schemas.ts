@@ -5,6 +5,7 @@ import {
   uuid,
   timestamp,
   index,
+  uniqueIndex,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
@@ -29,19 +30,36 @@ export const appRegistrationsRelations = relations(
   })
 );
 
-export const consentsTable = pgTable("consents", {
-  ...baseSchema,
-  user_id: uuid()
-    .references(() => usersTable.id, { onDelete: "cascade" })
-    .notNull(),
-  app_registration_id: uuid()
-    .references(() => appRegistrationsTable.id, { onDelete: "cascade" })
-    .notNull(),
-  scope: varchar({ length: 255 }).notNull(),
-  granted_at: timestamp({ withTimezone: true, mode: "date" }).notNull(),
-  last_used_at: timestamp({ withTimezone: true, mode: "date" }).notNull(),
-  revoked_at: timestamp({ withTimezone: true, mode: "date" }),
-});
+export const consentsTable = pgTable(
+  "consents",
+  {
+    ...baseSchema,
+    user_id: uuid()
+      .references(() => usersTable.id, { onDelete: "cascade" })
+      .notNull(),
+    app_registration_id: uuid()
+      .references(() => appRegistrationsTable.id, { onDelete: "cascade" })
+      .notNull(),
+    scope: varchar({ length: 255 }).notNull(),
+    granted_at: timestamp({ withTimezone: true, mode: "date" }).notNull(),
+    last_used_at: timestamp({ withTimezone: true, mode: "date" }).notNull(),
+    revoked_at: timestamp({ withTimezone: true, mode: "date" }),
+  },
+  table => [
+    /**
+     * Achado 1 da revisão pós-implementação: Consentimento é a relação
+     * `(usuário, aplicativo)` no singular (Análise de Domínio) — sem este
+     * índice, o banco permitia N linhas para a mesma combinação, e
+     * `findByUserAndApp` (um `findFirst` sem `revoked_at`/`orderBy`) podia
+     * devolver uma linha revogada mesmo com uma ativa por perto,
+     * fazendo "desconectar" não desconectar de fato.
+     */
+    uniqueIndex("consents_user_id_app_registration_id_idx").on(
+      table.user_id,
+      table.app_registration_id
+    ),
+  ]
+);
 
 export const consentsRelations = relations(consentsTable, ({ one, many }) => ({
   user: one(usersTable, {

@@ -1651,3 +1651,176 @@ vez só, pago agora, contra dívida de segurança permanente. Endosso.
   autenticação resolve quem pode chamar a tool, mas não resolve para onde o
   dado vai depois nem a finalidade em relação ao hóspede (titular do dado, que
   não é quem consente). Revisitar antes de expor a feature a usuários reais.
+
+---
+
+## Correções Pós-Revisão (2026-08-08)
+
+Origem: revisão de segurança pós-implementação (task 18, veredito "não apta a
+seguir sem correção") e revisão arquitetural (task 19), sobre o código das
+tasks 8–14. Três achados corrigidos pelo Desenvolvedor — os dois críticos e o
+buraco de E9 que as duas revisões acharam de forma independente. Fora desta
+rodada: M1, M2, M4, M5, M6, e os 9 desvios arquiteturais (ficam para uma
+segunda leva).
+
+### Achado 1 — "Desconectar" não desconectava (consentimentos duplicados)
+
+**Causa raiz.** `consentsTable` não tinha constraint única em
+`(user_id, app_registration_id)`; `findByUserAndApp` fazia `findFirst` sem
+filtro de `revoked_at` nem `orderBy`; e `DecideAuthorizationRequestUseCase#resolveConsent`
+inserida um Consentimento novo sempre que encontrava a linha existente
+revogada, em vez de revivê-la.
+
+**Correção:**
+
+- `src/core/infra/database/drizzle/schemas/delegated_access_schemas.ts` —
+  índice único `consents_user_id_app_registration_id_idx` em
+  `(user_id, app_registration_id)`.
+- **Migration `drizzle/0003_tired_jocasta.sql`.** Antes de criar o índice,
+  deduplica linhas existentes: sobrevivente por combinação é o não-revogado
+  mais recente (desempate por `granted_at`, depois `created_at`, depois
+  `id`); `issued_credentials.consent_id` e `authorization_codes.consent_id`
+  das linhas descartadas são reapontados para o sobrevivente (não perdidos
+  ao cascade-delete — o histórico de credenciais emitidas sob aquele
+  `(usuário, aplicativo)` continua íntegro, com o `revoked_at` original de
+  cada credencial preservado); só então as linhas duplicadas são removidas.
+  Testado com uma reprodução exata do cenário medido pelo Analista (C1
+  revogado, C2 e C3 ativos, com tok1/tok2/tok3 sob cada um): após a
+  migration, sobra 1 linha (a mais recente, C3) e as 3 credenciais passam a
+  apontar para ela, mantendo seu `revoked_at` individual.
+- `src/auth/domain/repository/delegated_access/consent_repository.ts` e
+  `consent_postgres_repository.ts` — novo método `revive()`: limpa
+  `revoked_at`, redefine `granted_at`/`last_used_at`.
+- `src/auth/application/use_case/decide_authorization_request.ts` —
+  `#resolveConsent` agora: usável → reutiliza (`touchLastUsedAt`); inexistente
+  → cria; revogado/expirado → cascata (`revokeConsentCascadeIfNotAlreadyRevoked`,
+  cobre o caso raro de expiração de E9 nunca antes detectada) seguida de
+  `revive` com `granted_at` novo — nunca um segundo `INSERT`.
+
+**Reprodução medida (contra Postgres real, ver seção Verificação):**
+registrar app → autorizar/aprovar → obter token → confirmar `/mcp` 200 →
+desconectar (`DELETE /auth/connected-apps/:id`) → confirmar **o mesmo**
+access token agora responde 401 → reautorizar o mesmo (usuário, app) →
+`pending-request` reporta `has_existing_consent: false` (não reconecta em
+silêncio) → aprovar de novo → `SELECT` confirma **uma única linha** de
+Consentimento, revivida (mesmo `id`, `granted_at` novo) → novo token emitido
+funciona no `/mcp` → tentativa manual de `INSERT` de uma segunda linha para o
+mesmo `(user_id, app_registration_id)` falha com violação do índice único.
+
+### Achado 2 — host de destino vazio para `redirect_uri` de esquema privado (E6)
+
+**Causa raiz.** `new URL(uri).hostname` devolve `""` para a forma nativa do
+RFC 8252 §7.1 (`com.exemplo.app:/oauth2redirect`, sem `//`); e para esquema
+customizado com host IDN (`myapp://аррӏе.com/cb`), WHATWG só aplica IDNA aos
+esquemas especiais, então o host homógrafo virava percent-encoding em vez de
+punycode.
+
+**Correção — um único helper para as duas telas:**
+
+- `src/auth/domain/service/redirect_uri_policy.ts` — nova função
+  `redirectUriDisplayAnchor(uri)`: sem authority (`hostname === ""`), devolve
+  a string completa registrada/apresentada (esquema + caminho — nunca vazio,
+  nunca perde informação); com authority, decodifica o host e o reparseia
+  através de uma URL `https://` sintética, forçando a conversão IDNA/punycode
+  do WHATWG independentemente do esquema original.
+- `src/auth/application/use_case/get_pending_authorization_request.ts` (tela
+  de consentimento) e `list_connected_apps.ts` (tela de aplicativos
+  conectados) — ambos trocaram `new URL(...).hostname` por
+  `redirectUriDisplayAnchor`.
+- **Todos os hosts, não só o primeiro, na tela de aplicativos conectados**:
+  `ConnectedApp.redirectHost: string` virou `redirectHosts: string[]`,
+  mapeando todos os `redirect_uris` registrados (máximo 10,
+  `MAX_REDIRECT_URIS`) — contrato do controller e `outputSchema` do OpenAPI
+  atualizados (`redirect_host` → `redirect_hosts`). A tela de consentimento
+  continua mostrando um único host: o efetivamente usado naquela autorização,
+  que ela tem e a tela de aplicativos conectados não.
+
+**Reprodução medida:** `POST /register` com
+`redirect_uris: ["com.stayhub.official:/oauth2redirect"]` →
+`pending-request` devolve `redirect_host: "com.stayhub.official:/oauth2redirect"`
+(antes: `""`). `POST /register` com `redirect_uris: ["myapp://аррӏе.com/cb"]`
+→ `pending-request` devolve `redirect_host: "xn--80ak6aa92e.com"` (antes:
+`"%D0%B0%D1%80%D1%80%D3%8F%D0%B5.com"`). App registrado com 3 `redirect_uris`
+(`https://app.example.com/cb`, `com.multiredirect.app:/oauth2redirect`,
+`http://127.0.0.1:54321/cb`) → `GET /auth/connected-apps` devolve
+`redirect_hosts: ["app.example.com", "com.multiredirect.app:/oauth2redirect", "127.0.0.1"]`
+— os três, não só o primeiro.
+
+### Achado 3 — expiração por inatividade contornada pelo atalho de reconexão (E9)
+
+**Predicado único no domínio.** `Consent.isUsable(absoluteLifetimeMs,
+inactivityTtlMs, now?)`
+(`src/auth/domain/entity/delegated_access/consent.ts`) — comportamento do
+agregado, não serviço solto, como sugerido pelo Arquiteto: `!revoked_at` e
+não vencido por E9 (reaproveita `isConsentExpired` internamente). Consumido
+pelos seis caminhos:
+
+| #   | Caminho                                                     | Antes                               | Depois                                                                                                     |
+| --- | ----------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 1   | `OAuthCredentialVerifier.verify`                            | `revoked_at` + E9, checks separados | `consent.isUsable(...)`                                                                                    |
+| 2   | `ListConnectedAppsUseCase`                                  | `isConsentExpired` direto           | `consent.isUsable(...)`                                                                                    |
+| 3   | `GetPendingAuthorizationRequestUseCase#hasUnrevokedConsent` | só `revoked_at`                     | renomeado `#hasUsableConsent`, usa `isUsable(...)`                                                         |
+| 4   | `DecideAuthorizationRequestUseCase#resolveConsent`          | só `revoked_at`                     | `isUsable(...)`; se não usável, cascata + `revive`                                                         |
+| 5   | `ExchangeAuthorizationCodeUseCase`                          | nada                                | resolve o Consentimento por `claimed.consent_id`, checa `isUsable(...)` antes de emitir                    |
+| 6   | `RefreshAccessTokenUseCase`                                 | só a própria credencial             | resolve o Consentimento por `current.consent_id`, checa `isUsable(...)` antes de rotacionar/honrar a graça |
+
+**Cascata condicional compartilhada.** Nova
+`revokeConsentCascadeIfNotAlreadyRevoked` em
+`src/auth/application/service/consent_cascade.ts`: só executa
+`revokeConsentCascade` quando o Consentimento ainda não carrega seu próprio
+`revoked_at` — evita recarimbar um `revoked_at` que uma revogação explícita
+já gravou, e é a que os caminhos 1, 2, 4, 5 e 6 chamam quando `isUsable`
+retorna `false`.
+
+**Docstring corrigido em `oauth_credential_verifier.ts`.** A versão anterior
+afirmava que "nunca deveria haver uma janela em que o Consentimento leia como
+revogado e a credencial ainda não". Falso: `revokeAllByConsent` varre uma
+foto do banco no momento da cascata; uma credencial nascida _durante_ essa
+varredura (troca de um código ainda vivo — 60s, E4 — ou renovação correndo em
+paralelo) nunca é visitada por ela e nasce órfã, com `revoked_at` próprio
+nulo sob um Consentimento já revogado. As correções dos caminhos 5 e 6
+estreitam essa janela, mas não a fecham (corrida real entre processos, sem
+transação cruzando os dois casos de uso) — a checagem do verificador continua
+sendo o backstop de fato, não uma redundância a ser removida numa limpeza
+futura.
+
+**Reprodução medida:**
+
+- `#hasUsableConsent`: consentimento com `last_used_at` de 60 dias
+  (TTL de inatividade default: 30 dias) → `pending-request` devolve
+  `has_existing_consent: false` (antes: `true`, aprovação em silêncio).
+- `ExchangeAuthorizationCodeUseCase` (corrida de revogação dentro dos 60s do
+  código): autorizar/aprovar → **antes de trocar o código**, desconectar o
+  app via `DELETE /auth/connected-apps/:id` → `POST /token` com o código
+  ainda vivo devolve `400 invalid_grant` (antes: sucesso, credencial nova sob
+  Consentimento morto).
+- `RefreshAccessTokenUseCase`: emitir token → recuar `last_used_at` do
+  Consentimento 60 dias no banco → `POST /token` com `grant_type=refresh_token`
+  devolve `400 invalid_grant`, e o Consentimento e a credencial aparecem
+  revogados no banco logo em seguida (autocura) — antes, a renovação
+  sucedia incondicionalmente.
+- `ListConnectedAppsUseCase`: consentimento com `last_used_at` de 31 dias,
+  nunca tocado por `/mcp` nem por `/token` — visitar `GET /auth/connected-apps`
+  já o exclui da lista **e** grava `revoked_at` no banco, sem nenhuma outra
+  chamada ter acontecido.
+
+### Verificação
+
+`bun run typecheck`, `lint:check` e `format:check` limpos. Suíte completa
+rodada **por arquivo** (23 arquivos — rodar o diretório inteiro, ou `bun
+test` sozinho, ainda sofre o segfault conhecido do Bun ao entrar em
+`oauth_discovery_metadata.test.ts`, alheio a este código): **todos passam**
+(129 testes). Nenhum teste existente precisou de ajuste — os novos parâmetros
+de construtor (`ConsentRepository` e os dois TTLs de E9 em
+`ExchangeAuthorizationCodeUseCase`/`RefreshAccessTokenUseCase`/
+`GetPendingAuthorizationRequestUseCase`/`DecideAuthorizationRequestUseCase`) só
+são exercitados via DI (`AuthDi`), não instanciados diretamente em teste
+algum, e nenhum teste cria duas linhas de Consentimento para o mesmo
+`(user, app)`.
+
+Postgres temporário e isolado subido em `15433` (a `5433` local já estava
+ocupada pelo container de desenvolvimento **deste** projeto,
+`stayhub_db` — não tocado, por segurança, mesmo sendo do próprio projeto);
+migrations 0000–0003 aplicadas; servidor real (`bun run src/index.ts`) subido
+contra ele para as reproduções acima via `curl`, ponta a ponta, sem mock.
+Container temporário removido ao final.

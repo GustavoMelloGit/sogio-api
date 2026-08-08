@@ -193,7 +193,9 @@ export class AuthDi {
       this.#authorizationRequestRepository,
       this.#appRegistrationRepository,
       this.#consentRepository,
-      this.#delegatedSecretService
+      this.#delegatedSecretService,
+      consentAbsoluteLifetimeMs,
+      consentInactivityTtlMs
     );
   }
 
@@ -210,7 +212,10 @@ export class AuthDi {
       this.#appRegistrationRepository,
       this.#consentRepository,
       this.#authorizationCodeRepository,
-      this.#delegatedSecretService
+      this.#issuedCredentialRepository,
+      this.#delegatedSecretService,
+      consentAbsoluteLifetimeMs,
+      consentInactivityTtlMs
     );
   }
 
@@ -226,20 +231,26 @@ export class AuthDi {
     return new ExchangeAuthorizationCodeUseCase(
       this.#authorizationCodeRepository,
       this.#issuedCredentialRepository,
+      this.#consentRepository,
       this.#delegatedSecretService,
       accessTokenTtlMs,
-      refreshTokenTtlMs
+      refreshTokenTtlMs,
+      consentAbsoluteLifetimeMs,
+      consentInactivityTtlMs
     );
   }
 
   makeRefreshAccessTokenUseCase() {
     return new RefreshAccessTokenUseCase(
       this.#issuedCredentialRepository,
+      this.#consentRepository,
       this.#delegatedSecretService,
       this.#refreshRotationGraceCache,
       accessTokenTtlMs,
       refreshTokenTtlMs,
-      refreshRotationGraceWindowMs
+      refreshRotationGraceWindowMs,
+      consentAbsoluteLifetimeMs,
+      consentInactivityTtlMs
     );
   }
 

@@ -1,5 +1,5 @@
 import { UnauthorizedError } from "../../../core/application/error/unauthorized_error";
-import { revokeConsentCascade } from "../../application/service/consent_cascade";
+import { revokeConsentCascadeIfNotAlreadyRevoked } from "../../application/service/consent_cascade";
 import type {
   CredentialVerifier,
   Requester,
@@ -7,7 +7,6 @@ import type {
 import type { AuthRepository } from "../../domain/repository/auth_repository";
 import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
 import type { IssuedCredentialRepository } from "../../domain/repository/delegated_access/issued_credential_repository";
-import { isConsentExpired } from "../../domain/service/consent_expiry_policy";
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 
 /**
@@ -24,26 +23,42 @@ import type { DelegatedSecretService } from "../../domain/service/delegated_secr
  *    formas de revogação (individual via `revokeById`, por família via
  *    `revokeFamily`, e por cascata do Consentimento via
  *    `revokeAllByConsent`): todas gravam a mesma coluna na linha da
- *    credencial, então checá-la aqui já cobre as três. O `revoked_at` do
- *    próprio Consentimento é checado como defesa em profundidade — pela
- *    ordem em que `RevokeConsentUseCase` grava as duas tabelas (task 12),
- *    nunca deveria haver uma janela em que o Consentimento leia como
- *    revogado e a credencial ainda não, mas o inverso (credencial já
- *    revogada, Consentimento ainda não) é seguro e seria pego pelo
- *    primeiro `revoked_at` de qualquer forma.
+ *    credencial, então checá-la aqui já cobre as três credenciais que
+ *    *existiam* no momento da cascata. **O `revoked_at`/E9 do próprio
+ *    Consentimento (via `Consent#isUsable`, abaixo) não é redundante — é
+ *    necessário.** Uma versão anterior deste comentário afirmava que a
+ *    janela inversa (Consentimento já lendo como revogado, credencial ainda
+ *    não) "nunca deveria" existir por causa da ordem em que
+ *    `revokeConsentCascade` grava as duas tabelas; é falso, porque essa
+ *    ordem só garante o que acontece com credenciais que já existem no
+ *    instante da cascata. `revokeAllByConsent` varre uma foto do banco; uma
+ *    credencial que nasce *durante* essa varredura — pela troca de um
+ *    código de autorização ainda vivo (E4, TTL de 60s) correndo em
+ *    paralelo, ou pela renovação de um refresh token — nunca é visitada por
+ *    ela, e chega ao mundo já órfã: com `revoked_at` próprio sempre nulo,
+ *    sob um Consentimento cujo `revoked_at` acabou de ser gravado. Sem esta
+ *    checagem, essa credencial ficaria válida até o seu próprio
+ *    `access_token_expires_at`, minutos ou horas depois de o usuário ter
+ *    desconectado o aplicativo. `ExchangeAuthorizationCodeUseCase` e
+ *    `RefreshAccessTokenUseCase` agora também reavaliam `Consent#isUsable`
+ *    antes de emitir — o que estreita a janela, mas não a fecha (é uma
+ *    corrida de verdade entre processos, sem transação cruzando os dois
+ *    casos de uso): esta checagem continua sendo o backstop de fato.
  * 4. **Audiência errada** — `resource` da credencial não é a URL canônica
  *    do `/mcp` (RFC 8707 / Decisão Arquitetural 9), ainda que autorização e
  *    verificação rodem no mesmo processo.
  * 5. **Consentimento expirado (E9)** — vida absoluta ou inatividade
- *    vencidas (`isConsentExpired`). Avaliado aqui, no caminho de
- *    verificação, porque o projeto não tem scheduler (ver
- *    `RegisterAppUseCase`): a regra precisa valer na *próxima* chamada de
- *    um agente ainda ativo, não apenas quando alguma faxina periódica rodar
- *    — que não existe. Ao detectar, revoga de verdade
- *    (`revokeConsentCascade`, a mesma cascata de `RevokeConsentUseCase`) em
- *    vez de só rejeitar, para que o estado fique persistido e a checagem
- *    seja autocurativa: uma segunda chamada não paga o custo de reavaliar
- *    a expiração, só encontra `revoked_at` já setado no passo 3.
+ *    vencidas, avaliado junto do passo 3 por `Consent#isUsable`, o
+ *    predicado único do agregado (Achado 3 da revisão pós-implementação).
+ *    Avaliado aqui, no caminho de verificação, porque o projeto não tem
+ *    scheduler (ver `RegisterAppUseCase`): a regra precisa valer na
+ *    *próxima* chamada de um agente ainda ativo, não apenas quando alguma
+ *    faxina periódica rodar — que não existe. Ao detectar, revoga de
+ *    verdade (`revokeConsentCascadeIfNotAlreadyRevoked`, a mesma cascata de
+ *    `RevokeConsentUseCase`) em vez de só rejeitar, para que o estado fique
+ *    persistido e a checagem seja autocurativa: uma segunda chamada não
+ *    paga o custo de reavaliar a expiração, só encontra `revoked_at` já
+ *    setado no passo 3.
  *
  * `expectedResource` chega pelo construtor, montado pelo container de DI
  * (`MiddlewareDi`) a partir de `apiBaseUrl`/`MCP_RESOURCE_PATH` — esta
@@ -92,19 +107,18 @@ export class OAuthCredentialVerifier implements CredentialVerifier {
       credential.consent_id
     );
 
-    if (!consent || consent.revoked_at) {
+    if (!consent) {
       throw new UnauthorizedError("Unauthorized");
     }
 
     if (
-      isConsentExpired(
-        consent,
+      !consent.isUsable(
         this.consentAbsoluteLifetimeMs,
         this.consentInactivityTtlMs
       )
     ) {
-      await revokeConsentCascade(
-        consent.id,
+      await revokeConsentCascadeIfNotAlreadyRevoked(
+        consent,
         this.consentRepository,
         this.issuedCredentialRepository
       );

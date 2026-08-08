@@ -97,4 +97,17 @@ export class ConsentPostgresRepository implements ConsentRepository {
       .set({ revoked_at: new Date(), updated_at: new Date() })
       .where(eq(consentsTable.id, id));
   }
+
+  async revive(id: string, scope: string, grantedAt: Date): Promise<void> {
+    await db
+      .update(consentsTable)
+      .set({
+        scope,
+        granted_at: grantedAt,
+        last_used_at: grantedAt,
+        revoked_at: null,
+        updated_at: new Date(),
+      })
+      .where(eq(consentsTable.id, id));
+  }
 }

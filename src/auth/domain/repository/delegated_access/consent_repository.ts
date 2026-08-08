@@ -3,6 +3,11 @@ import type { Consent } from "../../entity/delegated_access/consent";
 export interface ConsentRepository {
   create(input: Consent): Promise<Consent>;
   findById(id: string): Promise<Consent | null>;
+  /**
+   * Achado 1 da revisão pós-implementação: `(user_id, app_registration_id)`
+   * agora tem um índice único (Consentimento é a relação no singular) — esta
+   * consulta sempre devolve, no máximo, uma linha por combinação.
+   */
   findByUserAndApp(
     userId: string,
     appRegistrationId: string
@@ -27,4 +32,16 @@ export interface ConsentRepository {
    * Credencial Emitida (`revokeAllByConsent`), acionado pelo caso de uso.
    */
   revoke(id: string): Promise<void>;
+  /**
+   * Achado 1 da revisão pós-implementação: revive a linha existente de
+   * `(user, app)` como uma concessão nova, em vez de inserir uma segunda —
+   * o índice único que este achado introduziu rejeitaria esse insert de
+   * qualquer forma. Usado por `DecideAuthorizationRequestUseCase#resolveConsent`
+   * quando o Consentimento existente foi revogado ou já não é utilizável
+   * (E9): limpa `revoked_at`, e redefine `granted_at`/`last_used_at` para
+   * `grantedAt` — a primeira autorização após uma revogação ou uma
+   * expiração tem que ser, ela própria, uma concessão nova e explícita, não
+   * uma reconexão silenciosa.
+   */
+  revive(id: string, scope: string, grantedAt: Date): Promise<void>;
 }

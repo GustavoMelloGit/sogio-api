@@ -70,6 +70,53 @@ export function redirectUriMatches(
   return matchesIgnoringLoopbackPort(registeredUri, presentedUri);
 }
 
+/**
+ * E6's trust anchor for the consent and connected-apps screens (Achado 2 da
+ * revisão pós-implementação): the destination the user is being asked to
+ * trust, in a form that can never come back empty and never renders a
+ * spoofable Unicode host. The single helper both screens share.
+ *
+ * Two failure modes `new URL(uri).hostname` has on its own, both confirmed
+ * against real values:
+ *
+ * - **No authority at all.** RFC 8252 §7.1's own recommended native-app form
+ *   (`com.example.app:/oauth2redirect`, no `//`) parses to an *empty*
+ *   `hostname` — the trust anchor the consent screen renders would be a
+ *   blank string, which is a free disguise, not an absence of one. When
+ *   there is no authority, the exact registered/presented URI string *is*
+ *   the destination — there is nothing else to show.
+ * - **A custom scheme with an IDN host.** WHATWG only runs IDNA punycode
+ *   conversion for the "special" schemes (`http`, `https`, `ws`, `wss`,
+ *   `ftp`, `file`); a non-special scheme like `myapp://` merely
+ *   percent-encodes non-ASCII bytes, so a homograph host never turns into
+ *   the `xn--…` form a user could recognize as suspicious. Decoding the
+ *   percent-encoding back to Unicode and re-parsing through a synthetic
+ *   `https://` URL forces WHATWG's IDNA host parsing and yields the same
+ *   punycode a special scheme would have produced natively.
+ *
+ * A host that's already ASCII (a loopback/remote `http(s)://` URI, or a
+ * custom-scheme host with no non-ASCII characters) round-trips through this
+ * unchanged — there is no need to special-case which schemes get the
+ * reparse.
+ */
+export function redirectUriDisplayAnchor(uri: string): string {
+  const parsed = new URL(uri);
+
+  if (parsed.hostname === "") {
+    return uri;
+  }
+
+  return toPunycodeHost(parsed.hostname);
+}
+
+function toPunycodeHost(hostname: string): string {
+  try {
+    return new URL(`https://${decodeURIComponent(hostname)}/`).hostname;
+  } catch {
+    return hostname;
+  }
+}
+
 function matchesIgnoringLoopbackPort(
   registeredUri: string,
   presentedUri: string

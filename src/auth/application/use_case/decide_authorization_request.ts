@@ -6,6 +6,8 @@ import type { AuthorizationCodeRepository } from "../../domain/repository/delega
 import type { AuthorizationRequestRepository } from "../../domain/repository/delegated_access/authorization_request_repository";
 import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
+import { revokeConsentCascadeIfNotAlreadyRevoked } from "../service/consent_cascade";
+import type { IssuedCredentialRepository } from "../../domain/repository/delegated_access/issued_credential_repository";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 
 export type AuthorizationDecision = "approve" | "deny";
@@ -54,9 +56,17 @@ const ACCESS_DENIED_DESCRIPTION = "The user denied the authorization request.";
  * `state` echoed literally. No Consent is written and no code is minted.
  *
  * Approving registers or reuses the Consent for (user, app): an existing,
- * unrevoked Consent is reused and only has its `last_used_at` touched — a
- * revoked or nonexistent one means this decision is a fresh grant, with
- * its own `granted_at`. The scope carried onto the Consent and the
+ * *usable* Consent (`Consent#isUsable` — neither revoked nor expired by E9,
+ * Achado 3 da revisão pós-implementação) is reused and only has its
+ * `last_used_at` touched. A nonexistent one gets a brand-new row. A revoked
+ * or E9-expired one is *not* reused, but it's not a second row either
+ * (Achado 1): `(user_id, app_registration_id)` now has a unique index, so
+ * this decision revives that same row as a fresh grant, with its own
+ * `granted_at` — after first cascading away anything still live under it
+ * (`revokeConsentCascadeIfNotAlreadyRevoked`), so a grant that lapsed by E9
+ * without ever being touched by the verifier or the connected-apps screen
+ * can't hand a brand-new authorization code back its own stale credentials.
+ * The scope carried onto the Consent and the
  * Authorization Code is always the one `/authorize` already validated on
  * the request, never re-derived from this call's input. The Authorization
  * Code inherits the request's `redirect_uri`, `code_challenge`, `scope`,
@@ -76,7 +86,10 @@ export class DecideAuthorizationRequestUseCase
     private readonly appRegistrationRepository: AppRegistrationRepository,
     private readonly consentRepository: ConsentRepository,
     private readonly authorizationCodeRepository: AuthorizationCodeRepository,
-    private readonly secretService: DelegatedSecretService
+    private readonly issuedCredentialRepository: IssuedCredentialRepository,
+    private readonly secretService: DelegatedSecretService,
+    private readonly consentAbsoluteLifetimeMs: number,
+    private readonly consentInactivityTtlMs: number
   ) {}
 
   async execute(
@@ -150,21 +163,37 @@ export class DecideAuthorizationRequestUseCase
       appRegistrationId
     );
 
-    if (existing && !existing.revoked_at) {
+    if (!existing) {
+      const now = new Date();
+      const consent = Consent.create({
+        user_id: userId,
+        app_registration_id: appRegistrationId,
+        scope,
+        granted_at: now,
+        last_used_at: now,
+      });
+      const saved = await this.consentRepository.create(consent);
+      return saved.id;
+    }
+
+    if (
+      existing.isUsable(
+        this.consentAbsoluteLifetimeMs,
+        this.consentInactivityTtlMs
+      )
+    ) {
       await this.consentRepository.touchLastUsedAt(existing.id);
       return existing.id;
     }
 
-    const now = new Date();
-    const consent = Consent.create({
-      user_id: userId,
-      app_registration_id: appRegistrationId,
-      scope,
-      granted_at: now,
-      last_used_at: now,
-    });
-    const saved = await this.consentRepository.create(consent);
-    return saved.id;
+    await revokeConsentCascadeIfNotAlreadyRevoked(
+      existing,
+      this.consentRepository,
+      this.issuedCredentialRepository
+    );
+    const grantedAt = new Date();
+    await this.consentRepository.revive(existing.id, scope, grantedAt);
+    return existing.id;
   }
 
   #buildRedirect(

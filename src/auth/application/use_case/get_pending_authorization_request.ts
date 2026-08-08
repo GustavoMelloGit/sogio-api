@@ -4,6 +4,7 @@ import type { AuthorizationRequestRepository } from "../../domain/repository/del
 import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 import { describeScope } from "../../domain/service/oauth_scope_policy";
+import { redirectUriDisplayAnchor } from "../../domain/service/redirect_uri_policy";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 
 export type GetPendingAuthorizationRequestInput = {
@@ -38,11 +39,13 @@ export type GetPendingAuthorizationRequestResult =
  *   always `false` — there is no verification path in this subdomain, and
  *   the contract keeps that explicit rather than letting the front infer
  *   it);
- * - the redirect's destination *host*, in ASCII/punycode form (E6). `new
- *   URL(...).hostname` already returns the ASCII/punycode form for an IDN
- *   host per the WHATWG URL standard — a homograph host is indistinguishable
- *   in Unicode but unmistakable as `xn--…`, so no manual conversion is
- *   implemented here;
+ * - the redirect's destination host, in ASCII/punycode form and never empty
+ *   (E6, Achado 2 da revisão pós-implementação) — `redirectUriDisplayAnchor`
+ *   handles the two cases plain `new URL(...).hostname` gets wrong: a
+ *   custom-scheme redirect with no authority at all (RFC 8252 §7.1's own
+ *   recommended native-app form), which parsed to an empty string, and a
+ *   custom scheme with an IDN host, whose homograph never turned into the
+ *   `xn--…` form because WHATWG only runs IDNA on the "special" schemes;
  * - a human-readable description of the v1 scope being requested;
  * - whether the identified caller already has an unrevoked Consent for
  *   this app — the flag that drives the reconnection shortcut.
@@ -71,7 +74,9 @@ export class GetPendingAuthorizationRequestUseCase
     private readonly authorizationRequestRepository: AuthorizationRequestRepository,
     private readonly appRegistrationRepository: AppRegistrationRepository,
     private readonly consentRepository: ConsentRepository,
-    private readonly secretService: DelegatedSecretService
+    private readonly secretService: DelegatedSecretService,
+    private readonly consentAbsoluteLifetimeMs: number,
+    private readonly consentInactivityTtlMs: number
   ) {}
 
   async execute(
@@ -97,9 +102,9 @@ export class GetPendingAuthorizationRequestUseCase
       found: true,
       appDisplayName: appRegistration.client_name,
       appDisplayNameVerified: false,
-      redirectHost: new URL(request.redirect_uri).hostname,
+      redirectHost: redirectUriDisplayAnchor(request.redirect_uri),
       scopeDescription: describeScope(request.scope),
-      hasExistingConsent: await this.#hasUnrevokedConsent(
+      hasExistingConsent: await this.#hasUsableConsent(
         input.userId,
         appRegistration.id
       ),
@@ -118,7 +123,14 @@ export class GetPendingAuthorizationRequestUseCase
     return request.expires_at.getTime() > Date.now();
   }
 
-  async #hasUnrevokedConsent(
+  /**
+   * Achado 3 da revisão pós-implementação: um Consentimento existente que já
+   * não é utilizável (revogado, ou vencido por E9) é tratado como
+   * inexistente aqui — `false` força o front pela tela de consentimento
+   * explícita, em vez do atalho silencioso de reconexão. Nunca toca
+   * `last_used_at`; esta é só uma leitura.
+   */
+  async #hasUsableConsent(
     userId: string | undefined,
     appRegistrationId: string
   ): Promise<boolean> {
@@ -130,6 +142,12 @@ export class GetPendingAuthorizationRequestUseCase
       userId,
       appRegistrationId
     );
-    return consent !== null && !consent.revoked_at;
+    return (
+      consent !== null &&
+      consent.isUsable(
+        this.consentAbsoluteLifetimeMs,
+        this.consentInactivityTtlMs
+      )
+    );
   }
 }

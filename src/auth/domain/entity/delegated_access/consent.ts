@@ -3,6 +3,7 @@ import {
   type WithoutBaseEntity,
 } from "../../../../core/domain/entity/base_entity";
 import { z } from "zod";
+import { isConsentExpired } from "../../service/consent_expiry_policy";
 
 export const consentSchema = baseEntitySchema.extend({
   user_id: z.uuidv4(),
@@ -46,6 +47,31 @@ export class Consent {
 
   public static reconstitute(data: ConsentData): Consent {
     return new Consent(data);
+  }
+
+  /**
+   * Achado 3 da revisão pós-implementação: o único predicado de vigência do
+   * agregado, consumido pelos seis caminhos que hoje avaliavam
+   * `revoked_at`/E9 de forma inconsistente (verificação de credencial,
+   * listagem de aplicativos conectados, consulta e decisão do pedido
+   * pendente, troca de código e renovação). Nunca revogado **e** nem
+   * vencido por vida absoluta nem por inatividade (E9,
+   * `isConsentExpired`).
+   */
+  public isUsable(
+    absoluteLifetimeMs: number,
+    inactivityTtlMs: number,
+    now: Date = new Date()
+  ): boolean {
+    if (this.#data.revoked_at) {
+      return false;
+    }
+    return !isConsentExpired(
+      this.#data,
+      absoluteLifetimeMs,
+      inactivityTtlMs,
+      now
+    );
   }
 
   get id() {
