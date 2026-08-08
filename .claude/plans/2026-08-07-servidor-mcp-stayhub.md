@@ -122,6 +122,12 @@ Achados relevantes da investigação:
     imprevisibilidade do código de entrada, vazamento de dados de hóspede e
     ausência de idempotência.
     - Dependencies: task 10
+12. **Corrigir achados críticos da revisão de segurança** — remover
+    `entrance_code` do output de `book_stay` e `list_stays`; adicionar gate de
+    credencial na rota `/mcp` no nível de transporte (rejeitar sem bearer
+    token antes de instanciar o servidor MCP) e fechar
+    server/transporte por requisição.
+    - Dependencies: task 11
 
 > Tasks 1, 2, 3 e 5 podem rodar em paralelo. Tasks 7, 8 e 9 podem rodar em
 > paralelo depois de suas dependências.
@@ -136,3 +142,37 @@ Achados relevantes da investigação:
 - Não existe chave de idempotência em nenhuma operação de escrita.
 - `BookStayUseCase` reaproveita o `Tenant` pelo telefone e ignora nome/sexo
   divergentes enviados na reserva.
+
+## Revisão de Segurança (2026-08-07) — Task 12: correções críticas
+
+Analista de Segurança revisou `fc970af..fc8e452`. Dois achados críticos
+bloqueiam merge e foram despachados para correção imediata (Task 12):
+
+1. **`entrance_code` vazando no output de `book_stay` e `list_stays`** — a
+   senha real da fechadura física trafega para o contexto do LLM que chama a
+   tool. `list_stays` expõe o código de todos os hóspedes de uma vez.
+2. **Rota `/mcp` sem gate de credencial no nível de transporte** — `tools/list`
+   e `initialize` respondem sem token; `GET /mcp` abre SSE sem auth/limite;
+   cada requisição instancia um `McpServer`/transporte que nunca é fechado
+   (esgotamento de recursos).
+
+Achados moderados/informativos, registrados como dívida (não corrigidos nesta
+sessão, decisão do usuário):
+
+- Race condition em `book_stay`: predicado de sobreposição de datas incompleto
+  (reserva contida dentro de outra não é detectada) e check+insert sem
+  transação/lock — retry concorrente pode duplicar reserva.
+- `record_expense` sem nenhuma proteção contra duplicação (sem idempotência).
+- Caminho MCP sem log/auditoria; exceções inesperadas são engolidas sem
+  registro.
+- `check_in`/`check_out` sem limite de intervalo — senha de porta
+  efetivamente permanente é possível.
+- `entrance_code` e nome do hóspede logados em texto claro (handler de evento
+  e serviço Tuya).
+- `list_stays` expõe `sex`/`phone` do hóspede sem minimização (LGPD).
+- Dependências transitivas do SDK MCP (express, hono, etc.) não usadas pelo
+  projeto, incluindo advisory moderado (`qs`) — monitorar, sem ação agora.
+- Diversos achados informativos menores (schema `.strict()` para
+  `entrance_code`, teto de valor em `amount`/`price`, validação do prefixo
+  `Bearer`, `401` explícito em vez de `isError` para falha de auth, proteção
+  de `Origin`/DNS rebinding no transporte).
