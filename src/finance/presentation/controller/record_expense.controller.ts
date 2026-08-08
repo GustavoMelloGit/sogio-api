@@ -7,6 +7,7 @@ import {
 import type { User } from "../../../auth/domain/entity/user";
 import type { RecordExpenseUseCase } from "../../application/use_case/record_expense";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
+import { expenseCategorySchema } from "../../domain/entity/ledger_entry";
 import {
   bodyFromZod,
   errorResponse,
@@ -21,10 +22,7 @@ const inputSchema = z.object({
     .max(500, "Description must be at most 500 characters")
     .optional()
     .transform(val => val ?? null),
-  category: z
-    .string()
-    .min(1, "Category is required")
-    .max(50, "Category must be at most 50 characters"),
+  category: expenseCategorySchema,
   property_id: z.uuidv4("Property ID must be a valid UUID"),
 });
 

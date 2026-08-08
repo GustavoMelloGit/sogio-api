@@ -4,6 +4,8 @@ import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
 import { createAuthToken } from "../helpers/fixtures/auth_token";
+import { db } from "../../src/core/infra/database/drizzle/database";
+import { ledgerEntriesTable } from "../../src/core/infra/database/drizzle/schema";
 
 const TABLES = ["ledger_entries", "properties", "addresses", "users"];
 
@@ -109,5 +111,53 @@ describe("POST /finance/:property_id/expense", () => {
     });
 
     expect(res.status).toBe(422);
+  });
+
+  it("422 — rejects category outside the closed vocabulary", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao@stayhub.dev",
+      password: "password123",
+    });
+    const property = await createPropertyFixture({ userId: user.id });
+    const token = await createAuthToken(user.id);
+
+    const res = await api(`/finance/${property.id}/expense`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token },
+      body: JSON.stringify({ ...validBody, category: "CATEGORIA_INVALIDA" }),
+    });
+
+    expect(res.status).toBe(422);
+  });
+
+  it("200 — reads a historical movement with a category outside the closed vocabulary", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao@stayhub.dev",
+      password: "password123",
+    });
+    const property = await createPropertyFixture({ userId: user.id });
+    const token = await createAuthToken(user.id);
+
+    await db.insert(ledgerEntriesTable).values({
+      id: crypto.randomUUID(),
+      amount: -5000,
+      description: "Lançamento legado",
+      category: "CATEGORIA_LEGADA",
+      property_id: property.id,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    const res = await api(`/finance/properties/${property.id}/movements`, {
+      method: "GET",
+      headers: { Authorization: "Bearer " + token },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { category: string }[] };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.category).toBe("CATEGORIA_LEGADA");
   });
 });
