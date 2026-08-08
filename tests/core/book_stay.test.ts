@@ -126,13 +126,12 @@ describe("book_stay tool", () => {
     const text = (result.content as Array<{ text: string }>)[0]?.text ?? "";
     const output = JSON.parse(text) as {
       id: string;
-      entrance_code: string;
+      entrance_code?: string;
       tenant_id: string;
     };
 
     expect(result.isError).toBeUndefined();
-    expect(typeof output.entrance_code).toBe("string");
-    expect(output.entrance_code).toHaveLength(7);
+    expect(output).not.toHaveProperty("entrance_code");
 
     const rows = await db
       .select()
@@ -140,7 +139,6 @@ describe("book_stay tool", () => {
       .where(eq(staysTable.id, output.id));
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.entrance_code).toBe(output.entrance_code);
     expect(rows[0]?.entrance_code).toHaveLength(7);
   });
 
@@ -165,11 +163,18 @@ describe("book_stay tool", () => {
     );
 
     const text = (result.content as Array<{ text: string }>)[0]?.text ?? "";
-    const output = JSON.parse(text) as { entrance_code: string };
+    const output = JSON.parse(text) as { id: string; entrance_code?: string };
 
     expect(result.isError).toBeUndefined();
-    expect(output.entrance_code).not.toBe("9999999");
-    expect(output.entrance_code).toHaveLength(7);
+    expect(output).not.toHaveProperty("entrance_code");
+
+    const rows = await db
+      .select()
+      .from(staysTable)
+      .where(eq(staysTable.id, output.id));
+
+    expect(rows[0]?.entrance_code).not.toBe("9999999");
+    expect(rows[0]?.entrance_code).toHaveLength(7);
   });
 
   it("strips entrance_code from the tool's Zod input schema (unknown keys are dropped, not rejected)", () => {

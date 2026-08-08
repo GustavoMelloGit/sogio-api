@@ -48,6 +48,11 @@ const inputSchema = {
  * tool. Property ownership validation is already handled by the use case
  * itself, which throws `ResourceNotFoundError` when the property does not
  * belong to the resolved user.
+ *
+ * `entrance_code` is stripped from every stay before the list reaches the
+ * tool result: it is a real physical lock password, and this tool would
+ * otherwise hand every guest's door code for the property to an LLM's
+ * context in a single call.
  */
 export function makeListStaysTool(
   stayDi: StayDi
@@ -61,12 +66,19 @@ export function makeListStaysTool(
     annotations: {
       readOnlyHint: true,
     },
-    handler: async (input, user) =>
-      useCase.execute({
+    handler: async (input, user) => {
+      const { data, pagination } = await useCase.execute({
         property_id: input.property_id,
         user_id: user.id,
         pagination: { page: input.page, limit: input.limit },
         filters: { from: input.from, to: input.to },
-      }),
+      });
+
+      return {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        data: data.map(({ entrance_code, ...rest }) => rest),
+        pagination,
+      };
+    },
   };
 }

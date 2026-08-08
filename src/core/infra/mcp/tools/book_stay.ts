@@ -64,7 +64,9 @@ export const inputSchema = {
  * missing from its input, and this channel must never accept a caller-chosen
  * lock code. Booking a stay dispatches `StayBookedEvent`, which creates a
  * real temporary password on the property's physical lock and books revenue
- * in the ledger.
+ * in the ledger. `entrance_code` is likewise stripped from the use case's
+ * output before it reaches the tool result: it is a real physical lock
+ * password and must never be sent into an LLM's context.
  */
 export function makeBookStayTool(
   propertyDi: PropertyDi
@@ -81,8 +83,9 @@ export function makeBookStayTool(
       destructiveHint: true,
       idempotentHint: false,
     },
-    handler: async (input, user) =>
-      useCase.execute(
+    handler: async (input, user) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { entrance_code, ...rest } = await useCase.execute(
         {
           guests: input.guests,
           property_id: input.property_id,
@@ -93,6 +96,9 @@ export function makeBookStayTool(
           tenant: input.tenant,
         },
         user
-      ),
+      );
+
+      return rest;
+    },
   };
 }

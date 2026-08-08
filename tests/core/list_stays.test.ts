@@ -112,13 +112,14 @@ describe("list_stays tool", () => {
 
     const text = (result.content as Array<{ text: string }>)[0]?.text ?? "";
     const output = JSON.parse(text) as {
-      data: Array<{ id: string; entrance_code: string }>;
+      data: Array<{ id: string; entrance_code?: string }>;
     };
 
     expect(result.isError).toBeUndefined();
     expect(output.data).toHaveLength(1);
     expect(output.data[0]?.id).toBe(bookedStay.id);
-    expect(output.data[0]?.entrance_code).toBe(bookedStay.entrance_code);
+    expect(output.data[0]).not.toHaveProperty("entrance_code");
+    expect(bookedStay.entrance_code).toHaveLength(7);
   });
 
   it("rejects listing stays for a property that belongs to another user", async () => {
