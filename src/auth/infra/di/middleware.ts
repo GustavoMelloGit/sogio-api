@@ -18,4 +18,12 @@ export class MiddlewareDi {
   makeAuthMiddleware() {
     return new AuthMiddleware(this.#authRepository, this.#sessionManager);
   }
+
+  makeAuthRepository() {
+    return this.#authRepository;
+  }
+
+  makeSessionManager() {
+    return this.#sessionManager;
+  }
 }
