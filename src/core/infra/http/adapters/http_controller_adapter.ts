@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Server } from "bun";
 import { ConflictError } from "../../../application/error/conflict_error";
 import { ForbiddenError } from "../../../application/error/forbidden_error";
 import { IllegalStateError } from "../../../application/error/illegal_state_error";
@@ -6,10 +7,11 @@ import { ResourceNotFoundError } from "../../../application/error/resource_not_f
 import { UnauthorizedError } from "../../../application/error/unauthorized_error";
 import { ValidationError } from "../../../application/error/validation_error";
 import type { User } from "../../../../auth/domain/entity/user";
-import type {
-  Controller,
-  ControllerRequest,
-  HttpControllerMethod,
+import {
+  ControllerHttpResponse,
+  type Controller,
+  type ControllerRequest,
+  type HttpControllerMethod,
 } from "../../../presentation/controller/controller";
 import { CorsMiddleware } from "../../../presentation/middleware/cors.middleware";
 import { MiddlewareDi } from "../../../../auth/infra/di/middleware";
@@ -22,20 +24,61 @@ const coreDi = new CoreDi();
 const logger = coreDi.makeLogger();
 
 class ControllerRequestParser {
+  #rawBody: string | null = null;
+
   constructor(
     private readonly request: Request,
     private readonly controller: Controller
   ) {}
 
-  async parse(): Promise<ControllerRequest> {
+  async parse(peerIp: string | null): Promise<ControllerRequest> {
+    this.#rawBody = await this.#readRawBody();
+
     return {
       params: this.#parseParams(),
-      body: await this.#parseBody(),
+      body: this.#parseBody(),
       query: this.#parseQuery(),
       headers: this.#parseHeaders(),
       method: this.request.method as HttpControllerMethod,
       url: this.request.url,
+      peerIp,
     };
+  }
+
+  /**
+   * Resolves the object `inputSchema` validates against. Without a declared
+   * `parameterSource`, this reproduces the legacy merge of
+   * `query`/`body`/`params` untouched. With one, it reads from that source
+   * alone and fails on any duplicate key within it (E1) instead of silently
+   * collapsing to the last occurrence.
+   */
+  resolveValidationInput(request: ControllerRequest): Record<string, unknown> {
+    const source = this.controller.parameterSource;
+
+    if (!source) {
+      return { ...request.query, ...request.body, ...request.params };
+    }
+
+    switch (source) {
+      case "query":
+        return this.#collectUnique(
+          new URL(this.request.url).searchParams.entries()
+        );
+      case "form":
+        return this.#collectUnique(
+          new URLSearchParams(this.#rawBody ?? "").entries()
+        );
+      case "json":
+        return request.body;
+    }
+  }
+
+  async #readRawBody(): Promise<string | null> {
+    if (this.request.body === null) {
+      return null;
+    }
+
+    return this.request.text();
   }
 
   #parseParams(): Record<string, string> {
@@ -64,12 +107,18 @@ class ControllerRequestParser {
     return paramsObject;
   }
 
-  async #parseBody(): Promise<Record<string, unknown>> {
-    if (this.request.body === null) {
+  #parseBody(): Record<string, unknown> {
+    if (!this.#rawBody) {
       return {};
     }
 
-    const body = await this.request.json();
+    const contentType = this.request.headers.get("content-type") ?? "";
+
+    if (contentType.includes("application/x-www-form-urlencoded")) {
+      return Object.fromEntries(new URLSearchParams(this.#rawBody).entries());
+    }
+
+    const body = JSON.parse(this.#rawBody);
 
     if (!body) {
       return {};
@@ -93,6 +142,23 @@ class ControllerRequestParser {
   #parseHeaders(): Record<string, string> {
     return Object.fromEntries(this.request.headers.entries());
   }
+
+  #collectUnique(
+    entries: IterableIterator<[string, string]>
+  ): Record<string, string> {
+    const seen = new Set<string>();
+    const result: Record<string, string> = {};
+
+    for (const [key, value] of entries) {
+      if (seen.has(key)) {
+        throw new ValidationError(`Duplicate parameter: ${key}`);
+      }
+      seen.add(key);
+      result[key] = value;
+    }
+
+    return result;
+  }
 }
 
 const errorCodeMap: Record<string, number> = {
@@ -104,31 +170,68 @@ const errorCodeMap: Record<string, number> = {
   [IllegalStateError.name]: 500,
 };
 
+function buildErrorLogContext(error: unknown): Record<string, unknown> {
+  if (!Error.isError(error)) {
+    return { name: "UnknownThrownValue", message: String(error) };
+  }
+
+  const isExpectedError = Object.prototype.hasOwnProperty.call(
+    errorCodeMap,
+    error.name
+  );
+
+  if (isExpectedError) {
+    return { name: error.name, message: error.message };
+  }
+
+  return { name: error.name, message: error.message, stack: error.stack };
+}
+
+function buildExplicitResponse(response: ControllerHttpResponse): Response {
+  const headers = new Headers(response.headers);
+
+  if (response.cache === "no-store") {
+    headers.set("Cache-Control", "no-store");
+    headers.set("Pragma", "no-cache");
+  }
+
+  if (response.body === undefined) {
+    return new Response(null, { status: response.status, headers });
+  }
+
+  if (typeof response.body === "string") {
+    return new Response(response.body, { status: response.status, headers });
+  }
+
+  return Response.json(response.body, { status: response.status, headers });
+}
+
 export function BunHttpControllerAdapter(
   controller: Controller,
   authenticated: boolean,
   adminOnly: boolean = false
 ) {
-  return async function (request: Request): Promise<Response> {
+  return async function (
+    request: Request,
+    server?: Server<unknown>
+  ): Promise<Response> {
     // Handle CORS preflight requests
     if (request.method === "OPTIONS") {
       return corsMiddleware.handlePreflightRequest(request);
     }
 
     try {
+      const peerIp = server?.requestIP(request)?.address ?? null;
       const controllerRequestParser = new ControllerRequestParser(
         request,
         controller
       );
-      const controllerRequest = await controllerRequestParser.parse();
+      const controllerRequest = await controllerRequestParser.parse(peerIp);
 
       if (controller.inputSchema) {
-        const merged = {
-          ...controllerRequest.query,
-          ...controllerRequest.body,
-          ...controllerRequest.params,
-        };
-        const result = controller.inputSchema.safeParse(merged);
+        const validationInput =
+          controllerRequestParser.resolveValidationInput(controllerRequest);
+        const result = controller.inputSchema.safeParse(validationInput);
         if (!result.success) {
           throw new ValidationError(z.prettifyError(result.error));
         }
@@ -148,6 +251,13 @@ export function BunHttpControllerAdapter(
 
       const response = await controller.handle(controllerRequest, user);
 
+      if (response instanceof ControllerHttpResponse) {
+        return corsMiddleware.addCorsHeaders(
+          buildExplicitResponse(response),
+          request.headers.get("Origin")
+        );
+      }
+
       const serializedResponse = serializeDatesRecursively(response);
 
       const jsonResponse = Response.json(serializedResponse, {
@@ -158,7 +268,7 @@ export function BunHttpControllerAdapter(
         request.headers.get("Origin")
       );
     } catch (e) {
-      logger.error("Error in HTTP controller adapter", { error: e });
+      logger.error("Error in HTTP controller adapter", buildErrorLogContext(e));
       let errorResponse: Response;
 
       if (Error.isError(e)) {
