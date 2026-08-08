@@ -21,6 +21,7 @@ function rowToIssuedCredentialData(
     refresh_token_digest: row.refresh_token_digest,
     refresh_token_expires_at: row.refresh_token_expires_at,
     resource: row.resource,
+    authorization_code_digest: row.authorization_code_digest ?? undefined,
     rotated_at: row.rotated_at ?? undefined,
     successor_id: row.successor_id ?? undefined,
     revoked_at: row.revoked_at ?? undefined,
@@ -47,6 +48,7 @@ export class IssuedCredentialPostgresRepository
         refresh_token_digest: input.refresh_token_digest,
         refresh_token_expires_at: input.refresh_token_expires_at,
         resource: input.resource,
+        authorization_code_digest: input.authorization_code_digest,
         rotated_at: input.rotated_at,
         successor_id: input.successor_id,
         revoked_at: input.revoked_at,
@@ -63,6 +65,18 @@ export class IssuedCredentialPostgresRepository
     }
 
     return IssuedCredential.reconstitute(rowToIssuedCredentialData(row));
+  }
+
+  async findByAuthorizationCodeDigest(
+    digest: string
+  ): Promise<IssuedCredential | null> {
+    const row = await db.query.issuedCredentialsTable.findFirst({
+      where: eq(issuedCredentialsTable.authorization_code_digest, digest),
+    });
+
+    return row
+      ? IssuedCredential.reconstitute(rowToIssuedCredentialData(row))
+      : null;
   }
 
   async findByAccessTokenDigest(

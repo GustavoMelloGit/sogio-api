@@ -6,6 +6,19 @@ export interface IssuedCredentialRepository {
   findByAccessTokenDigest(digest: string): Promise<IssuedCredential | null>;
   findByRefreshTokenDigest(digest: string): Promise<IssuedCredential | null>;
   /**
+   * Resolve reuso de código de autorização (E4): quando `AuthorizationCodeRepository.claim`
+   * retorna zero linhas (código inexistente ou já consumido), este é o único
+   * jeito de descobrir se um `family_id` já foi emitido a partir daquele
+   * código digest específico — o próprio código não guarda essa referência.
+   * Ausência de resultado significa "nenhuma credencial chegou a ser emitida
+   * a partir deste código" (código nunca existiu, ou existiu mas uma
+   * tentativa anterior falhou antes da emissão, ex.: PKCE incorreto), caso
+   * em que não há família nenhuma para revogar.
+   */
+  findByAuthorizationCodeDigest(
+    digest: string
+  ): Promise<IssuedCredential | null>;
+  /**
    * Rotação atômica da credencial de renovação (E4): insere `successor` e,
    * na mesma transação, reivindica a credencial atual via
    * `UPDATE ... WHERE refresh_token_digest = $1 AND rotated_at IS NULL AND

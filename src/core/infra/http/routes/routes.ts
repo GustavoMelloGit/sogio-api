@@ -170,6 +170,10 @@ const delegatedAccessControllers: Route[] = [
     authenticated: true,
     controller: authDi.makeDecideAuthorizationRequestController(),
   },
+  {
+    authenticated: false,
+    controller: authDi.makeTokenController(),
+  },
 ];
 
 const backofficeControllers: Route[] = [

@@ -15,6 +15,13 @@
       "when": 1786211790405,
       "tag": "0001_broad_night_nurse",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786222927676,
+      "tag": "0002_jazzy_captain_marvel",
+      "breakpoints": true
     }
   ]
 }

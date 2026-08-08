@@ -12,6 +12,16 @@ export const issuedCredentialSchema = baseEntitySchema.extend({
   refresh_token_digest: z.string().length(64),
   refresh_token_expires_at: z.date(),
   resource: z.string().min(1).max(512),
+  /**
+   * Digest of the authorization code that produced *this* credential — set
+   * only on the first credential of a family (issued by `/token`'s
+   * `authorization_code` grant), never on a successor produced by rotation.
+   * The link `revokeFamily` on code reuse needs (E4): the code itself
+   * doesn't record which family it minted, so replaying an
+   * already-consumed code resolves to a family only by looking it up here,
+   * by the digest the replay attempt is claiming against.
+   */
+  authorization_code_digest: z.string().length(64).nullable().optional(),
   rotated_at: z.date().nullable().optional(),
   successor_id: z.uuidv4().nullable().optional(),
   revoked_at: z.date().nullable().optional(),
@@ -85,6 +95,10 @@ export class IssuedCredential {
 
   get resource() {
     return this.#data.resource;
+  }
+
+  get authorization_code_digest() {
+    return this.#data.authorization_code_digest;
   }
 
   get rotated_at() {

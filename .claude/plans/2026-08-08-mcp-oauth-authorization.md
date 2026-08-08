@@ -1044,14 +1044,150 @@ rotacionada há mais de uma geração é reuso, sem graça.
     pede para não expandir a primitiva além do que as rotas exigem.
     - Dependencies: task 9
 
-11. **Emissão e renovação de credenciais** — troca de código com verificação de
-    PKCE, vinculação ao recurso, digest em repouso, credencial opaca.
-    Conforme **E4**: reivindicação atômica com `RETURNING` (nunca `SELECT` +
-    `UPDATE`), revogação em reuso escopada **à família, não ao Consentimento**,
-    e **janela de graça de 10–30 s** na rotação de renovação devolvendo a mesma
-    sucessora. Conforme **E3**: revalidação de `client_id` e `redirect_uri` na
-    troca. Conforme **E1**: parâmetros só do corpo form-urlencoded.
-    - Dependencies: tasks 5, 6, 10
+11. ~~**Emissão e renovação de credenciais**~~ — **Concluída (2026-08-08)**:
+    `POST /token` (`TokenController`) implementa `grant_type=authorization_code`
+    e `grant_type=refresh_token` (RFC 6749 §4.1.3/§6). Lê exclusivamente do
+    corpo `x-www-form-urlencoded` (E1): o helper de duplicata da task 10
+    (`unique_query_params.ts`) ganhou um segundo export,
+    `parseUniqueFormParams(rawBody)`, compartilhando a mesma checagem de
+    ocorrência única com `parseUniqueQueryParams` — mas isso exigiu que o
+    contrato de controller (task 4) passasse a expor `request.rawBody` (corpo
+    cru, pré-parsing), já que `request.body` já chega com duplicata colapsada
+    pelo adaptador, exatamente o mesmo problema que motivou `request.url` a
+    ser re-parseado à mão em `AuthorizeController`. Sem `inputSchema` (mesmo
+    motivo E7 já registrado nas tasks 8/9/10). `cache: "no-store"` (E8) em
+    toda resposta; sem `corsPolicy` — rota de protocolo com credencial em
+    jogo, então mantém a origem restrita ao front (E8), diferente dos dois
+    documentos de metadata.
+
+    **Rate limit por duas dimensões (E5)**: `RateLimitKeyDimension` ganhou um
+    segundo valor genérico, `"caller-key"` — "uma chave que o próprio
+    chamador fornece, sem a primitiva interpretá-la" — ao lado do `"peer-ip"`
+    já existente; nenhuma mudança em `RateLimiter`/`InMemoryRateLimiter`, que
+    já eram genéricos o bastante (`consume(key, policy)` sempre aceitou
+    qualquer string). O `rateLimitPolicy` declarativo do controller continua
+    cobrindo IP automaticamente, pré-parsing, pelo adaptador (30/min); a
+    segunda dimensão (`client_id`, 60/min) é aplicada manualmente dentro do
+    `handle()`, após extrair `client_id` do corpo, chamando o mesmo
+    `RateLimiter` injetado com uma chave montada pelo próprio controller
+    (`token:client_id:${id}`) — a primitiva nunca soube o que é um
+    `client_id`, só recebeu uma string.
+
+    **Reivindicação atômica do código (E4)** — `AuthorizationCodeRepository.claim()`
+    não foi tocado (a lacuna de `expires_at` identificada pela task 10 é
+    **intencionalmente diferente** aqui, conforme a correção de leitura do
+    Orquestrador registrada no dispatch desta task):
+
+    ```sql
+    UPDATE authorization_codes
+       SET consumed_at = now(), updated_at = now()
+     WHERE code_digest = $1
+       AND consumed_at IS NULL
+    RETURNING *
+    ```
+
+    Zero linhas → reuso presumido. Linha retornada com `expires_at` no
+    passado → `invalid_grant` comum, avaliado sobre a linha, sem tratamento
+    de reuso.
+
+    **Vínculo código → família para reuso (extensão sobre as "peças
+    prontas" — sinalizando para Arquiteto/Revisor)**: `AuthorizationCode`
+    não guarda qual família ele originou, então zero linhas do `claim()` por
+    si só não diz _qual_ família revogar. Adicionada uma coluna nova,
+    `issued_credentials.authorization_code_digest` (`varchar(64)`, única,
+    nula em toda credencial nascida de rotação — só a primeira credencial de
+    uma família a carrega), populada na emissão com o mesmo digest usado no
+    `claim()`. Novo método `IssuedCredentialRepository.findByAuthorizationCodeDigest(digest)`.
+    Em reuso (zero linhas no `claim()`), `ExchangeAuthorizationCodeUseCase`
+    busca por esse digest: encontrada uma credencial, `revokeFamily` na
+    família dela — e só nela, nunca no Consentimento; não encontrada (código
+    nunca existiu, ou existiu mas uma tentativa anterior falhou antes de
+    emitir, ex. PKCE errado), não há nada para revogar. Migration gerada em
+    `drizzle/0002_jazzy_captain_marvel.sql`. Alternativa descartada: derivar
+    `family_id` deterministicamente do digest do código (evitaria a coluna)
+    — rejeitada por exigir forjar bits de versão/variante de UUID v4 para
+    passar no schema Zod, uma solução mais obscura para revisar do que uma
+    coluna nula-por-padrão com propósito óbvio.
+
+    **PKCE (`pkce_policy.ts`, novo)**: `verifyPkceS256(code_verifier,
+code_challenge)` — `BASE64URL(SHA256(code_verifier))` comparado a
+    `code_challenge` via `crypto.timingSafeEqual` (tempo constante, guardado
+    por uma checagem de tamanho antes). `plain` nunca chega aqui — já
+    rejeitado no `/authorize` (E2 passo 7); todo `code_challenge` persistido
+    já é S256.
+
+    **Revalidação de E3 na troca**: `claimed.app_registration_id !==
+clientId` e `!redirectUriMatches(claimed.redirect_uri, redirectUri)` —
+    reaproveitando `redirect_uri_policy.ts` sem alteração — barram a troca.
+    Auditoria adicional de vinculação ao recurso: `claimed.resource !==
+expectedResource` também barra (defesa em profundidade; `/authorize` já
+    garante que só o `/mcp` canônico chega até aqui). Todas essas falhas, mais
+    código inexistente/expirado/PKCE incorreto, convergem para o **mesmo**
+    `{ outcome: "invalid_grant" }` (`TokenExchangeResult`, tipo compartilhado
+    entre os dois use cases) — `TokenController` traduz qualquer uma delas
+    para o mesmo `error: "invalid_grant"` com a mesma `error_description`
+    fixa, nunca variando por causa (risco crítico 4).
+
+    **Rotação de renovação e janela de graça (E4)** —
+    `RefreshAccessTokenUseCase` usa `rotateRefreshToken` tal como documentado
+    (insere sucessora + reivindica a atual em uma transação; `null` de volta
+    = perdeu a corrida, cabe a quem chamou reconsultar
+    `findByRefreshTokenDigest`). Achado ao implementar a graça: o repositório
+    só guarda **digest**, nunca o segredo em claro (E10), então não existe
+    como "devolver a mesma sucessora" a uma segunda chamada concorrente
+    consultando o banco depois do fato — o segredo em claro só existe, uma
+    vez, na resposta de quem venceu a rotação. Resolvido com uma peça nova,
+    pequena e explicitamente de escopo estreito: `RefreshRotationGraceCache`
+    (interface em `domain/service/`, `InMemoryRefreshRotationGraceCache` em
+    `infra/service/`) — um cache em memória, por processo, análogo ao
+    `InMemoryRateLimiter` (mesmo teto de entradas, mesmo fail-closed ao
+    atingir o teto), guardando o payload em claro da sucessora por
+    `REFRESH_ROTATION_GRACE_WINDOW_SECONDS` (novo env, default 20s, dentro da
+    janela de 10–30s pedida), indexado pelo digest da credencial **superada**.
+    Quem vence a rotação grava no cache; uma segunda chamada dentro da janela
+    (`rotated_at` já setado, `elapsedMs <= graceWindowMs`) lê o mesmo payload
+    de lá e devolve exatamente os mesmos `access_token`/`refresh_token` — não
+    uma nova sucessora. Fora da janela → `revokeFamily` (nunca o
+    Consentimento) + `invalid_grant`. Dentro da janela mas com o cache já
+    vazio (ex. reinício do processo) → `invalid_grant` sem revogar — um
+    "miss" benigno não é evidência de reuso, só impossibilidade de honrar o
+    pedido. Uma credencial mais de uma geração atrás naturalmente não recebe
+    graça: o `rotated_at` dela reflete quando _ela_ foi superada, e a entrada
+    de cache daquele momento (TTL igual à janela) já expirou no tempo que um
+    ciclo de renovação real levaria para chegar até ela. **Limitação aceita e
+    registrada, no mesmo espírito do rate limiter**: cache por processo,
+    single-instance — dívida a revisitar junto da contagem do rate limiter
+    quando houver mais de uma instância.
+
+    **Tempos de vida configuráveis (Mapped Changes previa isso em
+    `environments.ts`)**: `ACCESS_TOKEN_TTL_SECONDS` (default 3600),
+    `REFRESH_TOKEN_TTL_SECONDS` (default 2592000/30 dias),
+    `REFRESH_ROTATION_GRACE_WINDOW_SECONDS` (default 20) — todos opcionais
+    com default, então nenhum `.env` existente quebra e a nota de
+    pré-requisito do `CLAUDE.md` (que documenta só variáveis **obrigatórias**
+    para os testes) não precisou de atualização.
+
+    Resposta de sucesso: `access_token`, `token_type: "Bearer"`,
+    `expires_in`, `refresh_token`, `scope` — `scope` vem de `claimed.scope`
+    na troca de código (já carregado, sem custo extra) e da constante
+    `OAUTH_MCP_SCOPE` na renovação (evita um join a `Consent` só para
+    confirmar um valor que só pode ser um, dado o escopo único da v1).
+
+    Log por allowlist (E7) no controller: `endpoint`, `result`, `client_id`,
+    `error` (código OAuth, quando houver) e `rate_limit_key` (peer IP) —
+    nunca `code`, `code_verifier`, `code_challenge`, os tokens emitidos ou
+    `redirect_uri`.
+
+    **Para o Arquiteto/Revisor**: a extensão de `IssuedCredentialRepository`
+    (novo método + nova coluna) e a introdução de `RefreshRotationGraceCache`
+    vão além do que o dispatch desta task descrevia como "peças prontas" —
+    ambas as decisões estão documentadas acima com a alternativa descartada e
+    o motivo. Nenhuma delas afrouxa PKCE, redirect, uso único, ou distingue
+    respostas de erro; ambas existem para tornar a revogação de E4 e a graça
+    de rotação **precisas** com o modelo de dados existente. Sinalizando
+    explicitamente para revisão, como pedido.
+    - Dependencies: tasks 5, 6, 10 — **todas concluídas**.
+
 12. **Revogação** — endpoint do protocolo e revogação por consentimento, com
     cascata sobre as credenciais derivadas.
     - Dependencies: task 11

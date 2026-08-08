@@ -133,6 +133,17 @@ export const issuedCredentialsTable = pgTable(
       mode: "date",
     }).notNull(),
     resource: varchar({ length: 512 }).notNull(),
+    /**
+     * Set only on the first credential of a family, minted directly by
+     * `/token`'s `authorization_code` grant — never on a rotation successor.
+     * Lets a code-reuse attempt (`AuthorizationCodeRepository.claim`
+     * returning zero rows) resolve to the family it must revoke (E4),
+     * without the authorization_codes table needing to know about it.
+     * Unique because a given code can only ever mint one family — multiple
+     * `NULL`s (every rotation successor) don't conflict with a unique
+     * constraint in Postgres.
+     */
+    authorization_code_digest: varchar({ length: 64 }).unique(),
     rotated_at: timestamp({ withTimezone: true, mode: "date" }),
     successor_id: uuid().references(
       (): AnyPgColumn => issuedCredentialsTable.id,

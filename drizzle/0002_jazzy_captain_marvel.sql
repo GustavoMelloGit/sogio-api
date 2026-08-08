@@ -1,0 +1,2 @@
+ALTER TABLE "issued_credentials" ADD COLUMN "authorization_code_digest" varchar(64);--> statement-breakpoint
+ALTER TABLE "issued_credentials" ADD CONSTRAINT "issued_credentials_authorization_code_digest_unique" UNIQUE("authorization_code_digest");

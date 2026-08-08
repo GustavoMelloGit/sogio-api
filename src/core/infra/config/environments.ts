@@ -59,6 +59,34 @@ const envSchema = z
       .string()
       .optional()
       .transform(value => value === "true"),
+    /**
+     * Lifetime of an opaque MCP access token, in seconds ("ordem de uma
+     * hora" — Decisão Resolvida #8). Defaulted rather than required: the
+     * value only tunes how aggressively the resource server forces a
+     * refresh, it never affects correctness, so there is nothing to force
+     * an operator to set explicitly.
+     */
+    ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+    /**
+     * Lifetime of an opaque MCP refresh token, in seconds ("vida longa" —
+     * Decisão Resolvida #8). Rotated on every use regardless of how close
+     * to this expiry it is.
+     */
+    REFRESH_TOKEN_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(60 * 60 * 24 * 30),
+    /**
+     * How long a just-rotated refresh token keeps returning its successor
+     * instead of being treated as reused (E4's "10-30s" grace window on
+     * rotation). See `RefreshAccessTokenUseCase`.
+     */
+    REFRESH_ROTATION_GRACE_WINDOW_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(20),
   })
   .refine(data => data.NODE_ENV === "development" || !!data.API_BASE_URL, {
     message: "API_BASE_URL is required outside development",
@@ -86,3 +114,9 @@ export const apiBaseUrl = env.API_BASE_URL ?? `http://localhost:${env.PORT}`;
  * environment where the schema above still allows it to be absent.
  */
 export const frontBaseUrl = env.FRONT_BASE_URL ?? "http://localhost:5173";
+
+/** Credential lifetimes and rotation grace window, in milliseconds. */
+export const accessTokenTtlMs = env.ACCESS_TOKEN_TTL_SECONDS * 1000;
+export const refreshTokenTtlMs = env.REFRESH_TOKEN_TTL_SECONDS * 1000;
+export const refreshRotationGraceWindowMs =
+  env.REFRESH_ROTATION_GRACE_WINDOW_SECONDS * 1000;

@@ -25,8 +25,15 @@ import type { ConsentRepository } from "../../domain/repository/delegated_access
 import { ConsentPostgresRepository } from "../database/postgres_repository/delegated_access/consent_postgres_repository";
 import type { AuthorizationCodeRepository } from "../../domain/repository/delegated_access/authorization_code_repository";
 import { AuthorizationCodePostgresRepository } from "../database/postgres_repository/delegated_access/authorization_code_postgres_repository";
+import type { IssuedCredentialRepository } from "../../domain/repository/delegated_access/issued_credential_repository";
+import { IssuedCredentialPostgresRepository } from "../database/postgres_repository/delegated_access/issued_credential_postgres_repository";
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 import { CryptoDelegatedSecretService } from "../service/crypto_delegated_secret_service";
+import type { RefreshRotationGraceCache } from "../../domain/service/refresh_rotation_grace_cache";
+import { InMemoryRefreshRotationGraceCache } from "../service/in_memory_refresh_rotation_grace_cache";
+import { ExchangeAuthorizationCodeUseCase } from "../../application/use_case/exchange_authorization_code";
+import { RefreshAccessTokenUseCase } from "../../application/use_case/refresh_access_token";
+import { TokenController } from "../../presentation/controller/delegated_access/token.controller";
 import {
   OAuthProtectedResourceMetadataController,
   OAUTH_PROTECTED_RESOURCE_METADATA_PATH,
@@ -39,7 +46,13 @@ import { GetPendingAuthorizationRequestController } from "../../presentation/con
 import { DecideAuthorizationRequestController } from "../../presentation/controller/delegated_access/decide_authorization_request.controller";
 import { AuthMiddleware } from "../../presentation/middleware/auth.middleware";
 import type { Logger } from "../../../core/application/logger/logger";
+import type { RateLimiter } from "../../../core/application/rate_limit/rate_limiter";
 import { CoreDi } from "../../../core/infra/di/core_di";
+import {
+  accessTokenTtlMs,
+  refreshTokenTtlMs,
+  refreshRotationGraceWindowMs,
+} from "../../../core/infra/config/environments";
 
 export class AuthDi {
   #authRepository: AuthRepository;
@@ -49,8 +62,11 @@ export class AuthDi {
   #authorizationRequestRepository: AuthorizationRequestRepository;
   #consentRepository: ConsentRepository;
   #authorizationCodeRepository: AuthorizationCodeRepository;
+  #issuedCredentialRepository: IssuedCredentialRepository;
   #delegatedSecretService: DelegatedSecretService;
+  #refreshRotationGraceCache: RefreshRotationGraceCache;
   #logger: Logger;
+  #rateLimiter: RateLimiter;
 
   constructor() {
     this.#authRepository = new AuthPostgresRepository();
@@ -62,8 +78,12 @@ export class AuthDi {
     this.#consentRepository = new ConsentPostgresRepository();
     this.#authorizationCodeRepository =
       new AuthorizationCodePostgresRepository();
+    this.#issuedCredentialRepository = new IssuedCredentialPostgresRepository();
     this.#delegatedSecretService = new CryptoDelegatedSecretService();
-    this.#logger = new CoreDi().makeLogger();
+    this.#refreshRotationGraceCache = new InMemoryRefreshRotationGraceCache();
+    const coreDi = new CoreDi();
+    this.#logger = coreDi.makeLogger();
+    this.#rateLimiter = coreDi.makeRateLimiter();
   }
 
   // Use Cases
@@ -189,6 +209,37 @@ export class AuthDi {
   makeDecideAuthorizationRequestController() {
     return new DecideAuthorizationRequestController(
       this.makeDecideAuthorizationRequestUseCase(),
+      this.#logger
+    );
+  }
+
+  // Delegated Access — token issuance and refresh rotation (task 11)
+  makeExchangeAuthorizationCodeUseCase() {
+    return new ExchangeAuthorizationCodeUseCase(
+      this.#authorizationCodeRepository,
+      this.#issuedCredentialRepository,
+      this.#delegatedSecretService,
+      accessTokenTtlMs,
+      refreshTokenTtlMs
+    );
+  }
+
+  makeRefreshAccessTokenUseCase() {
+    return new RefreshAccessTokenUseCase(
+      this.#issuedCredentialRepository,
+      this.#delegatedSecretService,
+      this.#refreshRotationGraceCache,
+      accessTokenTtlMs,
+      refreshTokenTtlMs,
+      refreshRotationGraceWindowMs
+    );
+  }
+
+  makeTokenController() {
+    return new TokenController(
+      this.makeExchangeAuthorizationCodeUseCase(),
+      this.makeRefreshAccessTokenUseCase(),
+      this.#rateLimiter,
       this.#logger
     );
   }

@@ -34,6 +34,17 @@ export type ControllerRequest = {
    * available (e.g. unit tests calling the adapter directly). See E5.
    */
   peerIp: string | null;
+  /**
+   * The request body exactly as received, before any parsing. `body` above
+   * has already been collapsed into an object — for `x-www-form-urlencoded`
+   * content, via `Object.fromEntries`, which silently keeps only the last
+   * occurrence of a repeated key. A controller that must detect a duplicate
+   * key itself (E1 — `/token`'s form body, the same discipline
+   * `parseUniqueQueryParams` already applies to `request.url` for the query
+   * string) needs the raw text to re-parse independently. `null` when the
+   * request had no body.
+   */
+  rawBody: string | null;
 };
 
 export type AuthenticatedControllerRequest = ControllerRequest & {

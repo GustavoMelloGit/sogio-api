@@ -45,6 +45,7 @@ class ControllerRequestParser {
       method: this.request.method as HttpControllerMethod,
       url: this.request.url,
       peerIp,
+      rawBody: this.#rawBody,
     };
   }
 
