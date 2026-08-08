@@ -20,6 +20,8 @@ import type { Logger } from "../../../core/application/logger/logger";
 import { ConsoleLogger } from "../../../core/infra/logger/console_logger";
 import { BookingPropertyPostgresRepository } from "../database/postgres_repository/booking_property_repository";
 import type { BookingPropertyRepository } from "../../domain/repository/booking_property_repository";
+import type { EntranceCodeGenerator } from "../../domain/service/entrance_code_generator";
+import { CryptoEntranceCodeGenerator } from "../service/crypto_entrance_code_generator";
 
 export class PropertyDi {
   #tenantRepository: TenantRepository;
@@ -30,6 +32,7 @@ export class PropertyDi {
   #calendarAdapter: CalendarAdapter;
   #eventDispatcher: EventDispatcher;
   #logger: Logger;
+  #entranceCodeGenerator: EntranceCodeGenerator;
 
   constructor() {
     this.#logger = new ConsoleLogger();
@@ -41,6 +44,7 @@ export class PropertyDi {
       new ExternalBookingSourcePostgresRepository();
     this.#calendarAdapter = new ICalendarAdapter();
     this.#eventDispatcher = inMemoryEventDispatcher;
+    this.#entranceCodeGenerator = new CryptoEntranceCodeGenerator();
   }
 
   // Use Cases
@@ -50,7 +54,8 @@ export class PropertyDi {
       this.#propertyRepository,
       this.#stayRepository,
       this.#bookingPolicy,
-      this.#eventDispatcher
+      this.#eventDispatcher,
+      this.#entranceCodeGenerator
     );
   }
   makeReconcileExternalBookingUseCase() {

@@ -56,6 +56,36 @@ describe("POST /booking/property/:property_id/book", () => {
     expect(typeof body.data.check_out).toBe("string");
   });
 
+  it("200 — generates entrance_code when not provided", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao@stayhub.dev",
+      password: "password123",
+    });
+    const property = await createPropertyFixture({ userId: user.id });
+    const token = await createAuthToken(user.id);
+
+    const bodyWithoutEntranceCode: Record<string, unknown> = {
+      ...validBody,
+    };
+    delete bodyWithoutEntranceCode.entrance_code;
+
+    const res = await api(`/booking/property/${property.id}/book`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token },
+      body: JSON.stringify(bodyWithoutEntranceCode),
+    });
+    const body = (await res.json()) as {
+      message: string;
+      data: Record<string, unknown>;
+    };
+
+    expect(res.status).toBe(200);
+    expect(typeof body.data.entrance_code).toBe("string");
+    expect((body.data.entrance_code as string).length).toBe(7);
+    expect(body.data.entrance_code).not.toBe(validBody.entrance_code);
+  });
+
   it("200 — reuses existing tenant", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
