@@ -1,3 +1,4 @@
+import type { User } from "../../../auth/domain/entity/user";
 import { ResourceNotFoundError } from "../../../core/application/error/resource_not_found_error";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 import type { PropertyRepository } from "../../../property_management/domain/repository/property_repository";
@@ -19,11 +20,14 @@ export class RecordExpenseUseCase implements UseCase<Input, Output> {
     private readonly propertyRepository: PropertyRepository
   ) {}
 
-  async execute(input: Input): Promise<Output> {
+  async execute(input: Input, user: User): Promise<Output> {
     const property = await this.propertyRepository.propertyOfId(
       input.property_id
     );
-    if (!property) {
+
+    const userOwnsProperty = property?.user_id === user.id;
+
+    if (!property || !userOwnsProperty) {
       throw new ResourceNotFoundError("Property");
     }
 
