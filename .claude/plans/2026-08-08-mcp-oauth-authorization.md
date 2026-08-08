@@ -1274,12 +1274,113 @@ rotacionada há mais de uma geração é reuso, sem graça.
     por transparência.
     - Dependencies: task 11 — **concluída**.
 
-13. **Troca da credencial do `/mcp` para OAuth** — a implementação de verificação
-    passa a ser a da credencial OAuth (expiração, revogação, audiência) e o
-    verificador de JWT é **removido** do caminho MCP, junto com a dependência de
-    `SessionManager` no resolver. Sem ramo por ambiente. Inclui a reescrita dos
-    testes existentes do caminho MCP, que hoje autenticam com JWT.
-    - Dependencies: tasks 3, 11
+13. ~~**Troca da credencial do `/mcp` para OAuth**~~ — **Concluída
+    (2026-08-08)**: nova abstração `CredentialVerifier`
+    (`src/auth/application/service/credential_verifier.ts`, junto com o tipo
+    `Requester` — usuário + `appRegistrationId` + `scope`) com uma única
+    implementação, `OAuthCredentialVerifier`
+    (`src/auth/infra/service/oauth_credential_verifier.ts`). `verify()`
+    consulta `IssuedCredentialRepository.findByAccessTokenDigest` pelo
+    digest (E10) e recusa com o mesmo `UnauthorizedError` genérico — nunca
+    distinguível — nos quatro motivos do plano: não existe; expirou
+    (`access_token_expires_at`); foi revogada (`revoked_at` da própria
+    credencial, que já cobre as três formas de revogação, já que
+    `revokeById`/`revokeFamily`/`revokeAllByConsent` gravam a mesma coluna;
+    `consent.revoked_at` é checado como defesa em profundidade adicional);
+    audiência errada (`credential.resource !== expectedResource`, RFC 8707).
+    Em sucesso, resolve o usuário via `AuthRepository.findUserById` e chama
+    `ConsentRepository.touchLastUsedAt` — o último uso que a task 14 exibe.
+
+    **Container distinto (Decisão Arquitetural 3)**: `MiddlewareDi`
+    (`src/auth/infra/di/middleware.ts`) ganhou `makeCredentialVerifier()`,
+    ao lado do já existente `makeAuthMiddleware()` — mesmo espírito
+    (montável sem o grafo de casos de uso de `AuthDi`), agora também para a
+    credencial que autentica o transporte MCP. `expectedResource`
+    (`${apiBaseUrl}${MCP_RESOURCE_PATH}`) é montado aqui, nunca dentro de
+    `OAuthCredentialVerifier`, que não importa nada de `presentation/`.
+    `makeAuthRepository()`/`makeSessionManager()` — expostos publicamente só
+    para alimentar o antigo `McpIdentityResolver` — ficaram sem nenhum
+    chamador externo após a troca; removidos (o uso interno de
+    `makeAuthMiddleware()` continua intacto).
+
+    **A remoção**: `McpIdentityResolver`
+    (`src/core/infra/mcp/identity_resolver.ts`) perdeu `AuthRepository` e
+    `ISessionManager` por completo — depende só de `CredentialVerifier`.
+    `resolveUser` virou `resolveRequester`, devolvendo o `Requester` inteiro.
+    `src/core/infra/mcp/routes.ts` troca as antigas `middlewareDi.makeAuthRepository()`
+    e `middlewareDi.makeSessionManager()` por `middlewareDi.makeCredentialVerifier()`,
+    e passa `requester.user` (não o `Requester` inteiro) para `createMcpServer`
+    — `mcp_tool.ts`/`mcp_server.ts` **não foram tocados**, continuam só com
+    `User`, como o dispatch pedia. Nenhum `if` por ambiente em nenhum dos
+    arquivos tocados; confirmado por grep que não sobra referência a
+    `SessionManager`/JWT no caminho `/mcp` fora de um comentário explicando
+    a remoção.
+
+    **E7**: `routes.ts` ganhou um `Logger` (via `new CoreDi().makeLogger()`,
+    mesmo padrão de instanciação independente já usado em `auth_di.ts` e
+    `http_controller_adapter.ts`) e loga por allowlist a cada requisição —
+    `endpoint: "mcp"`, `result: "authenticated"` ou `"unauthorized"`,
+    `client_id` (o `appRegistrationId`, só em sucesso) — nunca a credencial,
+    o header `Authorization`, ou a URL completa; `timestamp` já é
+    carimbado pelo `ConsoleLogger`. Não há trilha por método JSON-RPC
+    (`tools/call` vs `tools/list`) — isso é auditoria de verdade, dívida
+    já registrada no plano, fora do escopo desta task.
+
+    **E8 — achado**: o dispatch presumia `Access-Control-Expose-Headers`
+    para `WWW-Authenticate` já resolvido pela task 3; **não estava** — o
+    handler de `/mcp` em `core/infra/http/routes/routes.ts` é montado à
+    parte do `CorsMiddleware`/`BunHttpControllerAdapter` (sem preflight,
+    sem `Access-Control-Allow-Origin`) e nunca passou por CORS nenhum.
+    Adicionado `Access-Control-Expose-Headers: WWW-Authenticate` na
+    resposta 401 de `unauthorizedResponse` — seguro e alinhado à letra do
+    requisito desta task — mas isso sozinho não resolve E8 por completo: sem
+    `Access-Control-Allow-Origin` em nenhuma resposta de `/mcp`, um cliente
+    MCP em navegador ainda não consegue ler nada de uma chamada cross-origin,
+    expose-headers ou não. Decidido não expandir para CORS completo do
+    `/mcp` (política de quais origens podem chamá-lo é decisão do Arquiteto,
+    não estava no escopo desta task, e o dispatch só pedia para "confirmar").
+    **Sinalizado para o Arquiteto**: gap real de CORS no `/mcp`, herdado da
+    task 3, ainda aberto.
+
+    **Testes reescritos** (única exceção de testes autorizada pelo
+    Orquestrador nesta task): `tests/core/identity_resolver.test.ts` e
+    `tests/core/mcp_routes.test.ts` passaram a autenticar emitindo
+    credencial OAuth via fixtures (`tests/helpers/fixtures/delegated_access.ts`,
+    que ganhou `accessTokenExpiresAt` opcional em `issueCredentialFixture` e
+    um novo composto `createMcpAccessTokenFixture` — app registration +
+    consent + credencial emitida em uma chamada) em vez de
+    `createAuthToken` (JWT). `identity_resolver.test.ts` manteve a intenção
+    de cada teste original (header ausente, header sem token, token
+    inexistente/expirado) e acrescentou dois casos que o próprio enunciado
+    desta task exige como comportamento central da nova abstração —
+    credencial revogada e audiência errada — sem entrar em cobertura de
+    abuso (concorrência, replay, rate limit), que são as tasks 15/16. Um
+    caso do arquivo antigo — "token válido mas usuário não existe mais" —
+    **não tem equivalente construível**: `consents.user_id` tem
+    `onDelete: "cascade"` para `users.id`, então apagar o usuário sempre
+    apaga o consentimento (e a credencial) junto; sinalizando essa
+    constatação para o Arquiteto/Revisor em vez de forçar um estado
+    inatingível via SQL bruto. `tests/core/mcp_tool.test.ts` foi só
+    inspecionado — não autentica via JWT (usa um `User` fake direto, sem
+    HTTP), então não precisou de nenhuma mudança.
+
+    **Verificação**: `bun run typecheck`, `lint:check` e `format:check`
+    limpos. O Postgres de teste não sobe nesta máquina (porta 5433 ocupada
+    por container de outro projeto, `taya-clt-db-1` — não parado). Para
+    verificar de fato (não só por tipo/leitura), subi um container Postgres
+    **temporário e isolado** em outra porta (`15433`), apliquei as
+    migrations existentes (`drizzle/*.sql`) e rodei a suite inteira contra
+    ele; **todos os 23 arquivos de teste passam integralmente** (rodados
+    por diretório/arquivo — `bun test` sozinho crasha com um segfault do
+    próprio Bun ao transicionar para `oauth_discovery_metadata.test.ts`,
+    reproduzível também sem minhas mudanças e alheio a este código; SDK do
+    Bun, não da aplicação). Confirmado que as tasks 8–12 (auth/delegated_access),
+    RBAC, sign-in, booking, finance e backoffice continuam 100% verdes — a
+    troca não afetou a autenticação de sessão do app. Container temporário
+    parado e removido ao final; o container do outro projeto na porta 5433
+    nunca foi tocado.
+    - Dependencies: tasks 3, 11 — **todas concluídas**.
+
 14. **Gestão de aplicativos conectados (backend)** — listar e desconectar,
     autenticado pela sessão do app, restrito aos aplicativos do próprio usuário,
     expondo concessão e último uso, **host em punycode (E6)**. Inclui a
