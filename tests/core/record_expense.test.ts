@@ -12,10 +12,9 @@ import {
 import { describe, expect, it, beforeEach } from "bun:test";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { MiddlewareDi } from "../../src/auth/infra/di/middleware";
+import type { User } from "../../src/auth/domain/entity/user";
 import { db } from "../../src/core/infra/database/drizzle/database";
 import { ledgerEntriesTable } from "../../src/core/infra/database/drizzle/schema";
-import { McpIdentityResolver } from "../../src/core/infra/mcp/identity_resolver";
 import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
 import {
   inputSchema,
@@ -25,17 +24,13 @@ import { FinanceDi } from "../../src/finance/infra/di/finance_di";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
-import { createAuthToken } from "../helpers/fixtures/auth_token";
 
 const TABLES = ["ledger_entries", "properties", "addresses", "users"];
 
-function makeExtra(
-  headers?: Record<string, string>
-): RequestHandlerExtra<ServerRequest, ServerNotification> {
+function makeExtra(): RequestHandlerExtra<ServerRequest, ServerNotification> {
   return {
     signal: new AbortController().signal,
     requestId: "test-request-id",
-    requestInfo: headers ? { headers } : undefined,
     sendNotification: async () => {},
     sendRequest: () => {
       throw new Error("not implemented in test stub");
@@ -52,23 +47,17 @@ async function callTool(
   return handler(input, extra);
 }
 
-function makeIdentityResolver(): McpIdentityResolver {
-  const middlewareDi = new MiddlewareDi();
-  return new McpIdentityResolver(
-    middlewareDi.makeAuthRepository(),
-    middlewareDi.makeSessionManager()
-  );
-}
-
-function registerRecordExpenseTool(): RegisteredTool {
+/**
+ * Identity resolution now happens once, at the `/mcp` transport gate
+ * (`routes.ts`), before a tool is ever registered — see `mcp_tool.ts`. Tools
+ * are registered bound to the already-resolved `user`, so these tests
+ * simulate that by passing the fixture user straight into `registerMcpTool`.
+ */
+function registerRecordExpenseTool(user: User): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
   const financeDi = new FinanceDi();
 
-  return registerMcpTool(
-    server,
-    makeIdentityResolver(),
-    makeRecordExpenseTool(financeDi)
-  );
+  return registerMcpTool(server, user, makeRecordExpenseTool(financeDi));
 }
 
 describe("record_expense tool", () => {
@@ -83,9 +72,8 @@ describe("record_expense tool", () => {
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
-    const token = await createAuthToken(user.id);
 
-    const registeredTool = registerRecordExpenseTool();
+    const registeredTool = registerRecordExpenseTool(user);
     const result = await callTool(
       registeredTool,
       {
@@ -94,7 +82,7 @@ describe("record_expense tool", () => {
         category: "MANUTENÇÃO",
         description: "Troca de lâmpadas",
       },
-      makeExtra({ authorization: `Bearer ${token}` })
+      makeExtra()
     );
 
     expect(result.isError).toBeUndefined();
@@ -132,38 +120,8 @@ describe("record_expense tool", () => {
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: owner.id });
-    const token = await createAuthToken(intruder.id);
 
-    const registeredTool = registerRecordExpenseTool();
-    const result = await callTool(
-      registeredTool,
-      {
-        property_id: property.id,
-        amount: 1050,
-        category: "MANUTENÇÃO",
-      },
-      makeExtra({ authorization: `Bearer ${token}` })
-    );
-
-    expect(result.isError).toBe(true);
-
-    const rows = await db
-      .select()
-      .from(ledgerEntriesTable)
-      .where(eq(ledgerEntriesTable.property_id, property.id));
-
-    expect(rows).toHaveLength(0);
-  });
-
-  it("rejects a request without an authorization token", async () => {
-    const { user } = await createUserFixture({
-      name: "João Silva",
-      email: "joao@stayhub.dev",
-      password: "password123",
-    });
-    const property = await createPropertyFixture({ userId: user.id });
-
-    const registeredTool = registerRecordExpenseTool();
+    const registeredTool = registerRecordExpenseTool(intruder);
     const result = await callTool(
       registeredTool,
       {
@@ -175,5 +133,12 @@ describe("record_expense tool", () => {
     );
 
     expect(result.isError).toBe(true);
+
+    const rows = await db
+      .select()
+      .from(ledgerEntriesTable)
+      .where(eq(ledgerEntriesTable.property_id, property.id));
+
+    expect(rows).toHaveLength(0);
   });
 });

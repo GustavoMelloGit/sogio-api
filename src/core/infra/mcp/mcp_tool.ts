@@ -4,13 +4,11 @@ import type {
 } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type {
   CallToolResult,
-  IsomorphicHeaders,
   ToolAnnotations,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { z } from "zod";
 import type { User } from "../../../auth/domain/entity/user";
 import { serializeDatesRecursively } from "../http/utils/date_serializer";
-import type { McpIdentityResolver } from "./identity_resolver";
 import { mapErrorToToolResult } from "./mcp_error_mapper";
 
 export type McpToolInput<Shape extends z.ZodRawShape> = {
@@ -34,9 +32,15 @@ export type McpToolDefinition<Shape extends z.ZodRawShape = z.ZodRawShape> = {
   handler(input: McpToolInput<Shape>, user: User): Promise<unknown>;
 };
 
+/**
+ * Registers a tool bound to the `user` already resolved by the transport
+ * gate in `routes.ts` for the current request. `user` is closed over by the
+ * handler rather than re-resolved per call: identity resolution happens once
+ * per HTTP request, not once per tool invocation.
+ */
 export function registerMcpTool(
   server: McpServer,
-  identityResolver: McpIdentityResolver,
+  user: User,
   definition: McpToolDefinition<z.ZodRawShape>
 ): RegisteredTool {
   return server.registerTool(
@@ -46,12 +50,8 @@ export function registerMcpTool(
       inputSchema: definition.inputSchema,
       annotations: definition.annotations,
     },
-    async (input, extra): Promise<CallToolResult> => {
+    async (input): Promise<CallToolResult> => {
       try {
-        const authorizationHeader = extractAuthorizationHeader(
-          extra.requestInfo?.headers
-        );
-        const user = await identityResolver.resolveUser(authorizationHeader);
         const output = await definition.handler(input, user);
 
         return {
@@ -67,12 +67,4 @@ export function registerMcpTool(
       }
     }
   );
-}
-
-function extractAuthorizationHeader(
-  headers: IsomorphicHeaders | undefined
-): string | undefined {
-  const value = headers?.authorization;
-
-  return Array.isArray(value) ? value[0] : value;
 }

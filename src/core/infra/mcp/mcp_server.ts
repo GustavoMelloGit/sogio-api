@@ -1,20 +1,23 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { z } from "zod";
-import type { McpIdentityResolver } from "./identity_resolver";
+import type { User } from "../../../auth/domain/entity/user";
 import { registerMcpTool, type McpToolDefinition } from "./mcp_tool";
 
 export type CreateMcpServerOptions = {
   name: string;
   version: string;
-  identityResolver: McpIdentityResolver;
+  user: User;
   tools?: McpToolDefinition<z.ZodRawShape>[];
 };
 
 /**
- * Builds an MCP server wired to the StayHub identity resolution and error
- * mapping pipeline. Every tool registered through `registerMcpTool` (or
- * passed in `tools`) already resolves the calling user from the bearer
- * token, maps typed domain errors to tool errors, and serializes dates.
+ * Builds an MCP server for a single request, wired to the StayHub error
+ * mapping pipeline and bound to `user` — the caller already resolved by the
+ * transport gate in `routes.ts` before this server was even instantiated.
+ * Every tool registered through `registerMcpTool` (or passed in `tools`)
+ * receives that same `user`, maps typed domain errors to tool errors, and
+ * serializes dates. Identity resolution itself does not happen here or in
+ * any tool handler.
  *
  * The returned server still needs a transport to be usable — connect it via
  * `server.connect(transport)`. The SDK's `WebStandardStreamableHTTPServerTransport`
@@ -29,7 +32,7 @@ export function createMcpServer(options: CreateMcpServerOptions): McpServer {
   );
 
   for (const tool of options.tools ?? []) {
-    registerMcpTool(server, options.identityResolver, tool);
+    registerMcpTool(server, options.user, tool);
   }
 
   return server;

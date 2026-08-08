@@ -12,6 +12,11 @@ type JsonRpcResponse = {
   error?: { code: number; message: string };
 };
 
+type OAuthErrorBody = {
+  error: string;
+  error_description: string;
+};
+
 async function callMcp(
   body: Record<string, unknown>,
   token?: string
@@ -54,30 +59,47 @@ describe("POST /mcp", () => {
         params: {},
       }),
     });
-    const body = (await response.json()) as JsonRpcResponse;
+    const body = (await response.json()) as OAuthErrorBody;
+    const wwwAuthenticate = response.headers.get("www-authenticate") ?? "";
 
     expect(response.status).toBe(401);
-    expect(response.headers.get("www-authenticate")).toBe("Bearer");
-    expect(body.jsonrpc).toBe("2.0");
-    expect(body.error).toEqual({ code: -32000, message: "Unauthorized" });
+    expect(wwwAuthenticate).toContain('Bearer error="invalid_request"');
+    expect(wwwAuthenticate).toContain('resource_metadata="http://localhost');
+    expect(wwwAuthenticate).toContain("/.well-known/oauth-protected-resource");
+    expect(body.error).toBe("invalid_request");
   });
 
-  it("reaches the transport once an Authorization header is present, even if the token is invalid", async () => {
-    const { status, body } = await callMcp(
-      {
+  it("rejects a request whose Authorization header carries an invalid token before reaching the transport", async () => {
+    const response = await api("/mcp", {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        Authorization: "Bearer not-a-real-token",
+      },
+      body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "tools/list",
         params: {},
-      },
-      "not-a-real-token"
-    );
+      }),
+    });
+    const body = (await response.json()) as OAuthErrorBody;
+    const wwwAuthenticate = response.headers.get("www-authenticate") ?? "";
 
-    expect(status).toBe(200);
-    expect(body.error).toBeUndefined();
+    expect(response.status).toBe(401);
+    expect(wwwAuthenticate).toContain('Bearer error="invalid_token"');
+    expect(wwwAuthenticate).toContain("/.well-known/oauth-protected-resource");
+    expect(body.error).toBe("invalid_token");
   });
 
   it("lists the 4 registered tools", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao.tools-list@stayhub.dev",
+      password: "password123",
+    });
+    const token = await createAuthToken(user.id);
+
     const { body } = await callMcp(
       {
         jsonrpc: "2.0",
@@ -85,7 +107,7 @@ describe("POST /mcp", () => {
         method: "tools/list",
         params: {},
       },
-      "not-a-real-token"
+      token
     );
 
     const result = body.result as { tools: Array<{ name: string }> };
@@ -96,7 +118,7 @@ describe("POST /mcp", () => {
     );
   });
 
-  it("resolves the caller identity per tool call and returns only their data", async () => {
+  it("resolves the caller identity once at the transport gate and returns only their data", async () => {
     const { user: owner } = await createUserFixture({
       name: "João Silva",
       email: "joao.mcp@stayhub.dev",
@@ -139,20 +161,5 @@ describe("POST /mcp", () => {
     expect(output.properties).toEqual([
       { id: ownedProperty.id, name: "Casa da Praia" },
     ]);
-  });
-
-  it("rejects a tool call whose Authorization header carries an invalid token", async () => {
-    const { body } = await callMcp(
-      {
-        jsonrpc: "2.0",
-        id: 3,
-        method: "tools/call",
-        params: { name: "list_properties", arguments: {} },
-      },
-      "not-a-real-token"
-    );
-
-    const result = body.result as { isError?: boolean };
-    expect(result.isError).toBe(true);
   });
 });

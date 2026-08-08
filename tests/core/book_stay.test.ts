@@ -12,11 +12,10 @@ import {
 import { describe, expect, it, beforeEach } from "bun:test";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { MiddlewareDi } from "../../src/auth/infra/di/middleware";
+import type { User } from "../../src/auth/domain/entity/user";
 import { PropertyDi } from "../../src/booking/infra/di/property_di";
 import { db } from "../../src/core/infra/database/drizzle/database";
 import { staysTable } from "../../src/core/infra/database/drizzle/schema";
-import { McpIdentityResolver } from "../../src/core/infra/mcp/identity_resolver";
 import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
 import {
   inputSchema,
@@ -25,7 +24,6 @@ import {
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
-import { createAuthToken } from "../helpers/fixtures/auth_token";
 
 const TABLES = ["stays", "tenants", "properties", "addresses", "users"];
 
@@ -60,13 +58,10 @@ const handlerValidInput = {
   check_out: new Date(rawValidInput.check_out),
 };
 
-function makeExtra(
-  headers?: Record<string, string>
-): RequestHandlerExtra<ServerRequest, ServerNotification> {
+function makeExtra(): RequestHandlerExtra<ServerRequest, ServerNotification> {
   return {
     signal: new AbortController().signal,
     requestId: "test-request-id",
-    requestInfo: headers ? { headers } : undefined,
     sendNotification: async () => {},
     sendRequest: () => {
       throw new Error("not implemented in test stub");
@@ -83,23 +78,17 @@ async function callTool(
   return handler(input, extra);
 }
 
-function makeIdentityResolver(): McpIdentityResolver {
-  const middlewareDi = new MiddlewareDi();
-  return new McpIdentityResolver(
-    middlewareDi.makeAuthRepository(),
-    middlewareDi.makeSessionManager()
-  );
-}
-
-function registerBookStayTool(): RegisteredTool {
+/**
+ * Identity resolution now happens once, at the `/mcp` transport gate
+ * (`routes.ts`), before a tool is ever registered — see `mcp_tool.ts`. Tools
+ * are registered bound to the already-resolved `user`, so these tests
+ * simulate that by passing the fixture user straight into `registerMcpTool`.
+ */
+function registerBookStayTool(user: User): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
   const propertyDi = new PropertyDi();
 
-  return registerMcpTool(
-    server,
-    makeIdentityResolver(),
-    makeBookStayTool(propertyDi)
-  );
+  return registerMcpTool(server, user, makeBookStayTool(propertyDi));
 }
 
 describe("book_stay tool", () => {
@@ -114,13 +103,12 @@ describe("book_stay tool", () => {
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
-    const token = await createAuthToken(user.id);
 
-    const registeredTool = registerBookStayTool();
+    const registeredTool = registerBookStayTool(user);
     const result = await callTool(
       registeredTool,
       { ...handlerValidInput, property_id: property.id },
-      makeExtra({ authorization: `Bearer ${token}` })
+      makeExtra()
     );
 
     const text = (result.content as Array<{ text: string }>)[0]?.text ?? "";
@@ -149,9 +137,8 @@ describe("book_stay tool", () => {
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
-    const token = await createAuthToken(user.id);
 
-    const registeredTool = registerBookStayTool();
+    const registeredTool = registerBookStayTool(user);
     const result = await callTool(
       registeredTool,
       {
@@ -159,7 +146,7 @@ describe("book_stay tool", () => {
         property_id: property.id,
         entrance_code: "9999999",
       },
-      makeExtra({ authorization: `Bearer ${token}` })
+      makeExtra()
     );
 
     const text = (result.content as Array<{ text: string }>)[0]?.text ?? "";
@@ -221,13 +208,12 @@ describe("book_stay tool", () => {
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: owner.id });
-    const token = await createAuthToken(intruder.id);
 
-    const registeredTool = registerBookStayTool();
+    const registeredTool = registerBookStayTool(intruder);
     const result = await callTool(
       registeredTool,
       { ...handlerValidInput, property_id: property.id },
-      makeExtra({ authorization: `Bearer ${token}` })
+      makeExtra()
     );
 
     expect(result.isError).toBe(true);
@@ -247,13 +233,12 @@ describe("book_stay tool", () => {
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
-    const token = await createAuthToken(user.id);
 
-    const registeredTool = registerBookStayTool();
+    const registeredTool = registerBookStayTool(user);
     const firstResult = await callTool(
       registeredTool,
       { ...handlerValidInput, property_id: property.id },
-      makeExtra({ authorization: `Bearer ${token}` })
+      makeExtra()
     );
 
     expect(firstResult.isError).toBeUndefined();
@@ -266,7 +251,7 @@ describe("book_stay tool", () => {
         check_in: new Date("2040-06-02T12:00:00-03:00"),
         check_out: new Date("2040-06-04T12:00:00-03:00"),
       },
-      makeExtra({ authorization: `Bearer ${token}` })
+      makeExtra()
     );
 
     expect(secondResult.isError).toBe(true);
@@ -277,23 +262,5 @@ describe("book_stay tool", () => {
       .where(eq(staysTable.property_id, property.id));
 
     expect(rows).toHaveLength(1);
-  });
-
-  it("rejects a request without an authorization token", async () => {
-    const { user } = await createUserFixture({
-      name: "João Silva",
-      email: "joao@stayhub.dev",
-      password: "password123",
-    });
-    const property = await createPropertyFixture({ userId: user.id });
-
-    const registeredTool = registerBookStayTool();
-    const result = await callTool(
-      registeredTool,
-      { ...handlerValidInput, property_id: property.id },
-      makeExtra()
-    );
-
-    expect(result.isError).toBe(true);
   });
 });

@@ -11,23 +11,18 @@ import {
 } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { describe, expect, it, beforeEach } from "bun:test";
 import type { z } from "zod";
-import { MiddlewareDi } from "../../src/auth/infra/di/middleware";
-import { McpIdentityResolver } from "../../src/core/infra/mcp/identity_resolver";
+import type { User } from "../../src/auth/domain/entity/user";
 import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
 import { makeListPropertiesTool } from "../../src/core/infra/mcp/tools/list_properties";
 import { PropertyManagementDi } from "../../src/property_management/infra/di/property_management_di";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
-import { createAuthToken } from "../helpers/fixtures/auth_token";
 
-function makeExtra(
-  headers?: Record<string, string>
-): RequestHandlerExtra<ServerRequest, ServerNotification> {
+function makeExtra(): RequestHandlerExtra<ServerRequest, ServerNotification> {
   return {
     signal: new AbortController().signal,
     requestId: "test-request-id",
-    requestInfo: headers ? { headers } : undefined,
     sendNotification: async () => {},
     sendRequest: () => {
       throw new Error("not implemented in test stub");
@@ -44,21 +39,19 @@ async function callTool(
   return handler(input, extra);
 }
 
-function makeIdentityResolver(): McpIdentityResolver {
-  const middlewareDi = new MiddlewareDi();
-  return new McpIdentityResolver(
-    middlewareDi.makeAuthRepository(),
-    middlewareDi.makeSessionManager()
-  );
-}
-
-function registerListPropertiesTool(): RegisteredTool {
+/**
+ * Identity resolution now happens once, at the `/mcp` transport gate
+ * (`routes.ts`), before a tool is ever registered — see `mcp_tool.ts`. Tools
+ * are registered bound to the already-resolved `user`, so these tests
+ * simulate that by passing the fixture user straight into `registerMcpTool`.
+ */
+function registerListPropertiesTool(user: User): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
   const propertyManagementDi = new PropertyManagementDi();
 
   return registerMcpTool(
     server,
-    makeIdentityResolver(),
+    user,
     makeListPropertiesTool(propertyManagementDi)
   );
 }
@@ -87,14 +80,9 @@ describe("list_properties tool", () => {
       userId: otherUser.id,
       name: "Apê do Centro",
     });
-    const token = await createAuthToken(owner.id);
 
-    const registeredTool = registerListPropertiesTool();
-    const result = await callTool(
-      registeredTool,
-      {},
-      makeExtra({ authorization: `Bearer ${token}` })
-    );
+    const registeredTool = registerListPropertiesTool(owner);
+    const result = await callTool(registeredTool, {}, makeExtra());
 
     const text = (result.content as Array<{ text: string }>)[0]?.text ?? "";
     const output = JSON.parse(text) as {
@@ -104,25 +92,5 @@ describe("list_properties tool", () => {
     expect(output.properties).toEqual([
       { id: ownedProperty.id, name: "Casa da Praia" },
     ]);
-  });
-
-  it("rejects a request without an authorization token", async () => {
-    const registeredTool = registerListPropertiesTool();
-
-    const result = await callTool(registeredTool, {}, makeExtra());
-
-    expect(result.isError).toBe(true);
-  });
-
-  it("rejects a request with an invalid authorization token", async () => {
-    const registeredTool = registerListPropertiesTool();
-
-    const result = await callTool(
-      registeredTool,
-      {},
-      makeExtra({ authorization: "Bearer invalid.token.value" })
-    );
-
-    expect(result.isError).toBe(true);
   });
 });

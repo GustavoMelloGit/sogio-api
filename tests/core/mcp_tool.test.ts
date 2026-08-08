@@ -14,27 +14,17 @@ import { formatISO } from "date-fns";
 import { z } from "zod";
 import type { User } from "../../src/auth/domain/entity/user";
 import { ValidationError } from "../../src/core/application/error/validation_error";
-import type { McpIdentityResolver } from "../../src/core/infra/mcp/identity_resolver";
 import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
 
-function makeExtra(
-  headers?: Record<string, string>
-): RequestHandlerExtra<ServerRequest, ServerNotification> {
+function makeExtra(): RequestHandlerExtra<ServerRequest, ServerNotification> {
   return {
     signal: new AbortController().signal,
     requestId: "test-request-id",
-    requestInfo: headers ? { headers } : undefined,
     sendNotification: async () => {},
     sendRequest: () => {
       throw new Error("not implemented in test stub");
     },
   };
-}
-
-function makeIdentityResolver(
-  resolve: (authorizationHeader: string | undefined) => Promise<User>
-): McpIdentityResolver {
-  return { resolveUser: resolve } as unknown as McpIdentityResolver;
 }
 
 async function callTool(
@@ -48,18 +38,20 @@ async function callTool(
 
 const fakeUser = { id: "user-1", email: "ada@stayhub.dev" } as User;
 
+/**
+ * Identity resolution no longer happens inside `registerMcpTool` — it
+ * happens once at the `/mcp` transport gate in `routes.ts`, and the already
+ * resolved `User` is passed in here. These tests exercise what
+ * `registerMcpTool` still owns: forwarding input and the bound `user` to the
+ * handler, serializing the output, and mapping errors thrown by the handler.
+ */
 describe("registerMcpTool", () => {
-  it("resolves the user from the authorization header and forwards it to the handler", async () => {
+  it("forwards the input and the already-resolved user to the handler", async () => {
     let receivedInput: unknown;
     let receivedUser: User | undefined;
-    let receivedAuthorizationHeader: string | undefined;
     const server = new McpServer({ name: "test-server", version: "1.0.0" });
-    const identityResolver = makeIdentityResolver(async authorizationHeader => {
-      receivedAuthorizationHeader = authorizationHeader;
-      return fakeUser;
-    });
 
-    const registeredTool = registerMcpTool(server, identityResolver, {
+    const registeredTool = registerMcpTool(server, fakeUser, {
       name: "echo",
       description: "Echoes the input back",
       inputSchema: { message: z.string() },
@@ -73,10 +65,9 @@ describe("registerMcpTool", () => {
     const result = await callTool(
       registeredTool,
       { message: "hello" },
-      makeExtra({ authorization: "Bearer valid-token" })
+      makeExtra()
     );
 
-    expect(receivedAuthorizationHeader).toBe("Bearer valid-token");
     expect(receivedInput).toEqual({ message: "hello" });
     expect(receivedUser).toBe(fakeUser);
     expect(result).toEqual({
@@ -86,10 +77,9 @@ describe("registerMcpTool", () => {
 
   it("serializes dates in the handler output to ISO strings", async () => {
     const server = new McpServer({ name: "test-server", version: "1.0.0" });
-    const identityResolver = makeIdentityResolver(async () => fakeUser);
     const bookedAt = new Date("2026-08-07T12:00:00.000Z");
 
-    const registeredTool = registerMcpTool(server, identityResolver, {
+    const registeredTool = registerMcpTool(server, fakeUser, {
       name: "book",
       description: "Books something",
       inputSchema: {},
@@ -110,9 +100,8 @@ describe("registerMcpTool", () => {
 
   it("maps a domain error thrown by the handler to a tool error with the domain message", async () => {
     const server = new McpServer({ name: "test-server", version: "1.0.0" });
-    const identityResolver = makeIdentityResolver(async () => fakeUser);
 
-    const registeredTool = registerMcpTool(server, identityResolver, {
+    const registeredTool = registerMcpTool(server, fakeUser, {
       name: "fail",
       description: "Always fails validation",
       inputSchema: {},
@@ -131,32 +120,10 @@ describe("registerMcpTool", () => {
     });
   });
 
-  it("maps identity resolution failures to a tool error", async () => {
-    const server = new McpServer({ name: "test-server", version: "1.0.0" });
-    const identityResolver = makeIdentityResolver(async () => {
-      throw new ValidationError("Unauthorized");
-    });
-
-    const registeredTool = registerMcpTool(server, identityResolver, {
-      name: "protected",
-      description: "Requires a valid bearer token",
-      inputSchema: {},
-      handler: async () => ({ ok: true }),
-    });
-
-    const result = await callTool(registeredTool, {}, makeExtra());
-
-    expect(result).toEqual({
-      isError: true,
-      content: [{ type: "text", text: "Unauthorized" }],
-    });
-  });
-
   it("masks unexpected errors with a generic message", async () => {
     const server = new McpServer({ name: "test-server", version: "1.0.0" });
-    const identityResolver = makeIdentityResolver(async () => fakeUser);
 
-    const registeredTool = registerMcpTool(server, identityResolver, {
+    const registeredTool = registerMcpTool(server, fakeUser, {
       name: "explode",
       description: "Throws an unexpected error",
       inputSchema: {},

@@ -1,11 +1,13 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { z } from "zod";
+import type { User } from "../../../auth/domain/entity/user";
 import { MiddlewareDi } from "../../../auth/infra/di/middleware";
 import type { PropertyDi } from "../../../booking/infra/di/property_di";
 import type { StayDi } from "../../../booking/infra/di/stay_di";
 import type { FinanceDi } from "../../../finance/infra/di/finance_di";
 import type { PropertyManagementDi } from "../../../property_management/infra/di/property_management_di";
+import { UnauthorizedError } from "../../application/error/unauthorized_error";
 import { McpIdentityResolver } from "./identity_resolver";
 import { createMcpServer } from "./mcp_server";
 import type { McpToolDefinition } from "./mcp_tool";
@@ -18,6 +20,17 @@ import {
 
 const MCP_SERVER_NAME = "stayhub";
 const MCP_SERVER_VERSION = "1.0.0";
+
+/**
+ * Path of the resource server's protected-resource metadata document
+ * (RFC 9728), advertised via `resource_metadata` in `WWW-Authenticate` so a
+ * generic MCP client can discover the authorization server and drive the
+ * OAuth flow automatically. The endpoint itself does not exist yet — it is
+ * introduced by a later task in the OAuth plan — so this is currently a
+ * placeholder path a client can resolve against once that document ships.
+ */
+const OAUTH_PROTECTED_RESOURCE_METADATA_PATH =
+  "/.well-known/oauth-protected-resource";
 
 export type McpRouteDependencies = {
   propertyDi: PropertyDi;
@@ -36,17 +49,22 @@ export type McpRouteDependencies = {
  * every handler run twice per event.
  *
  * Tool definitions and the identity resolver are built once, up front, and
- * reused across requests. Only the `McpServer`/transport pair is rebuilt per
- * request: `WebStandardStreamableHTTPServerTransport` refuses to be reused
- * once it has handled a request in stateless mode
- * (`sessionIdGenerator: undefined`), and a `McpServer` can only ever be
- * connected to a single transport at a time. This mirrors the official SDK
- * example for stateless deployments (fresh server + transport per request).
+ * reused across requests. Identity itself is resolved once per HTTP request,
+ * at this transport boundary, before anything MCP-specific is touched: on
+ * failure the handler returns `401` directly — see `unauthorizedResponse` —
+ * and never instantiates a `McpServer`/transport pair or reaches a tool
+ * handler. On success, the resolved `User` is handed to `createMcpServer`,
+ * which binds every tool registered for this request to that same caller
+ * (see `mcp_tool.ts`); tools no longer resolve identity on their own.
  *
- * Every request must carry an `Authorization` header to reach that transport
- * at all — see `unauthorizedResponse` — and every `McpServer`/transport pair
- * that does get created is closed once its response finishes, so the process
- * never accumulates one live pair per request (see
+ * Only the `McpServer`/transport pair is rebuilt per request:
+ * `WebStandardStreamableHTTPServerTransport` refuses to be reused once it
+ * has handled a request in stateless mode (`sessionIdGenerator: undefined`),
+ * and a `McpServer` can only ever be connected to a single transport at a
+ * time. This mirrors the official SDK example for stateless deployments
+ * (fresh server + transport per request). Every `McpServer`/transport pair
+ * that does get created is closed once its response finishes, so the
+ * process never accumulates one live pair per request (see
  * `closeServerWhenResponseEnds`).
  */
 export function makeMcpRequestHandler(
@@ -66,14 +84,24 @@ export function makeMcpRequestHandler(
   ];
 
   return async function handleMcpRequest(request: Request): Promise<Response> {
-    if (!request.headers.has("authorization")) {
-      return unauthorizedResponse();
+    const authorizationHeader =
+      request.headers.get("authorization") ?? undefined;
+
+    let user: User;
+    try {
+      user = await identityResolver.resolveUser(authorizationHeader);
+    } catch (error) {
+      if (error instanceof UnauthorizedError) {
+        return unauthorizedResponse(request, authorizationHeader !== undefined);
+      }
+
+      throw error;
     }
 
     const server = createMcpServer({
       name: MCP_SERVER_NAME,
       version: MCP_SERVER_VERSION,
-      identityResolver,
+      user,
       tools,
     });
     const transport = new WebStandardStreamableHTTPServerTransport({
@@ -93,29 +121,42 @@ export function makeMcpRequestHandler(
 }
 
 /**
- * Cheap, transport-level credential gate: rejects requests that don't even
- * carry an `Authorization` header before a `McpServer`/transport pair is
- * instantiated, so an anonymous caller can never complete `initialize` or
- * `tools/list`, let alone open the unauthenticated `GET /mcp` SSE stream.
+ * Transport-level credential gate, per RFC 9728: resolves the caller's
+ * identity before a `McpServer`/transport pair is ever instantiated, so an
+ * unauthenticated or invalid caller never reaches `initialize`, `tools/list`,
+ * or the unauthenticated `GET /mcp` SSE stream.
  *
- * This does not replace `McpIdentityResolver` — a present-but-invalid token
- * still passes this gate and is only rejected when a tool handler actually
- * resolves the caller's identity. That per-tool resolution is what performs
- * real authentication; this gate only keeps the transport closed to callers
- * that never even attempt it.
+ * `WWW-Authenticate` carries `resource_metadata` pointing at this resource
+ * server's protected-resource metadata document, which is what lets a
+ * generic MCP client discover the authorization server and drive the OAuth
+ * flow on its own instead of surfacing a dead-end error to the user. That
+ * metadata endpoint is introduced by a later task; the path used here is the
+ * canonical well-known location it is expected to live at.
+ *
+ * `hadCredential` distinguishes "no credential presented" (`invalid_request`)
+ * from "credential presented but rejected" (`invalid_token`), per RFC 6750 —
+ * both cases still resolve to the same `401`.
  */
-function unauthorizedResponse(): Response {
+function unauthorizedResponse(
+  request: Request,
+  hadCredential: boolean
+): Response {
+  const resourceMetadataUrl = new URL(
+    OAUTH_PROTECTED_RESOURCE_METADATA_PATH,
+    request.url
+  ).toString();
+  const error = hadCredential ? "invalid_token" : "invalid_request";
+  const errorDescription = hadCredential
+    ? "The access token is expired, revoked, malformed, or otherwise invalid."
+    : "A bearer token is required to access this resource.";
+
   return new Response(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: null,
-      error: { code: -32000, message: "Unauthorized" },
-    }),
+    JSON.stringify({ error, error_description: errorDescription }),
     {
       status: 401,
       headers: {
         "Content-Type": "application/json",
-        "WWW-Authenticate": "Bearer",
+        "WWW-Authenticate": `Bearer error="${error}", error_description="${errorDescription}", resource_metadata="${resourceMetadataUrl}"`,
       },
     }
   );
