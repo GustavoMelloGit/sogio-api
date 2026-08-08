@@ -1381,12 +1381,174 @@ rotacionada há mais de uma geração é reuso, sem graça.
     nunca foi tocado.
     - Dependencies: tasks 3, 11 — **todas concluídas**.
 
-14. **Gestão de aplicativos conectados (backend)** — listar e desconectar,
-    autenticado pela sessão do app, restrito aos aplicativos do próprio usuário,
-    expondo concessão e último uso, **host em punycode (E6)**. Inclui a
-    **retenção de E9**: vida absoluta do consentimento, expiração por
-    inatividade e rotina de expurgo de linhas mortas.
+14. ~~**Gestão de aplicativos conectados (backend)**~~ — **Concluída
+    (2026-08-08)**: `GET /auth/connected-apps` (`ListConnectedAppsController`
+    e `ListConnectedAppsUseCase`) e `DELETE /auth/connected-apps/:consentId`
+    (`DisconnectAppController`), ambos `authenticated: true` — sessão normal
+    do app (JWT Bearer), nunca a credencial OAuth (Decisão Arquitetural 12).
+    Inclui também o adendo de CORS do `/mcp` deixado em aberto pela task 13
+    (E8) e a retenção completa de E9.
+
+    **Escopo por usuário — invariante, não filtro.** `user.id` vem só do
+    middleware de autenticação, nunca de entrada do cliente.
+    `ListConnectedAppsController` não recebe nenhum parâmetro de rota; a
+    listagem é inteiramente função do usuário autenticado, via
+    `ConsentRepository.findActiveByUser` (novo método, filtra
+    `user_id` **e** `revoked_at IS NULL` no próprio repositório — o
+    consentimento revogado nunca chega ao use case). O desconectar reusa
+    `RevokeConsentUseCase` (task 12) **sem nenhuma mudança**: a checagem de
+    posse (`consent.user_id !== user.id` → `ResourceNotFoundError`, 404) já
+    vive lá, então um `consentId` de outro usuário nunca é alcançável — nem
+    por acidente, nem por um controller futuro que esquecesse de filtrar.
+    Verificado com um teste ad-hoc (não commitado, ver "Verificação"): um
+    segundo usuário tentando desconectar o consentimento do primeiro recebe
+    404 e o consentimento permanece intacto no banco.
+
+    **Host em punycode (E6).** Mesma abordagem confirmada em runtime pela
+    task 10: `new URL(uri).hostname`, sem biblioteca. Diferença em relação à
+    task 10: o Consentimento não guarda qual `redirect_uri` foi usado numa
+    autorização específica (isso vive nas entidades efêmeras Pedido/Código,
+    já apagadas por expurgo) — só o Registro de Aplicativo, que pode ter até
+    10 URIs registradas. `ListConnectedAppsUseCase#primaryRedirectHost` usa
+    o **primeiro** `redirect_uri` registrado como representativo, o que é
+    estável porque `redirect_uris` é imutável após o registro (invariante do
+    agregado). **Sinalizando para o Arquiteto/Analista de Segurança**: um
+    registro com múltiplos `redirect_uris` mostra só o host do primeiro
+    nesta tela — diferente da tela de consentimento (task 10), que sempre
+    mostra o host efetivamente usado naquela autorização. Considerado
+    aceitável porque esta tela é revisão histórica, não o ponto de decisão
+    de um redirect (nenhuma navegação acontece a partir dela), mas é uma
+    simplificação deliberada que vale segunda opinião.
+
+    **E9 — as três partes, e onde cada uma dispara:**
+    1. **Vida absoluta.** `CONSENT_ABSOLUTE_LIFETIME_SECONDS` (novo env,
+       default 180 dias) — `isConsentExpired` (novo,
+       `domain/service/consent_expiry_policy.ts`) compara
+       `now - consent.granted_at` contra o limite.
+    2. **Inatividade.** `CONSENT_INACTIVITY_TTL_SECONDS` (novo env, default
+       30 dias, mesma ordem de grandeza do `REFRESH_TOKEN_TTL_SECONDS`) —
+       mesma função compara `now - consent.last_used_at`.
+    3. **Expurgo de linhas mortas.** `IssuedCredentialRepository.deleteExpiredOrRevoked`
+       (novo método + implementação Postgres) remove credenciais já
+       revogadas ou cuja renovação já expirou; `AuthorizationRequestRepository.deleteExpired`
+       e `AuthorizationCodeRepository.deleteExpired` — **já existiam desde a
+       task 5, prontos, mas nunca chamados por nada até agora** — passam a
+       ser acionados aqui.
+
+    **Onde acionam.** Nem tudo cabe no padrão "faxina best-effort a partir
+    do tráfego" que a task 8 estabeleceu para registros não usados — as
+    partes 1 e 2 precisam valer no caminho de **verificação**, não só numa
+    faxina periódica (o dispatch já antecipava essa tensão). Decisão, com
+    dois pontos de acionamento deliberadamente diferentes:
+    - `OAuthCredentialVerifier.verify()` (task 13) passou a receber
+      `consentAbsoluteLifetimeMs`/`consentInactivityTtlMs` e avalia
+      `isConsentExpired` a cada verificação de credencial — é o caminho
+      correto para um agente **ainda ativo**: a próxima chamada ao `/mcp`
+      depois do vencimento já falha, sem depender de nenhum job. Ao
+      detectar, revoga de verdade (não só rejeita), reusando a mesma
+      cascata de `RevokeConsentUseCase` — ver próximo parágrafo.
+    - `ListConnectedAppsUseCase` avalia a **mesma** política para cada
+      consentimento antes de listá-lo, e exclui (revogando antes) o que já
+      expirou. Isto cobre o caso que o verificador **não** cobre: um
+      aplicativo que o usuário testou e nunca mais chamou `/mcp` de novo —
+      sem tráfego ali, o verificador nunca roda, e sem esta checagem a tela
+      mostraria "conectado" para sempre um app já morto pela regra de
+      inatividade. Depois de listar, a mesma chamada também aciona a
+      faxina de linhas mortas (pedidos, códigos, credenciais), best-effort,
+      try/catch com log — mesmo padrão de `RegisterAppUseCase`, nenhum
+      scheduler introduzido.
+
+    **Cascata compartilhada, sem duplicar a lógica.** Extraí
+    `revokeConsentCascade` (`application/service/consent_cascade.ts`) das
+    duas linhas que `RevokeConsentUseCase` já tinha
+    (`revokeAllByConsent` → `revoke`, nessa ordem, pela mesma razão de
+    auto-cura já documentada na task 12) — agora reusada por três
+    chamadores: revogação explícita (`RevokeConsentUseCase`), expiração
+    avaliada na verificação (`OAuthCredentialVerifier`), e expiração
+    avaliada na listagem (`ListConnectedAppsUseCase`). Nenhum deles
+    reimplementa a ordem; só o helper compartilhado a executa.
+
+    **Configuração.** `CONSENT_ABSOLUTE_LIFETIME_SECONDS` e
+    `CONSENT_INACTIVITY_TTL_SECONDS`, ambas opcionais com default (mesmo
+    estilo de `ACCESS_TOKEN_TTL_SECONDS` etc., task 11) — nenhum `.env`
+    existente quebra, e a nota de pré-requisito do `CLAUDE.md` (que só
+    documenta variáveis **obrigatórias**) não precisou de atualização.
+
+    **Adendo — CORS do `/mcp` (E8), fechado.** O handler de `/mcp`
+    (`core/infra/mcp/routes.ts`) é montado à parte do
+    `BunHttpControllerAdapter`/`CorsMiddleware` — a task 13 tinha
+    adicionado `Access-Control-Expose-Headers: WWW-Authenticate` no 401,
+    mas sem `Access-Control-Allow-Origin` em **nenhuma** resposta, um
+    fetch cross-origin em modo `cors` falha a checagem de CORS do
+    navegador antes do JavaScript conseguir inspecionar status ou headers
+    — o `WWW-Authenticate` exposto nunca chegava a ser lido, e o próprio
+    corpo de uma chamada bem-sucedida também não. Fechado reusando
+    `CorsMiddleware` (nenhuma reimplementação de CORS em `/mcp`):
+    - `handleMcpRequest` agora envolve toda resposta — 401 e sucesso — com
+      `corsMiddleware.addCorsHeaders(response, origin, "public")`, a mesma
+      política pública já usada pelos dois documentos de descoberta.
+    - `core/infra/http/routes/routes.ts` ganhou um handler de `OPTIONS`
+      para `/mcp` (`corsMiddleware.handlePreflightRequest(request, "public")`)
+      — sem ele, o preflight que o navegador dispara por causa do header
+      `Authorization` e do `Content-Type: application/json` (ambos não
+      simples) nunca tinha resposta, e a chamada real nunca saía do
+      navegador.
+    - `CorsMiddleware.getPublicCorsHeaders()` ganhou `POST`/`DELETE` em
+      `Allow-Methods` e `Authorization` em `Allow-Headers` — antes só
+      `GET, OPTIONS` / `Content-Type, Accept`, suficiente para os
+      documentos de descoberta, insuficiente para `/mcp`.
+
+    **Decisão sinalizada para o Arquiteto**: reusar a política **pública**
+    (origem `*`, sem credenciais) para `/mcp`, em vez de restringi-la à
+    origem do front como as demais rotas do protocolo (E8 já faz essa
+    distinção — a frase normativa sobre `/mcp` não menciona restrição de
+    origem, só a exposição do header, diferente da frase-irmã sobre
+    "rotas do protocolo e do consentimento"). Justificativa: um cliente MCP
+    em navegador **não é** o `stayhub-front` — é um terceiro qualquer — e
+    restringir a origem do `/mcp` à do front quebraria exatamente o cenário
+    que a E8 existe para viabilizar. Isso é seguro porque `/mcp` não usa
+    nenhum credential ambiente de navegador (cookie): o Bearer token é
+    anexado pelo próprio JavaScript do chamador, então uma origem coringa
+    não abre CSRF a la cookie. Nenhuma mudança estrutural — reuso do
+    mecanismo de CORS existente, sem pipeline novo.
+
+    Log por allowlist (E7): nenhum dos dois controllers novos loga nada
+    além do que o `Logger`/adaptador padrão já loga em erro (`endpoint`,
+    `name`, `message`) — não há segredo em jogo em nenhum dos dois
+    (consentId e appRegistrationId não são segredos, ao contrário de
+    código/verifier/challenge/token).
+
+    **Verificação**: `bun run typecheck`, `lint:check` e `format:check`
+    limpos. Subi de novo um Postgres temporário e isolado (porta `15433`,
+    a `5433` do `.env.test` está livre nesta máquina no momento, mas o
+    padrão da task 13 foi seguido por segurança), apliquei as três
+    migrations existentes (`drizzle/*.sql`, nenhuma nova — E9 não exigiu
+    coluna, ver abaixo) e rodei a suíte inteira por diretório
+    (`tests/auth`, `tests/core`, `tests/backoffice`, `tests/booking`,
+    `tests/finance`): **todos os 23 arquivos de teste passam
+    integralmente**. Além disso, escrevi e rodei um arquivo de teste
+    ad-hoc, **não commitado** (removido ao final, conforme a restrição de
+    não escrever testes novos), cobrindo: 401 sem sessão, escopo por
+    usuário + punycode, desconectar → cascata → `/mcp` 401 na chamada
+    seguinte, 404 ao tentar desconectar consentimento de outro usuário
+    (sem alterar `revoked_at`), expiração por vida absoluta autocurando via
+    `/mcp` e desaparecendo da lista, expiração por inatividade limpa só
+    pela visita à lista (sem nenhuma chamada a `/mcp`), e o preflight/CORS
+    do `/mcp`. Os 7 casos passaram. Container temporário parado e removido
+    ao final; nenhum container de outro projeto foi tocado.
+
+    **Sem migration.** E9 não precisou de coluna nova: vida absoluta e
+    inatividade são calculadas a partir de `granted_at`/`last_used_at`, que
+    já existiam desde a task 5 — só faltava a configuração e a avaliação
+    em tempo real, não um dado novo no schema.
+
+    **Para o Arquiteto/Revisor**: além do gap de CORS e da simplificação de
+    punycode já sinalizados acima, `revokeConsentCascade` é uma extração
+    (sem mudança de comportamento) de duas linhas que já existiam em
+    `RevokeConsentUseCase` — sinalizando por transparência, mesmo padrão
+    das tasks 10-12.
     - Dependencies: task 12
+
 15. **Cobertura de testes de abuso** — redirect não registrado, erro que não pode
     redirecionar, PKCE ausente/`plain`, código reusado, renovação reusada,
     credencial revogada, audiência errada, pedido expirado, limite de taxa,
