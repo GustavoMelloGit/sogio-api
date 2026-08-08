@@ -138,6 +138,21 @@ const authControllers: Route[] = [
   },
 ];
 
+const discoveryControllers: Route[] = [
+  {
+    authenticated: false,
+    controller: authDi.makeOAuthProtectedResourceMetadataController(),
+  },
+  {
+    authenticated: false,
+    controller: authDi.makeOAuthProtectedResourceMetadataForMcpController(),
+  },
+  {
+    authenticated: false,
+    controller: authDi.makeOAuthAuthorizationServerMetadataController(),
+  },
+];
+
 const backofficeControllers: Route[] = [
   {
     authenticated: true,
@@ -172,6 +187,7 @@ const controllers = [
   ...tenantControllers,
   ...propertyControllers,
   ...authControllers,
+  ...discoveryControllers,
   ...stayControllers,
   ...financeControllers,
   ...propertyManagementControllers,
@@ -195,7 +211,7 @@ controllers.forEach(({ authenticated, adminOnly, controller }) => {
       ),
       // Add OPTIONS handler for CORS preflight
       [HttpControllerMethod.OPTIONS]: async (request: Request) =>
-        corsMiddleware.handlePreflightRequest(request),
+        corsMiddleware.handlePreflightRequest(request, controller.corsPolicy),
     });
   } else {
     routeMap.set(controller.path, {
@@ -207,7 +223,7 @@ controllers.forEach(({ authenticated, adminOnly, controller }) => {
       ),
       // Add OPTIONS handler for CORS preflight
       [HttpControllerMethod.OPTIONS]: async (request: Request) =>
-        corsMiddleware.handlePreflightRequest(request),
+        corsMiddleware.handlePreflightRequest(request, controller.corsPolicy),
     });
   }
 });

@@ -87,4 +87,14 @@ export interface Controller {
    * knows nothing about this controller or why the numbers were chosen.
    */
   rateLimitPolicy?: RateLimitPolicy;
+  /**
+   * Opt-in CORS policy. `"public"` responds to any origin with
+   * `Access-Control-Allow-Origin: *` and no `Access-Control-Allow-Credentials`
+   * header — the exception E8 in the MCP OAuth authorization plan carves out
+   * for the two discovery documents, which must be fetchable cross-origin by
+   * any MCP client without credentials. Unset keeps the default behavior:
+   * origin echoed back only when it matches the configured allowlist, with
+   * credentials allowed.
+   */
+  corsPolicy?: "public";
 }

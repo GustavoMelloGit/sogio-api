@@ -13,6 +13,12 @@ import { PurgeUserDataController } from "../../presentation/controller/auth/purg
 import { BunHasher } from "../service/bun_hasher";
 import type { AuthRepository } from "../../domain/repository/auth_repository";
 import { AuthPostgresRepository } from "../database/postgres_repository/auth_postgres_repository";
+import {
+  OAuthProtectedResourceMetadataController,
+  OAUTH_PROTECTED_RESOURCE_METADATA_PATH,
+  OAUTH_PROTECTED_RESOURCE_METADATA_PATH_FOR_MCP,
+} from "../../presentation/controller/delegated_access/oauth_protected_resource_metadata.controller";
+import { OAuthAuthorizationServerMetadataController } from "../../presentation/controller/delegated_access/oauth_authorization_server_metadata.controller";
 
 export class AuthDi {
   #authRepository: AuthRepository;
@@ -59,5 +65,22 @@ export class AuthDi {
 
   makePurgeUserDataController() {
     return new PurgeUserDataController(this.makePurgeUserDataUseCase());
+  }
+
+  // Discovery (RFC 9728 / RFC 8414)
+  makeOAuthProtectedResourceMetadataController() {
+    return new OAuthProtectedResourceMetadataController(
+      OAUTH_PROTECTED_RESOURCE_METADATA_PATH
+    );
+  }
+
+  makeOAuthProtectedResourceMetadataForMcpController() {
+    return new OAuthProtectedResourceMetadataController(
+      OAUTH_PROTECTED_RESOURCE_METADATA_PATH_FOR_MCP
+    );
+  }
+
+  makeOAuthAuthorizationServerMetadataController() {
+    return new OAuthAuthorizationServerMetadataController();
   }
 }

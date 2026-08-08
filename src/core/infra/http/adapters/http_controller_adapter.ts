@@ -235,7 +235,10 @@ export function BunHttpControllerAdapter(
   ): Promise<Response> {
     // Handle CORS preflight requests
     if (request.method === "OPTIONS") {
-      return corsMiddleware.handlePreflightRequest(request);
+      return corsMiddleware.handlePreflightRequest(
+        request,
+        controller.corsPolicy
+      );
     }
 
     try {
@@ -250,7 +253,8 @@ export function BunHttpControllerAdapter(
         if (!decision.allowed) {
           return corsMiddleware.addCorsHeaders(
             buildRateLimitedResponse(decision.retryAfterSeconds),
-            request.headers.get("Origin")
+            request.headers.get("Origin"),
+            controller.corsPolicy
           );
         }
       }
@@ -287,7 +291,8 @@ export function BunHttpControllerAdapter(
       if (response instanceof ControllerHttpResponse) {
         return corsMiddleware.addCorsHeaders(
           buildExplicitResponse(response),
-          request.headers.get("Origin")
+          request.headers.get("Origin"),
+          controller.corsPolicy
         );
       }
 
@@ -298,7 +303,8 @@ export function BunHttpControllerAdapter(
       });
       return corsMiddleware.addCorsHeaders(
         jsonResponse,
-        request.headers.get("Origin")
+        request.headers.get("Origin"),
+        controller.corsPolicy
       );
     } catch (e) {
       logger.error("Error in HTTP controller adapter", buildErrorLogContext(e));
@@ -334,7 +340,8 @@ export function BunHttpControllerAdapter(
 
       return corsMiddleware.addCorsHeaders(
         errorResponse,
-        request.headers.get("Origin")
+        request.headers.get("Origin"),
+        controller.corsPolicy
       );
     }
   };

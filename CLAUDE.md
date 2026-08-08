@@ -44,7 +44,7 @@ bun run test          # Executa todos os testes
 
 Os testes ficam em `tests/<bounded context>/<test name>.test.ts`.
 
-> **Pré-requisito**: o arquivo `.env.test` na raiz do projeto deve conter a variável `DATABASE_URL` com as credenciais reais do banco local.
+> **Pré-requisito**: o arquivo `.env.test` na raiz do projeto deve conter a variável `DATABASE_URL` com as credenciais reais do banco local, e a variável `API_BASE_URL` (ex: `http://localhost:4000`) — obrigatória fora de `development` desde a introdução dos documentos de descoberta OAuth.
 
 ## Arquitetura
 
