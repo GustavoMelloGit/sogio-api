@@ -80,9 +80,12 @@ Achados relevantes da investigação:
 
 ## Tasks
 
-1. **Verificar categorias existentes no banco** — levantar os valores distintos
-   de `category` já gravados, para decidir se o fechamento do vocabulário exige
-   migração de dados. Bloqueia a modelagem do vocabulário.
+1. ~~**Verificar categorias existentes no banco**~~ — **Resolvida sem consulta ao
+   banco (decisão do usuário, 2026-08-07)**: usar diretamente os 6 valores já
+   praticados pelo frontend (`MANUTENÇÃO`, `ESTADIA`, `AQUISIÇÕES`,
+   `FINANCIAMENTO`, `GASTOS_FIXOS`, `OUTROS`). O risco de dado legado fora desse
+   conjunto é coberto pela regra já definida na task 4 (validar na criação,
+   tolerar na reconstituição) — não há necessidade de migração de dados.
    - Dependencies: none
 2. **Corrigir autorização de despesa** — `RecordExpenseUseCase` recebe o usuário e
    rejeita propriedade que ele não administra; controller HTTP ajustado; testes.
@@ -94,7 +97,7 @@ Achados relevantes da investigação:
 4. **Fechar vocabulário de categoria de despesa** — 6 valores, validados na
    criação de despesa; reconstituição permanece tolerante a valores legados.
    Alinhar limite da coluna com o da entidade.
-   - Dependencies: task 1
+   - Dependencies: none (task 1 resolvida sem bloqueio)
 5. **Gerador de código de entrada** — serviço de domínio no BC Booking, com fonte
    criptográfica; `BookStayUseCase` gera quando o input não traz o código;
    controller HTTP torna o campo opcional (compatibilidade com o frontend atual).
