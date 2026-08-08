@@ -46,3 +46,56 @@ export function isRegistrableRedirectUri(uri: string): boolean {
 
   return true;
 }
+
+/**
+ * E3's comparison, used at `/authorize` (against the registered list) and
+ * to be revalidated again at `/token`. Exact `===` between the registered
+ * string and the value already decoded once by the HTTP layer — no
+ * normalization on either side, no re-decoding, no comparison by parts.
+ *
+ * The single loosening the spec allows: a loopback redirect_uri (127.0.0.1,
+ * [::1], localhost) matches ignoring the port, because a native client
+ * picks an ephemeral port at runtime (RFC 8252 §7.3). Everything else about
+ * a loopback URI — scheme, host, path, query — still has to match exactly.
+ * Remote hosts and custom schemes get no such exception, port included.
+ */
+export function redirectUriMatches(
+  registeredUri: string,
+  presentedUri: string
+): boolean {
+  if (registeredUri === presentedUri) {
+    return true;
+  }
+
+  return matchesIgnoringLoopbackPort(registeredUri, presentedUri);
+}
+
+function matchesIgnoringLoopbackPort(
+  registeredUri: string,
+  presentedUri: string
+): boolean {
+  let registered: URL;
+  let presented: URL;
+  try {
+    registered = new URL(registeredUri);
+    presented = new URL(presentedUri);
+  } catch {
+    return false;
+  }
+
+  if (registered.protocol !== "http:" || presented.protocol !== "http:") {
+    return false;
+  }
+
+  if (
+    !LOOPBACK_HOSTNAMES.has(registered.hostname) ||
+    registered.hostname !== presented.hostname
+  ) {
+    return false;
+  }
+
+  return (
+    registered.pathname === presented.pathname &&
+    registered.search === presented.search
+  );
+}

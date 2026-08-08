@@ -4,6 +4,7 @@ import {
   type Controller,
 } from "../../../../core/presentation/controller/controller";
 import { apiBaseUrl } from "../../../../core/infra/config/environments";
+import { OAUTH_SUPPORTED_SCOPES } from "../../../domain/service/oauth_scope_policy";
 
 export const OAUTH_AUTHORIZATION_SERVER_METADATA_PATH =
   "/.well-known/oauth-authorization-server";
@@ -78,6 +79,7 @@ export class OAuthAuthorizationServerMetadataController implements Controller {
           OAUTH_SUPPORTED_CODE_CHALLENGE_METHODS,
         token_endpoint_auth_methods_supported:
           OAUTH_SUPPORTED_TOKEN_ENDPOINT_AUTH_METHODS,
+        scopes_supported: OAUTH_SUPPORTED_SCOPES,
       },
       headers: {
         "Content-Type": "application/json",

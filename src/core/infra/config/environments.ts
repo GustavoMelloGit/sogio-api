@@ -30,6 +30,25 @@ const envSchema = z
       })
       .optional(),
     /**
+     * Public base URL of the stayhub-front, with no trailing slash. It plays
+     * two roles: the destination of the 302 redirect a successful
+     * `/authorize` call issues (the front's consent page, identified only by
+     * the opaque pending-request id — never any OAuth parameter, per the
+     * plan's contract), and, from now on, the one allowed CORS origin for
+     * the protocol and consent routes in production (E8) — replacing the
+     * previous "any https:// origin" wildcard, which was effectively `*`
+     * with credentials enabled. Required outside development, mirroring
+     * `API_BASE_URL`, since there is no trustworthy default once this API is
+     * deployed publicly.
+     */
+    FRONT_BASE_URL: z
+      .string()
+      .trim()
+      .refine(value => !value.endsWith("/"), {
+        message: "FRONT_BASE_URL must not have a trailing slash",
+      })
+      .optional(),
+    /**
      * Whether the process sits behind a trusted reverse proxy. Absent (or any
      * value other than the literal string "true") means untrusted: caller
      * identity for rate limiting is resolved solely from the Bun peer IP, and
@@ -44,6 +63,10 @@ const envSchema = z
   .refine(data => data.NODE_ENV === "development" || !!data.API_BASE_URL, {
     message: "API_BASE_URL is required outside development",
     path: ["API_BASE_URL"],
+  })
+  .refine(data => data.NODE_ENV === "development" || !!data.FRONT_BASE_URL, {
+    message: "FRONT_BASE_URL is required outside development",
+    path: ["FRONT_BASE_URL"],
   });
 
 export const env = envSchema.parse(process.env);
@@ -56,3 +79,10 @@ export const env = envSchema.parse(process.env);
  * `env.API_BASE_URL` directly, to avoid re-deriving the same fallback.
  */
 export const apiBaseUrl = env.API_BASE_URL ?? `http://localhost:${env.PORT}`;
+
+/**
+ * `FRONT_BASE_URL` resolved to a usable value, falling back to a
+ * conventional local dev server address only in development — the one
+ * environment where the schema above still allows it to be absent.
+ */
+export const frontBaseUrl = env.FRONT_BASE_URL ?? "http://localhost:5173";

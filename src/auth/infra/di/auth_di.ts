@@ -7,6 +7,7 @@ import { RegisterUserUseCase } from "../../application/use_case/register_user";
 import { SignInUseCase } from "../../application/use_case/sign_in";
 import { PurgeUserDataUseCase } from "../../application/use_case/purge_user_data";
 import { RegisterAppUseCase } from "../../application/use_case/register_app";
+import { InitiateAuthorizationUseCase } from "../../application/use_case/initiate_authorization";
 import { GetUserController } from "../../presentation/controller/auth/get_user.controller";
 import { RegisterUserController } from "../../presentation/controller/auth/register_user.controller";
 import { SignInController } from "../../presentation/controller/auth/sign_in.controller";
@@ -16,6 +17,10 @@ import type { AuthRepository } from "../../domain/repository/auth_repository";
 import { AuthPostgresRepository } from "../database/postgres_repository/auth_postgres_repository";
 import type { AppRegistrationRepository } from "../../domain/repository/delegated_access/app_registration_repository";
 import { AppRegistrationPostgresRepository } from "../database/postgres_repository/delegated_access/app_registration_postgres_repository";
+import type { AuthorizationRequestRepository } from "../../domain/repository/delegated_access/authorization_request_repository";
+import { AuthorizationRequestPostgresRepository } from "../database/postgres_repository/delegated_access/authorization_request_postgres_repository";
+import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
+import { CryptoDelegatedSecretService } from "../service/crypto_delegated_secret_service";
 import {
   OAuthProtectedResourceMetadataController,
   OAUTH_PROTECTED_RESOURCE_METADATA_PATH,
@@ -23,6 +28,7 @@ import {
 } from "../../presentation/controller/delegated_access/oauth_protected_resource_metadata.controller";
 import { OAuthAuthorizationServerMetadataController } from "../../presentation/controller/delegated_access/oauth_authorization_server_metadata.controller";
 import { RegisterAppController } from "../../presentation/controller/delegated_access/register_app.controller";
+import { AuthorizeController } from "../../presentation/controller/delegated_access/authorize.controller";
 import type { Logger } from "../../../core/application/logger/logger";
 import { CoreDi } from "../../../core/infra/di/core_di";
 
@@ -31,6 +37,8 @@ export class AuthDi {
   #hasher: Hasher;
   #sessionManager: ISessionManager;
   #appRegistrationRepository: AppRegistrationRepository;
+  #authorizationRequestRepository: AuthorizationRequestRepository;
+  #delegatedSecretService: DelegatedSecretService;
   #logger: Logger;
 
   constructor() {
@@ -38,6 +46,9 @@ export class AuthDi {
     this.#hasher = new BunHasher();
     this.#sessionManager = new SessionManager();
     this.#appRegistrationRepository = new AppRegistrationPostgresRepository();
+    this.#authorizationRequestRepository =
+      new AuthorizationRequestPostgresRepository();
+    this.#delegatedSecretService = new CryptoDelegatedSecretService();
     this.#logger = new CoreDi().makeLogger();
   }
 
@@ -104,5 +115,21 @@ export class AuthDi {
 
   makeRegisterAppController() {
     return new RegisterAppController(this.makeRegisterAppUseCase());
+  }
+
+  // Delegated Access — start of authorization, E2's ordered validation (task 9)
+  makeInitiateAuthorizationUseCase() {
+    return new InitiateAuthorizationUseCase(
+      this.#appRegistrationRepository,
+      this.#authorizationRequestRepository,
+      this.#delegatedSecretService
+    );
+  }
+
+  makeAuthorizeController() {
+    return new AuthorizeController(
+      this.makeInitiateAuthorizationUseCase(),
+      this.#logger
+    );
   }
 }

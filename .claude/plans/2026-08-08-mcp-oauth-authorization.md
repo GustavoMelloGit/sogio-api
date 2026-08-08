@@ -886,12 +886,55 @@ rotacionada há mais de uma geração é reuso, sem graça.
    projeto não tem nenhuma infraestrutura de job/cron hoje. Rate limit por IP
    (E5) declarado no controller.
    - Dependencies: tasks 4, 5, 6
-9. **Início da autorização e pedido pendente** — implementar a **ordem de
-   validação de E2 na sequência especificada**, com o modo de erro (A/B) correto
-   em cada passo, incluindo `redirect_uri` ausente e registro expurgado; tela de
-   erro do Modo A **sem link e sem navegação de qualquer natureza**; comparação
-   de `redirect_uri` conforme **E3**; criação do pedido com TTL; redirect para o
-   front; atalho de reconexão quando já há consentimento vigente.
+9. ~~**Início da autorização e pedido pendente**~~ — **Concluída
+   (2026-08-08)**: `GET /authorize` (`AuthorizeController` +
+   `InitiateAuthorizationUseCase`) implementa a ordem exaustiva de E2 passo a
+   passo. O controller cobre o passo 0 (`rateLimitPolicy` por IP) e o passo 1
+   (E1): reparsing próprio de `request.url` com `URLSearchParams`, nunca o
+   `request.query` já deduplicado pelo adaptador, falhando em Modo A
+   (`invalid_request`) na primeira chave repetida, antes de qualquer outra
+   validação. Os passos 2-11 vivem no use case, que devolve um resultado
+   estruturado (`mode: "A" | "B" | "success"`) em vez de lançar — nada nesta
+   rota passa pelo `ValidationError`/pipeline de erro padrão do adaptador.
+   `client_id` mal formado ou inexistente (passos 2-3) e `redirect_uri`
+   ausente ou fora do registro (passos 4-5, com **um registro expurgado
+   caindo no mesmo `invalid_client` de um `client_id` desconhecido**, e sem o
+   atalho de "usa a URI única registrada" quando ausente) são Modo A; a
+   partir do passo 6 (`response_type`, PKCE `S256`, `scope`, `resource`,
+   tamanho de `state`) é Modo B, com `error`/`error_description`/`state`
+   ecoados no redirect já validado. A tela do Modo A
+   (`oauth_authorize_error_page.ts`) é HTML estático sem `<a>`, sem botão,
+   sem `Location`, sem meta refresh e sem script; a `errorDescription`
+   exibida é sempre uma string fixa do próprio código, nunca o valor
+   recusado, e ainda passa por escape defensivo. A comparação de
+   `redirect_uri` (E3) ganhou `redirectUriMatches()` em `redirect_uri_policy.ts`:
+   `===` estrita entre a string registrada e o valor decodificado uma vez
+   pela URL, com a única exceção de loopback (`127.0.0.1`, `[::1]`,
+   `localhost`) comparando esquema+host+caminho+query e ignorando a porta;
+   host remoto e esquema customizado continuam em igualdade absoluta, porta
+   inclusive. Sucesso cria o Pedido de Autorização com TTL de 10 minutos,
+   identificador opaco gerado por `DelegatedSecretService` (persiste só o
+   digest) e redireciona 302 para `${FRONT_BASE_URL}/connect/authorize` com
+   apenas `request_id` — nenhum parâmetro OAuth chega ao front. O escopo
+   único da v1 foi centralizado em `oauth_scope_policy.ts` (domínio, não a
+   controller de metadata) para ser reutilizável pelas tasks 10/11 sem um
+   use case importar de `presentation/`; o metadata do authorization server
+   passou a anunciar `scopes_supported` a partir da mesma constante. Log por
+   allowlist (E7) no controller: `endpoint`, `result`, `client_id`, `error`
+   (quando houver), `rate_limit_key` (o peer IP) e `redirect_host` (nunca a
+   URL completa). Nova config `FRONT_BASE_URL` em `environments.ts`
+   (obrigatória fora de `development`, sem barra final) — é o destino do
+   redirect de consentimento **e**, com essa config existindo, a origem CORS
+   exata em produção: `cors.middleware.ts` trocou o `https://*` (efetivamente
+   `*` com credenciais) por `frontBaseUrl` com igualdade exata (não mais
+   `startsWith`), preservando a exceção pública sem credenciais dos dois
+   documentos de metadata e o wildcard de `localhost` em desenvolvimento. O
+   atalho de reconexão **não** foi implementado no `/authorize` — decisão do
+   Orquestrador registrada na dispatch desta task: a autenticação do app é
+   JWT Bearer, não cookie, então esta rota (navegação de browser) não tem
+   como enxergar sessão do usuário; o atalho fica inteiro na task 10, que já
+   tem o dado necessário disponível via `ConsentRepository.findByUserAndApp`
+   (task 5, sem alteração).
    - Dependencies: tasks 4, 5, 8
 10. **Endpoints de consumo do front** — consulta do pedido pendente por
     identificador opaco (dados de exibição, nada sensível, **host em punycode —
