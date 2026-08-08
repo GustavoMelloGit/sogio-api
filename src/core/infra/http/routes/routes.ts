@@ -153,6 +153,13 @@ const discoveryControllers: Route[] = [
   },
 ];
 
+const delegatedAccessControllers: Route[] = [
+  {
+    authenticated: false,
+    controller: authDi.makeRegisterAppController(),
+  },
+];
+
 const backofficeControllers: Route[] = [
   {
     authenticated: true,
@@ -188,6 +195,7 @@ const controllers = [
   ...propertyControllers,
   ...authControllers,
   ...discoveryControllers,
+  ...delegatedAccessControllers,
   ...stayControllers,
   ...financeControllers,
   ...propertyManagementControllers,

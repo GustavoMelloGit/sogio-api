@@ -22,6 +22,25 @@ export const OAUTH_TOKEN_ENDPOINT_PATH = "/token";
 export const OAUTH_REGISTRATION_ENDPOINT_PATH = "/register";
 export const OAUTH_REVOCATION_ENDPOINT_PATH = "/revoke";
 
+/**
+ * Closed vocabulary this authorization server supports, announced here and
+ * nowhere else. `/register` (task 8) imports these same constants to reject
+ * a `grant_types`/`response_types`/`token_endpoint_auth_method` outside of
+ * what the metadata document advertises — the two can't drift apart because
+ * there is only one array in memory for each.
+ */
+export const OAUTH_SUPPORTED_RESPONSE_TYPES: readonly string[] = ["code"];
+export const OAUTH_SUPPORTED_GRANT_TYPES: readonly string[] = [
+  "authorization_code",
+  "refresh_token",
+];
+export const OAUTH_SUPPORTED_CODE_CHALLENGE_METHODS: readonly string[] = [
+  "S256",
+];
+export const OAUTH_SUPPORTED_TOKEN_ENDPOINT_AUTH_METHODS: readonly string[] = [
+  "none",
+];
+
 const CACHE_CONTROL = "public, max-age=21600";
 
 /**
@@ -53,10 +72,12 @@ export class OAuthAuthorizationServerMetadataController implements Controller {
         token_endpoint: `${issuer}${OAUTH_TOKEN_ENDPOINT_PATH}`,
         registration_endpoint: `${issuer}${OAUTH_REGISTRATION_ENDPOINT_PATH}`,
         revocation_endpoint: `${issuer}${OAUTH_REVOCATION_ENDPOINT_PATH}`,
-        response_types_supported: ["code"],
-        grant_types_supported: ["authorization_code", "refresh_token"],
-        code_challenge_methods_supported: ["S256"],
-        token_endpoint_auth_methods_supported: ["none"],
+        response_types_supported: OAUTH_SUPPORTED_RESPONSE_TYPES,
+        grant_types_supported: OAUTH_SUPPORTED_GRANT_TYPES,
+        code_challenge_methods_supported:
+          OAUTH_SUPPORTED_CODE_CHALLENGE_METHODS,
+        token_endpoint_auth_methods_supported:
+          OAUTH_SUPPORTED_TOKEN_ENDPOINT_AUTH_METHODS,
       },
       headers: {
         "Content-Type": "application/json",

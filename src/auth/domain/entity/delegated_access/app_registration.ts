@@ -3,10 +3,25 @@ import {
   type WithoutBaseEntity,
 } from "../../../../core/domain/entity/base_entity";
 import { z } from "zod";
+import { hasUnsafeDisplayNameCharacters } from "../../service/app_display_name_policy";
+
+/** RFC 7591 registration limits (E9's "limites de tamanho e cardinalidade"). */
+export const MAX_CLIENT_NAME_LENGTH = 255;
+export const MAX_REDIRECT_URI_LENGTH = 2048;
+export const MAX_REDIRECT_URIS = 10;
 
 export const appRegistrationSchema = baseEntitySchema.extend({
-  client_name: z.string().min(1).max(255),
-  redirect_uris: z.array(z.string().min(1).max(2048)).min(1),
+  client_name: z
+    .string()
+    .min(1)
+    .max(MAX_CLIENT_NAME_LENGTH)
+    .refine(name => !hasUnsafeDisplayNameCharacters(name), {
+      message: "client_name contains disallowed characters",
+    }),
+  redirect_uris: z
+    .array(z.string().min(1).max(MAX_REDIRECT_URI_LENGTH))
+    .min(1)
+    .max(MAX_REDIRECT_URIS),
   token_endpoint_auth_method: z.literal("none").default("none"),
 });
 

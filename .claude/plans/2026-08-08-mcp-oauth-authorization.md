@@ -861,12 +861,30 @@ rotacionada há mais de uma geração é reuso, sem graça.
    cacheáveis, com issuer exato. **Únicas rotas cacheáveis e de CORS público sem
    credenciais (E8)**; não anunciam endpoints de RFC 7592 (E6).
    - Dependencies: task 4
-8. **Registro dinâmico de aplicativo** — método de autenticação restrito a
-   cliente público (confidencial é rejeitado), limites de tamanho e
-   cardinalidade, expurgo de registros sem uso. Validação de `redirect_uri`
-   conforme **E3** (lista de rejeição, loopback, esquema customizado) e
-   antiphishing conforme **E6** (bidi/controle proibidos no nome, `logo_uri`
-   rejeitado, RFC 7592 fora de escopo).
+8. ~~**Registro dinâmico de aplicativo**~~ — **Concluída (2026-08-08)**:
+   `POST /register` (`RegisterAppController` + `RegisterAppUseCase`) valida
+   tudo à mão, sem o `inputSchema`/pipeline genérico de validação — uma falha
+   aqui nunca vira `ValidationError` propagada pelo adaptador, porque isso
+   responderia no formato `{ message }` da API e poderia carregar detalhe de
+   Zod (violaria E7). Só cliente público é aceito
+   (`token_endpoint_auth_method` ausente ou `"none"`; qualquer outro valor é
+   `invalid_client_metadata`). `logo_uri` é rejeitado, não ignorado; `client_name`
+   passa por um filtro de bidi/controle/null byte novo (`app_display_name_policy.ts`,
+   reaproveitado pelo invariante da entidade). `redirect_uris` ganhou teto de
+   cardinalidade e tamanho no schema da entidade (`MAX_REDIRECT_URIS`,
+   `MAX_REDIRECT_URI_LENGTH`) e cada URI passa pela lista de rejeição de E3
+   (`redirect_uri_policy.ts`: relativa, fragmento, esquema perigoso,
+   credenciais embutidas, curinga, `http://` não-loopback; string armazenada
+   sem nenhuma normalização). `grant_types`/`response_types` são validados
+   contra o mesmo vocabulário fechado que o metadata anuncia — as constantes
+   foram extraídas para `oauth_authorization_server_metadata.controller.ts` e
+   importadas por ambos, para não divergir. Erros seguem o formato OAuth
+   (`error`/`error_description`, `no-store`) via o novo `oauth_error_response.ts`,
+   nunca o formato padrão da API. RFC 7592 não é implementado nem anunciado.
+   Expurgo de E9 (`deleteUnusedRegisteredBefore`) é acionado pelo próprio
+   tráfego de `/register`, best-effort, sem introduzir scheduler novo — o
+   projeto não tem nenhuma infraestrutura de job/cron hoje. Rate limit por IP
+   (E5) declarado no controller.
    - Dependencies: tasks 4, 5, 6
 9. **Início da autorização e pedido pendente** — implementar a **ordem de
    validação de E2 na sequência especificada**, com o modo de erro (A/B) correto
