@@ -1109,18 +1109,17 @@ rotacionada há mais de uma geração é reuso, sem graça.
     passar no schema Zod, uma solução mais obscura para revisar do que uma
     coluna nula-por-padrão com propósito óbvio.
 
-    **PKCE (`pkce_policy.ts`, novo)**: `verifyPkceS256(code_verifier,
-code_challenge)` — `BASE64URL(SHA256(code_verifier))` comparado a
-    `code_challenge` via `crypto.timingSafeEqual` (tempo constante, guardado
-    por uma checagem de tamanho antes). `plain` nunca chega aqui — já
-    rejeitado no `/authorize` (E2 passo 7); todo `code_challenge` persistido
-    já é S256.
+    **PKCE (`pkce_policy.ts`, novo)**: `verifyPkceS256` compara
+    `BASE64URL(SHA256(code_verifier))` a `code_challenge` via
+    `crypto.timingSafeEqual` (tempo constante, guardado por uma checagem de
+    tamanho antes). `plain` nunca chega aqui — já rejeitado no `/authorize`
+    (E2 passo 7); todo `code_challenge` persistido já é S256.
 
-    **Revalidação de E3 na troca**: `claimed.app_registration_id !==
-clientId` e `!redirectUriMatches(claimed.redirect_uri, redirectUri)` —
-    reaproveitando `redirect_uri_policy.ts` sem alteração — barram a troca.
-    Auditoria adicional de vinculação ao recurso: `claimed.resource !==
-expectedResource` também barra (defesa em profundidade; `/authorize` já
+    **Revalidação de E3 na troca**: `client_id` diferente do que originou o
+    código, ou `redirect_uri` que não bate via `redirectUriMatches` (mesma
+    função de `redirect_uri_policy.ts`, sem alteração), barram a troca.
+    Auditoria adicional de vinculação ao recurso: `resource` diferente do
+    canônico também barra (defesa em profundidade; `/authorize` já
     garante que só o `/mcp` canônico chega até aqui). Todas essas falhas, mais
     código inexistente/expirado/PKCE incorreto, convergem para o **mesmo**
     `{ outcome: "invalid_grant" }` (`TokenExchangeResult`, tipo compartilhado
