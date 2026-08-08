@@ -73,6 +73,13 @@ export class ConsentPostgresRepository implements ConsentRepository {
     return row ? Consent.reconstitute(rowToConsentData(row)) : null;
   }
 
+  async touchLastUsedAt(id: string): Promise<void> {
+    await db
+      .update(consentsTable)
+      .set({ last_used_at: new Date(), updated_at: new Date() })
+      .where(eq(consentsTable.id, id));
+  }
+
   async revoke(id: string): Promise<void> {
     await db
       .update(consentsTable)

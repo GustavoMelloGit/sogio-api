@@ -820,129 +820,230 @@ rotacionada há mais de uma geração é reuso, sem graça.
 
 ## Tasks
 
-1. ~~**Decidir os pontos pendentes**~~ — **Resolvida (2026-08-08)**: os 10 pontos
-   foram decididos pelo usuário; sete conforme a recomendação do Arquiteto e três
-   com decisão explícita. Ver **Decisões Resolvidas**. Nenhuma task permanece
-   bloqueada por decisão.
-   - Dependencies: none
-2. ~~**Revisão de contrato pelo Analista de Segurança**~~ — **Concluída
-   (2026-08-08)**: 5 achados críticos e 9 moderados. O crítico de LGPD
-   (minimização de dado de hóspede) foi **deferido por decisão do usuário** e
-   está em Dívidas; os demais estão fechados como especificação normativa na
-   seção **Especificação de Segurança do Protocolo (E1–E10)**.
-   - Dependencies: none
-3. **Autenticação na fronteira do transporte MCP** — mover a resolução de
-   identidade do handler de tool para o portão do `/mcp`; falha vira 401 com
-   `WWW-Authenticate` conforme RFC 9728; tools passam a receber o solicitante já
-   resolvido. Refatoração estrutural apenas: a credencial continua sendo a atual,
-   agora atrás da abstração de verificação que a task 13 substitui.
-   - Dependencies: none
-4. **Contrato de resposta HTTP explícita** — controller pode devolver status,
-   headers e corpo próprios; leitura de corpo form-urlencoded; **fonte única de
-   parâmetro declarável e detecção de duplicata (E1)**; **propagação do `server`
-   do Bun / IP de peer, hoje descartado (E5)**; **log por allowlist, sem o objeto
-   de erro inteiro (E7)**; **`no-store` por padrão nas rotas do protocolo (E8)**.
-   Comportamento atual das demais rotas preservado.
-   - Dependencies: none
-5. **Modelo de dados do acesso delegado** — agregados, repositórios e tabelas:
-   registro de aplicativo, consentimento, pedido de autorização, código,
-   credenciais. Invariantes de expiração, uso único, rotação e cascata.
-   Inclui: **coluna de consumo que sustenta a reivindicação atômica (E4)**,
-   **índice único por digest e segredo ≥ 32 bytes CSPRNG com SHA-256 sem salt
-   (E10)**, e as **colunas de vida absoluta, inatividade e expurgo (E9)**.
-   - Dependencies: none
-6. **Primitiva de rate limiting** — genérica, em `src/core`, aplicada por política
-   declarada na rota. Sem conhecimento de OAuth. Conforme **E5**: identidade pelo
-   IP de peer real do Bun, `X-Forwarded-For` só com proxy confiável configurado,
-   teto de chaves com expurgo e **fail-closed** ao atingir o teto.
-   - Dependencies: task 4 _(precisa do IP propagado pelo adaptador)_
-7. **Documentos de descoberta** — metadata do resource server (caminho canônico
-   e variante com o caminho do recurso) e do authorization server, públicos e
-   cacheáveis, com issuer exato. **Únicas rotas cacheáveis e de CORS público sem
-   credenciais (E8)**; não anunciam endpoints de RFC 7592 (E6).
-   - Dependencies: task 4
-8. ~~**Registro dinâmico de aplicativo**~~ — **Concluída (2026-08-08)**:
-   `POST /register` (`RegisterAppController` + `RegisterAppUseCase`) valida
-   tudo à mão, sem o `inputSchema`/pipeline genérico de validação — uma falha
-   aqui nunca vira `ValidationError` propagada pelo adaptador, porque isso
-   responderia no formato `{ message }` da API e poderia carregar detalhe de
-   Zod (violaria E7). Só cliente público é aceito
-   (`token_endpoint_auth_method` ausente ou `"none"`; qualquer outro valor é
-   `invalid_client_metadata`). `logo_uri` é rejeitado, não ignorado; `client_name`
-   passa por um filtro de bidi/controle/null byte novo (`app_display_name_policy.ts`,
-   reaproveitado pelo invariante da entidade). `redirect_uris` ganhou teto de
-   cardinalidade e tamanho no schema da entidade (`MAX_REDIRECT_URIS`,
-   `MAX_REDIRECT_URI_LENGTH`) e cada URI passa pela lista de rejeição de E3
-   (`redirect_uri_policy.ts`: relativa, fragmento, esquema perigoso,
-   credenciais embutidas, curinga, `http://` não-loopback; string armazenada
-   sem nenhuma normalização). `grant_types`/`response_types` são validados
-   contra o mesmo vocabulário fechado que o metadata anuncia — as constantes
-   foram extraídas para `oauth_authorization_server_metadata.controller.ts` e
-   importadas por ambos, para não divergir. Erros seguem o formato OAuth
-   (`error`/`error_description`, `no-store`) via o novo `oauth_error_response.ts`,
-   nunca o formato padrão da API. RFC 7592 não é implementado nem anunciado.
-   Expurgo de E9 (`deleteUnusedRegisteredBefore`) é acionado pelo próprio
-   tráfego de `/register`, best-effort, sem introduzir scheduler novo — o
-   projeto não tem nenhuma infraestrutura de job/cron hoje. Rate limit por IP
-   (E5) declarado no controller.
-   - Dependencies: tasks 4, 5, 6
-9. ~~**Início da autorização e pedido pendente**~~ — **Concluída
-   (2026-08-08)**: `GET /authorize` (`AuthorizeController` +
-   `InitiateAuthorizationUseCase`) implementa a ordem exaustiva de E2 passo a
-   passo. O controller cobre o passo 0 (`rateLimitPolicy` por IP) e o passo 1
-   (E1): reparsing próprio de `request.url` com `URLSearchParams`, nunca o
-   `request.query` já deduplicado pelo adaptador, falhando em Modo A
-   (`invalid_request`) na primeira chave repetida, antes de qualquer outra
-   validação. Os passos 2-11 vivem no use case, que devolve um resultado
-   estruturado (`mode: "A" | "B" | "success"`) em vez de lançar — nada nesta
-   rota passa pelo `ValidationError`/pipeline de erro padrão do adaptador.
-   `client_id` mal formado ou inexistente (passos 2-3) e `redirect_uri`
-   ausente ou fora do registro (passos 4-5, com **um registro expurgado
-   caindo no mesmo `invalid_client` de um `client_id` desconhecido**, e sem o
-   atalho de "usa a URI única registrada" quando ausente) são Modo A; a
-   partir do passo 6 (`response_type`, PKCE `S256`, `scope`, `resource`,
-   tamanho de `state`) é Modo B, com `error`/`error_description`/`state`
-   ecoados no redirect já validado. A tela do Modo A
-   (`oauth_authorize_error_page.ts`) é HTML estático sem `<a>`, sem botão,
-   sem `Location`, sem meta refresh e sem script; a `errorDescription`
-   exibida é sempre uma string fixa do próprio código, nunca o valor
-   recusado, e ainda passa por escape defensivo. A comparação de
-   `redirect_uri` (E3) ganhou `redirectUriMatches()` em `redirect_uri_policy.ts`:
-   `===` estrita entre a string registrada e o valor decodificado uma vez
-   pela URL, com a única exceção de loopback (`127.0.0.1`, `[::1]`,
-   `localhost`) comparando esquema+host+caminho+query e ignorando a porta;
-   host remoto e esquema customizado continuam em igualdade absoluta, porta
-   inclusive. Sucesso cria o Pedido de Autorização com TTL de 10 minutos,
-   identificador opaco gerado por `DelegatedSecretService` (persiste só o
-   digest) e redireciona 302 para `${FRONT_BASE_URL}/connect/authorize` com
-   apenas `request_id` — nenhum parâmetro OAuth chega ao front. O escopo
-   único da v1 foi centralizado em `oauth_scope_policy.ts` (domínio, não a
-   controller de metadata) para ser reutilizável pelas tasks 10/11 sem um
-   use case importar de `presentation/`; o metadata do authorization server
-   passou a anunciar `scopes_supported` a partir da mesma constante. Log por
-   allowlist (E7) no controller: `endpoint`, `result`, `client_id`, `error`
-   (quando houver), `rate_limit_key` (o peer IP) e `redirect_host` (nunca a
-   URL completa). Nova config `FRONT_BASE_URL` em `environments.ts`
-   (obrigatória fora de `development`, sem barra final) — é o destino do
-   redirect de consentimento **e**, com essa config existindo, a origem CORS
-   exata em produção: `cors.middleware.ts` trocou o `https://*` (efetivamente
-   `*` com credenciais) por `frontBaseUrl` com igualdade exata (não mais
-   `startsWith`), preservando a exceção pública sem credenciais dos dois
-   documentos de metadata e o wildcard de `localhost` em desenvolvimento. O
-   atalho de reconexão **não** foi implementado no `/authorize` — decisão do
-   Orquestrador registrada na dispatch desta task: a autenticação do app é
-   JWT Bearer, não cookie, então esta rota (navegação de browser) não tem
-   como enxergar sessão do usuário; o atalho fica inteiro na task 10, que já
-   tem o dado necessário disponível via `ConsentRepository.findByUserAndApp`
-   (task 5, sem alteração).
-   - Dependencies: tasks 4, 5, 8
-10. **Endpoints de consumo do front** — consulta do pedido pendente por
-    identificador opaco (dados de exibição, nada sensível, **host em punycode —
-    E6**) e decisão de aprovar/negar autenticada pela sessão do app, emitindo o
-    código e devolvendo a URL de destino montada a partir do registro.
-    **Reivindicação atômica do pedido (E4)**; pedido consumido ou expirado é
-    **Modo A na tela do front, sem redirect (E2)**.
+1.  ~~**Decidir os pontos pendentes**~~ — **Resolvida (2026-08-08)**: os 10 pontos
+    foram decididos pelo usuário; sete conforme a recomendação do Arquiteto e três
+    com decisão explícita. Ver **Decisões Resolvidas**. Nenhuma task permanece
+    bloqueada por decisão.
+    - Dependencies: none
+2.  ~~**Revisão de contrato pelo Analista de Segurança**~~ — **Concluída
+    (2026-08-08)**: 5 achados críticos e 9 moderados. O crítico de LGPD
+    (minimização de dado de hóspede) foi **deferido por decisão do usuário** e
+    está em Dívidas; os demais estão fechados como especificação normativa na
+    seção **Especificação de Segurança do Protocolo (E1–E10)**.
+    - Dependencies: none
+3.  **Autenticação na fronteira do transporte MCP** — mover a resolução de
+    identidade do handler de tool para o portão do `/mcp`; falha vira 401 com
+    `WWW-Authenticate` conforme RFC 9728; tools passam a receber o solicitante já
+    resolvido. Refatoração estrutural apenas: a credencial continua sendo a atual,
+    agora atrás da abstração de verificação que a task 13 substitui.
+    - Dependencies: none
+4.  **Contrato de resposta HTTP explícita** — controller pode devolver status,
+    headers e corpo próprios; leitura de corpo form-urlencoded; **fonte única de
+    parâmetro declarável e detecção de duplicata (E1)**; **propagação do `server`
+    do Bun / IP de peer, hoje descartado (E5)**; **log por allowlist, sem o objeto
+    de erro inteiro (E7)**; **`no-store` por padrão nas rotas do protocolo (E8)**.
+    Comportamento atual das demais rotas preservado.
+    - Dependencies: none
+5.  **Modelo de dados do acesso delegado** — agregados, repositórios e tabelas:
+    registro de aplicativo, consentimento, pedido de autorização, código,
+    credenciais. Invariantes de expiração, uso único, rotação e cascata.
+    Inclui: **coluna de consumo que sustenta a reivindicação atômica (E4)**,
+    **índice único por digest e segredo ≥ 32 bytes CSPRNG com SHA-256 sem salt
+    (E10)**, e as **colunas de vida absoluta, inatividade e expurgo (E9)**.
+    - Dependencies: none
+6.  **Primitiva de rate limiting** — genérica, em `src/core`, aplicada por política
+    declarada na rota. Sem conhecimento de OAuth. Conforme **E5**: identidade pelo
+    IP de peer real do Bun, `X-Forwarded-For` só com proxy confiável configurado,
+    teto de chaves com expurgo e **fail-closed** ao atingir o teto.
+    - Dependencies: task 4 _(precisa do IP propagado pelo adaptador)_
+7.  **Documentos de descoberta** — metadata do resource server (caminho canônico
+    e variante com o caminho do recurso) e do authorization server, públicos e
+    cacheáveis, com issuer exato. **Únicas rotas cacheáveis e de CORS público sem
+    credenciais (E8)**; não anunciam endpoints de RFC 7592 (E6).
+    - Dependencies: task 4
+8.  ~~**Registro dinâmico de aplicativo**~~ — **Concluída (2026-08-08)**:
+    `POST /register` (`RegisterAppController` + `RegisterAppUseCase`) valida
+    tudo à mão, sem o `inputSchema`/pipeline genérico de validação — uma falha
+    aqui nunca vira `ValidationError` propagada pelo adaptador, porque isso
+    responderia no formato `{ message }` da API e poderia carregar detalhe de
+    Zod (violaria E7). Só cliente público é aceito
+    (`token_endpoint_auth_method` ausente ou `"none"`; qualquer outro valor é
+    `invalid_client_metadata`). `logo_uri` é rejeitado, não ignorado; `client_name`
+    passa por um filtro de bidi/controle/null byte novo (`app_display_name_policy.ts`,
+    reaproveitado pelo invariante da entidade). `redirect_uris` ganhou teto de
+    cardinalidade e tamanho no schema da entidade (`MAX_REDIRECT_URIS`,
+    `MAX_REDIRECT_URI_LENGTH`) e cada URI passa pela lista de rejeição de E3
+    (`redirect_uri_policy.ts`: relativa, fragmento, esquema perigoso,
+    credenciais embutidas, curinga, `http://` não-loopback; string armazenada
+    sem nenhuma normalização). `grant_types`/`response_types` são validados
+    contra o mesmo vocabulário fechado que o metadata anuncia — as constantes
+    foram extraídas para `oauth_authorization_server_metadata.controller.ts` e
+    importadas por ambos, para não divergir. Erros seguem o formato OAuth
+    (`error`/`error_description`, `no-store`) via o novo `oauth_error_response.ts`,
+    nunca o formato padrão da API. RFC 7592 não é implementado nem anunciado.
+    Expurgo de E9 (`deleteUnusedRegisteredBefore`) é acionado pelo próprio
+    tráfego de `/register`, best-effort, sem introduzir scheduler novo — o
+    projeto não tem nenhuma infraestrutura de job/cron hoje. Rate limit por IP
+    (E5) declarado no controller.
+    - Dependencies: tasks 4, 5, 6
+9.  ~~**Início da autorização e pedido pendente**~~ — **Concluída
+    (2026-08-08)**: `GET /authorize` (`AuthorizeController` +
+    `InitiateAuthorizationUseCase`) implementa a ordem exaustiva de E2 passo a
+    passo. O controller cobre o passo 0 (`rateLimitPolicy` por IP) e o passo 1
+    (E1): reparsing próprio de `request.url` com `URLSearchParams`, nunca o
+    `request.query` já deduplicado pelo adaptador, falhando em Modo A
+    (`invalid_request`) na primeira chave repetida, antes de qualquer outra
+    validação. Os passos 2-11 vivem no use case, que devolve um resultado
+    estruturado (`mode: "A" | "B" | "success"`) em vez de lançar — nada nesta
+    rota passa pelo `ValidationError`/pipeline de erro padrão do adaptador.
+    `client_id` mal formado ou inexistente (passos 2-3) e `redirect_uri`
+    ausente ou fora do registro (passos 4-5, com **um registro expurgado
+    caindo no mesmo `invalid_client` de um `client_id` desconhecido**, e sem o
+    atalho de "usa a URI única registrada" quando ausente) são Modo A; a
+    partir do passo 6 (`response_type`, PKCE `S256`, `scope`, `resource`,
+    tamanho de `state`) é Modo B, com `error`/`error_description`/`state`
+    ecoados no redirect já validado. A tela do Modo A
+    (`oauth_authorize_error_page.ts`) é HTML estático sem `<a>`, sem botão,
+    sem `Location`, sem meta refresh e sem script; a `errorDescription`
+    exibida é sempre uma string fixa do próprio código, nunca o valor
+    recusado, e ainda passa por escape defensivo. A comparação de
+    `redirect_uri` (E3) ganhou `redirectUriMatches()` em `redirect_uri_policy.ts`:
+    `===` estrita entre a string registrada e o valor decodificado uma vez
+    pela URL, com a única exceção de loopback (`127.0.0.1`, `[::1]`,
+    `localhost`) comparando esquema+host+caminho+query e ignorando a porta;
+    host remoto e esquema customizado continuam em igualdade absoluta, porta
+    inclusive. Sucesso cria o Pedido de Autorização com TTL de 10 minutos,
+    identificador opaco gerado por `DelegatedSecretService` (persiste só o
+    digest) e redireciona 302 para `${FRONT_BASE_URL}/connect/authorize` com
+    apenas `request_id` — nenhum parâmetro OAuth chega ao front. O escopo
+    único da v1 foi centralizado em `oauth_scope_policy.ts` (domínio, não a
+    controller de metadata) para ser reutilizável pelas tasks 10/11 sem um
+    use case importar de `presentation/`; o metadata do authorization server
+    passou a anunciar `scopes_supported` a partir da mesma constante. Log por
+    allowlist (E7) no controller: `endpoint`, `result`, `client_id`, `error`
+    (quando houver), `rate_limit_key` (o peer IP) e `redirect_host` (nunca a
+    URL completa). Nova config `FRONT_BASE_URL` em `environments.ts`
+    (obrigatória fora de `development`, sem barra final) — é o destino do
+    redirect de consentimento **e**, com essa config existindo, a origem CORS
+    exata em produção: `cors.middleware.ts` trocou o `https://*` (efetivamente
+    `*` com credenciais) por `frontBaseUrl` com igualdade exata (não mais
+    `startsWith`), preservando a exceção pública sem credenciais dos dois
+    documentos de metadata e o wildcard de `localhost` em desenvolvimento. O
+    atalho de reconexão **não** foi implementado no `/authorize` — decisão do
+    Orquestrador registrada na dispatch desta task: a autenticação do app é
+    JWT Bearer, não cookie, então esta rota (navegação de browser) não tem
+    como enxergar sessão do usuário; o atalho fica inteiro na task 10, que já
+    tem o dado necessário disponível via `ConsentRepository.findByUserAndApp`
+    (task 5, sem alteração).
+    - Dependencies: tasks 4, 5, 8
+10. ~~**Endpoints de consumo do front**~~ — **Concluída (2026-08-08)**:
+    `GET /connect/authorize/pending-request` (controller
+    `GetPendingAuthorizationRequestController`, caso de uso
+    `GetPendingAuthorizationRequestUseCase`) e `POST /connect/authorize/decision`
+    (controller `DecideAuthorizationRequestController`, caso de uso
+    `DecideAuthorizationRequestUseCase`).
+
+    A consulta é pública por necessidade do contrato (o front consulta antes
+    do login), mas nunca cega a um solicitante identificado: um método novo,
+    `AuthMiddleware.handleOptional`, que só envolve `handle()` num try/catch,
+    resolve o usuário a partir de uma sessão que o front já tenha, sem nunca
+    falhar a requisição na ausência ou invalidez do token. `has_existing_consent`
+    só é calculado para esse usuário identificado — nunca "existe consentimento
+    de alguém" — o que resolve a tensão apontada no dispatch sem vazar
+    consentimento de terceiro. A decisão, por sua vez, é autenticada de
+    verdade (`authenticated: true`, JWT Bearer), nunca por parâmetro OAuth.
+    Nenhum dos dois controllers usa `inputSchema`; ambos validam à mão e
+    respondem no formato `oauthProtocolError`, pela mesma razão de E7 já
+    registrada nas tasks 8 e 9 — evitar que o pipeline padrão ecoe o
+    identificador do pedido, que é um segredo, na mensagem de erro.
+    `redirect_host` (E6) é simplesmente `new URL(redirect_uri).hostname` —
+    confirmado em runtime que o Bun aplica IDNA/punycode ao analisar o host
+    de um endereço `http(s)://` (um host cirílico homógrafo vira `xn--...`),
+    sem biblioteca de conversão manual. `app_display_name_verified` vai
+    sempre `false` no contrato de resposta, já que não há caminho de
+    verificação neste subdomínio. A descrição do escopo é uma função nova,
+    `describeScope()`, ao lado da constante do escopo único em
+    `oauth_scope_policy.ts`, para não divergir do que `isSupportedScope` já
+    governa.
+
+    **Reivindicação atômica (E4)**: ao revisar `AuthorizationRequestRepository.claim()`,
+    herdado pronto da task 9, contra o SQL exigido no dispatch, faltava a
+    condição de expiração — a implementação original fazia apenas:
+
+    ```sql
+    UPDATE authorization_requests
+       SET consumed_at = now()
+     WHERE identifier_digest = $1
+       AND consumed_at IS NULL
+    RETURNING *
+    ```
+
+    sem `AND expires_at > now()`, apesar de o próprio docstring da interface
+    já prometer esse comportamento. Corrigido para uma única instrução, sem
+    `SELECT` prévio:
+
+    ```sql
+    UPDATE authorization_requests
+       SET consumed_at = now(), updated_at = now()
+     WHERE identifier_digest = $1
+       AND consumed_at IS NULL
+       AND expires_at > now()
+    RETURNING *
+    ```
+
+    (Drizzle: `and(eq(identifier_digest, $1), isNull(consumed_at), gt(expires_at, new Date()))`).
+    Zero linhas afetadas é tratado uniformemente como "não existe, expirou ou
+    já foi consumido" (Modo A, task 10); nenhum teste existente dependia do
+    comportamento antigo. `DecideAuthorizationRequestUseCase.execute()` chama
+    `claim()` primeiro, sempre — aprovar e negar passam pelo mesmo caminho, o
+    que consome o pedido nos dois casos.
+
+    Negar constrói `error=access_denied`, `error_description` fixa e `state`
+    ecoado sobre o `redirect_uri` do próprio Pedido — nunca de entrada do
+    front; nenhum Consentimento é escrito, nenhum código é emitido. Aprovar
+    resolve o Consentimento reaproveitando um vigente (não revogado), tocando
+    só `last_used_at` através de um método novo, `ConsentRepository.touchLastUsedAt`,
+    análogo a `revoke()`; ou criando um novo quando inexistente ou revogado —
+    uma nova concessão, com novo `granted_at`. Um consentimento reaproveitado
+    nunca tem seu `granted_at` resetado, para que a tela de aplicativos
+    conectados (task 14) mostre a data da concessão original, não a de cada
+    reconexão. Em seguida emite um `AuthorizationCode` com TTL de 60 segundos
+    ("ordem de segundos", decisão 8), carregando `redirect_uri`,
+    `code_challenge`, `scope` e `resource` do Pedido sem alteração, para a
+    revalidação de E3 no `/token` (task 11), e devolve a URL final
+    (`redirect_to` no corpo JSON) com `code` e `state` ecoado, montada sobre o
+    `redirect_uri` **registrado**.
+
+    O atalho de reconexão (decisão da task 9) não ganhou endpoint próprio: é
+    o mesmo `POST /connect/authorize/decision`, mesma reivindicação atômica,
+    chamado silenciosamente pelo front quando `has_existing_consent` vem
+    `true`. A primeira autorização de cada aplicativo nunca passa por esse
+    atalho, porque só existe consentimento vigente depois de uma aprovação
+    explícita anterior.
+
+    Refino colateral: extraído `parseUniqueQueryParams()` (E1) para um arquivo
+    novo, `unique_query_params.ts`, compartilhado entre `AuthorizeController`
+    (refatorado, comportamento inalterado) e o novo controller de consulta —
+    ambos precisavam da mesma checagem de duplicata em query string.
+
+    Log por allowlist (E7) nos dois controllers: `endpoint`, `result`
+    (`approve`/`deny`/`request_not_found` na decisão), `client_id` e
+    `redirect_host` — nunca a URL completa, nunca o identificador do pedido,
+    nunca o código.
+
+    **Observação para o Arquiteto/Revisor**: `AuthorizationCodeRepository.claim()`,
+    usado pela task 11, tem a mesma lacuna que eu corrigi aqui — seu `claim()`
+    também não filtra por `expires_at`, e seu próprio docstring não promete
+    isso (ao contrário do de `AuthorizationRequestRepository`). Não toquei
+    nele por estar fora do escopo desta task, já que só é consumido pelo
+    `/token`, mas fica registrado para quando a task 11 for aberta. Rate
+    limiting não foi adicionado aos dois endpoints novos: a consulta carrega
+    um identificador com 256 bits de entropia, inviável de adivinhar, e a
+    decisão já exige sessão autenticada; E5 não lista nenhum dos dois entre
+    as rotas com dimensão de rate limit exigida, e a diretriz do Desenvolvedor
+    pede para não expandir a primitiva além do que as rotas exigem.
     - Dependencies: task 9
+
 11. **Emissão e renovação de credenciais** — troca de código com verificação de
     PKCE, vinculação ao recurso, digest em repouso, credencial opaca.
     Conforme **E4**: reivindicação atômica com `RETURNING` (nunca `SELECT` +

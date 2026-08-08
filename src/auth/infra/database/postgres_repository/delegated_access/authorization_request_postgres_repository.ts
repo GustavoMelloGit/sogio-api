@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt } from "drizzle-orm";
+import { and, eq, gt, isNull, lt } from "drizzle-orm";
 import {
   AuthorizationRequest,
   type AuthorizationRequestData,
@@ -84,7 +84,8 @@ export class AuthorizationRequestPostgresRepository
       .where(
         and(
           eq(authorizationRequestsTable.identifier_digest, identifierDigest),
-          isNull(authorizationRequestsTable.consumed_at)
+          isNull(authorizationRequestsTable.consumed_at),
+          gt(authorizationRequestsTable.expires_at, new Date())
         )
       )
       .returning();

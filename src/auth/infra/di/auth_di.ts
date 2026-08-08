@@ -8,6 +8,8 @@ import { SignInUseCase } from "../../application/use_case/sign_in";
 import { PurgeUserDataUseCase } from "../../application/use_case/purge_user_data";
 import { RegisterAppUseCase } from "../../application/use_case/register_app";
 import { InitiateAuthorizationUseCase } from "../../application/use_case/initiate_authorization";
+import { GetPendingAuthorizationRequestUseCase } from "../../application/use_case/get_pending_authorization_request";
+import { DecideAuthorizationRequestUseCase } from "../../application/use_case/decide_authorization_request";
 import { GetUserController } from "../../presentation/controller/auth/get_user.controller";
 import { RegisterUserController } from "../../presentation/controller/auth/register_user.controller";
 import { SignInController } from "../../presentation/controller/auth/sign_in.controller";
@@ -19,6 +21,10 @@ import type { AppRegistrationRepository } from "../../domain/repository/delegate
 import { AppRegistrationPostgresRepository } from "../database/postgres_repository/delegated_access/app_registration_postgres_repository";
 import type { AuthorizationRequestRepository } from "../../domain/repository/delegated_access/authorization_request_repository";
 import { AuthorizationRequestPostgresRepository } from "../database/postgres_repository/delegated_access/authorization_request_postgres_repository";
+import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
+import { ConsentPostgresRepository } from "../database/postgres_repository/delegated_access/consent_postgres_repository";
+import type { AuthorizationCodeRepository } from "../../domain/repository/delegated_access/authorization_code_repository";
+import { AuthorizationCodePostgresRepository } from "../database/postgres_repository/delegated_access/authorization_code_postgres_repository";
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 import { CryptoDelegatedSecretService } from "../service/crypto_delegated_secret_service";
 import {
@@ -29,6 +35,9 @@ import {
 import { OAuthAuthorizationServerMetadataController } from "../../presentation/controller/delegated_access/oauth_authorization_server_metadata.controller";
 import { RegisterAppController } from "../../presentation/controller/delegated_access/register_app.controller";
 import { AuthorizeController } from "../../presentation/controller/delegated_access/authorize.controller";
+import { GetPendingAuthorizationRequestController } from "../../presentation/controller/delegated_access/get_pending_authorization_request.controller";
+import { DecideAuthorizationRequestController } from "../../presentation/controller/delegated_access/decide_authorization_request.controller";
+import { AuthMiddleware } from "../../presentation/middleware/auth.middleware";
 import type { Logger } from "../../../core/application/logger/logger";
 import { CoreDi } from "../../../core/infra/di/core_di";
 
@@ -38,6 +47,8 @@ export class AuthDi {
   #sessionManager: ISessionManager;
   #appRegistrationRepository: AppRegistrationRepository;
   #authorizationRequestRepository: AuthorizationRequestRepository;
+  #consentRepository: ConsentRepository;
+  #authorizationCodeRepository: AuthorizationCodeRepository;
   #delegatedSecretService: DelegatedSecretService;
   #logger: Logger;
 
@@ -48,6 +59,9 @@ export class AuthDi {
     this.#appRegistrationRepository = new AppRegistrationPostgresRepository();
     this.#authorizationRequestRepository =
       new AuthorizationRequestPostgresRepository();
+    this.#consentRepository = new ConsentPostgresRepository();
+    this.#authorizationCodeRepository =
+      new AuthorizationCodePostgresRepository();
     this.#delegatedSecretService = new CryptoDelegatedSecretService();
     this.#logger = new CoreDi().makeLogger();
   }
@@ -129,6 +143,52 @@ export class AuthDi {
   makeAuthorizeController() {
     return new AuthorizeController(
       this.makeInitiateAuthorizationUseCase(),
+      this.#logger
+    );
+  }
+
+  /**
+   * Mirrors `MiddlewareDi.makeAuthMiddleware()` — a second, independently
+   * wired instance, by the same design already established between
+   * `AuthDi` and `MiddlewareDi` (Decisão Arquitetural #3): this container
+   * has to be assemblable without the rest of the app's use-case graph, so
+   * it builds its own `AuthMiddleware` from the dependencies it already
+   * holds rather than reaching into the other container.
+   */
+  makeAuthMiddleware() {
+    return new AuthMiddleware(this.#authRepository, this.#sessionManager);
+  }
+
+  // Delegated Access — pending request consult and decision (task 10)
+  makeGetPendingAuthorizationRequestUseCase() {
+    return new GetPendingAuthorizationRequestUseCase(
+      this.#authorizationRequestRepository,
+      this.#appRegistrationRepository,
+      this.#consentRepository,
+      this.#delegatedSecretService
+    );
+  }
+
+  makeGetPendingAuthorizationRequestController() {
+    return new GetPendingAuthorizationRequestController(
+      this.makeGetPendingAuthorizationRequestUseCase(),
+      this.makeAuthMiddleware()
+    );
+  }
+
+  makeDecideAuthorizationRequestUseCase() {
+    return new DecideAuthorizationRequestUseCase(
+      this.#authorizationRequestRepository,
+      this.#appRegistrationRepository,
+      this.#consentRepository,
+      this.#authorizationCodeRepository,
+      this.#delegatedSecretService
+    );
+  }
+
+  makeDecideAuthorizationRequestController() {
+    return new DecideAuthorizationRequestController(
+      this.makeDecideAuthorizationRequestUseCase(),
       this.#logger
     );
   }

@@ -15,3 +15,21 @@ export const OAUTH_SUPPORTED_SCOPES: readonly string[] = [OAUTH_MCP_SCOPE];
 export function isSupportedScope(scope: string): boolean {
   return OAUTH_SUPPORTED_SCOPES.includes(scope);
 }
+
+const SCOPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  [OAUTH_MCP_SCOPE]:
+    "Book stays, record expenses, and view your properties and stays on your behalf.",
+};
+
+/**
+ * Human-readable description of a scope, for the consent screen (task 10,
+ * "descrição legível do acesso pedido"). Falls back to a generic sentence
+ * for a scope this map doesn't recognize — shouldn't happen for a scope
+ * that already passed `isSupportedScope`, but a display-only lookup has no
+ * reason to throw over it.
+ */
+export function describeScope(scope: string): string {
+  return (
+    SCOPE_DESCRIPTIONS[scope] ?? "Access your StayHub account on your behalf."
+  );
+}

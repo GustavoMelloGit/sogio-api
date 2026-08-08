@@ -17,6 +17,7 @@ import type {
 import { MCP_RESOURCE_PATH } from "./oauth_protected_resource_metadata.controller";
 import { OAUTH_AUTHORIZATION_ENDPOINT_PATH } from "./oauth_authorization_server_metadata.controller";
 import { renderAuthorizeErrorPage } from "./oauth_authorize_error_page";
+import { parseUniqueQueryParams } from "./unique_query_params";
 
 /**
  * Path and query parameter the front's consent page is reached at. Owned
@@ -67,7 +68,7 @@ export class AuthorizeController implements Controller {
   ) {}
 
   async handle(request: ControllerRequest): Promise<ControllerHttpResponse> {
-    const params = this.#parseUniqueQueryParams(request.url);
+    const params = parseUniqueQueryParams(request.url);
 
     if (!params) {
       this.#log("error", undefined, "invalid_request", request.peerIp);
@@ -148,38 +149,6 @@ export class AuthorizeController implements Controller {
       cache: "no-store",
       headers: { Location: location },
     });
-  }
-
-  /**
-   * E1: inspects every occurrence of every key in the raw query string and
-   * fails (returns `null`) the moment one repeats, before any semantic
-   * validation. Deliberately independent of the adapter's own
-   * `ControllerRequest.query` / `resolveValidationInput`, which only runs
-   * this check when a controller declares `inputSchema` — protocol routes
-   * don't (see `register_app.controller.ts`), since a `ValidationError`
-   * from that pipeline would answer with the API's default `{ message }`
-   * shape and status, not the OAuth error shape this route requires.
-   */
-  #parseUniqueQueryParams(url: string): Record<string, string> | null {
-    let searchParams: URLSearchParams;
-    try {
-      searchParams = new URL(url).searchParams;
-    } catch {
-      return null;
-    }
-
-    const seen = new Set<string>();
-    const params: Record<string, string> = {};
-
-    for (const [key, value] of searchParams.entries()) {
-      if (seen.has(key)) {
-        return null;
-      }
-      seen.add(key);
-      params[key] = value;
-    }
-
-    return params;
   }
 
   /**
