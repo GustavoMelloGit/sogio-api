@@ -140,14 +140,23 @@ OAuth — a linguagem do produto é **aplicativo**.
 ### Invariantes novas
 
 1. Um código de autorização é usado **uma única vez**. Segunda apresentação =
-   comprometimento presumido → revogar o consentimento inteiro.
+   comprometimento presumido → revogar a **família de credenciais originada
+   daquele código**. _(Corrigido pela revisão de contrato: a versão anterior
+   desta invariante mandava revogar o Consentimento inteiro — ver E4, é vetor de
+   negação de serviço.)_
 2. Uma credencial de renovação é rotacionada a cada uso; a apresentação de uma
-   já rotacionada = comprometimento presumido → revogar a família.
+   já rotacionada, **fora da janela de graça**, = comprometimento presumido →
+   revogar a família (ver E4).
 3. Uma credencial só vale para o recurso a que foi vinculada na emissão
    (RFC 8707). O `/mcp` recusa credencial cuja audiência não seja ele.
 4. Consentimento é **por aplicativo**. Ter consentido a um aplicativo nunca
    dispensa o consentimento a outro.
 5. Revogado o consentimento, nenhuma credencial derivada sobrevive.
+6. O Consentimento só é revogado por **ação explícita do usuário** ou por
+   expiração (absoluta ou por inatividade) — nunca como reação automática a
+   suspeita de reuso de credencial.
+7. Toda transição de uso único (código, renovação, pedido de autorização) é uma
+   **reivindicação atômica no banco**, nunca leitura seguida de escrita.
 
 ### Invariantes existentes
 
@@ -408,6 +417,289 @@ do consentimento: sem ela, o usuário concede acesso e não tem como retirá-lo.
 
 ---
 
+## Especificação de Segurança do Protocolo
+
+Origem: revisão de contrato do Analista de Segurança (2026-08-08), 5 achados
+críticos e 9 moderados sobre este plano. O achado crítico de LGPD (minimização
+de dado de hóspede) foi **deferido por decisão do usuário** e está registrado em
+Dívidas — não é reaberto aqui. Os demais estão fechados como especificação
+abaixo.
+
+Esta seção é **normativa**. Não é contexto: é o comportamento exigido. Onde ela
+conflitar com o texto mais acima, ela prevalece.
+
+### E1. Fonte única de parâmetro
+
+Cada endpoint do protocolo lê seus parâmetros de **uma única fonte**:
+
+| Endpoint     | Fonte única                          |
+| ------------ | ------------------------------------ |
+| `/authorize` | apenas query string (método `GET`)   |
+| `/token`     | apenas corpo `x-www-form-urlencoded` |
+| `/revoke`    | apenas corpo `x-www-form-urlencoded` |
+| `/register`  | apenas corpo JSON                    |
+
+Regras:
+
+1. Parâmetro presente em fonte diferente da declarada é **ignorado** — nunca
+   mesclado, nunca usado como fallback.
+2. Parâmetro **duplicado dentro da própria fonte** (mesma chave duas vezes na
+   query ou no corpo form) faz a requisição **falhar imediatamente**, antes de
+   qualquer validação semântica e antes de qualquer decisão sobre redirect.
+3. A detecção de duplicata tem que inspecionar **todas as ocorrências**. Colapsar
+   a query num objeto — que é o que o parser atual faz — descarta duplicatas
+   silenciosamente e deixa passar exatamente o ataque que esta regra existe para
+   impedir.
+
+Por quê isso é crítico: se uma camada valida a primeira ocorrência de
+`redirect_uri` e outra usa a última na hora de montar o redirect, o resultado é
+um open redirect que passa por toda a validação. É o mesmo raciocínio para
+`client_id`, `scope` e `resource`.
+
+Consequência direta para a task 4: o adaptador HTTP atual mescla `query`, `body`
+e `params` num objeto só, com precedência silenciosa. **As rotas do protocolo
+não podem usar esse merge.** O contrato de controller precisa permitir declarar
+a fonte dos parâmetros.
+
+### E2. Ordem de validação do `/authorize`
+
+Dois modos de erro, e a distinção entre eles é o controle de segurança:
+
+- **Modo A — sem redirect.** Renderiza um erro. Não navega para lugar nenhum.
+  Vale enquanto **não houver** um `redirect_uri` comprovadamente pertencente a
+  um aplicativo registrado.
+- **Modo B — com redirect.** `302` para a URI já validada, com `error`,
+  `error_description` e `state` ecoado literalmente.
+
+Ordem exaustiva. O primeiro passo que falha determina a resposta:
+
+| #   | Verificação                                                       | Falha → | Erro OAuth                  |
+| --- | ----------------------------------------------------------------- | ------- | --------------------------- |
+| 0   | Limite de taxa não atingido                                       | Modo A  | `429`, sem corpo OAuth      |
+| 1   | Método é `GET`; parâmetros só na query; sem duplicatas (E1)       | Modo A  | `invalid_request`           |
+| 2   | `client_id` presente e bem formado                                | Modo A  | `invalid_client`            |
+| 3   | Registro do aplicativo existe **e não foi expurgado nem expirou** | Modo A  | `invalid_client`            |
+| 4   | `redirect_uri` **presente**                                       | Modo A  | `invalid_request`           |
+| 5   | `redirect_uri` casa com uma das registradas (E3)                  | Modo A  | `invalid_request`           |
+| —   | _A partir daqui existe destino confiável. Tudo abaixo é Modo B._  | —       | —                           |
+| 6   | `response_type` é exatamente `code`                               | Modo B  | `unsupported_response_type` |
+| 7   | `code_challenge` presente e `code_challenge_method` é `S256`      | Modo B  | `invalid_request`           |
+| 8   | `scope` contido no escopo suportado                               | Modo B  | `invalid_scope`             |
+| 9   | `resource` presente e igual à URL canônica do `/mcp`              | Modo B  | `invalid_target`            |
+| 10  | `state`, se presente, dentro do limite de tamanho                 | Modo B  | `invalid_request`           |
+| 11  | Sucesso → cria o Pedido de Autorização e redireciona para o front | —       | —                           |
+
+Casos que faltavam e agora são explícitos:
+
+- **`redirect_uri` ausente (passo 4)** — é Modo A, e **não** existe o atalho
+  "usa a única URI registrada". Ausência é erro, não inferência.
+- **Registro expurgado (passo 3)** — o expurgo de registros sem uso (E9) cria a
+  janela em que um `client_id` existiu e não existe mais. Tem que cair em Modo A,
+  como qualquer `client_id` desconhecido.
+- **Pedido já consumido ou expirado, no momento da aprovação** — **Modo A, na
+  tela do front**. Não redireciona para o cliente. O Pedido é a única prova de
+  que a validação aconteceu; morto o Pedido, a prova não vale, e redirecionar com
+  base nele é replay. O usuário reinicia o fluxo pelo cliente MCP.
+
+Requisitos da tela de erro do Modo A:
+
+- **Sem link, sem botão de navegação, sem `<a>`.**
+- **Sem redirecionamento de qualquer natureza** — nada de `Location`, meta
+  refresh ou navegação por JavaScript.
+- O valor recusado **não é renderizado de forma navegável nem clicável**.
+  Preferencialmente não é renderizado: basta o motivo. Se for exibido, é texto
+  escapado e inerte.
+
+Razão: a tela do Modo A existe precisamente porque não há destino confiável.
+Qualquer coisa navegável nela reintroduz o open redirect por outra porta — o
+atacante deixa de precisar do `302` e passa a precisar de um clique.
+
+### E3. Comparação de `redirect_uri`
+
+**Representação.** A URI é armazenada **exatamente como veio no registro**, como
+string. Sem normalização de nenhum tipo: sem lowercase de host, sem remover
+porta padrão, sem resolver `.`/`..`, sem reordenar query, sem re-encode.
+
+**Comparação.** Igualdade `===` entre a string registrada e o valor **já
+decodificado uma vez pela camada HTTP**. Não decodificar de novo (double-decode
+é vetor), não normalizar nenhum dos dois lados, não comparar por partes.
+
+**Rejeição no registro.** O `/register` recusa a URI que:
+
+- for relativa (sem esquema);
+- contiver fragmento (`#`);
+- usar esquema perigoso: `javascript:`, `data:`, `vbscript:`, `file:`, `blob:`;
+- embutir credenciais (`usuario:senha@host`);
+- contiver curinga em qualquer posição;
+- usar `http://` com host que não seja loopback.
+
+**Loopback.** `http://` é aceito apenas para `127.0.0.1`, `[::1]` e `localhost`.
+Aceitar `localhost` é decisão consciente de interoperabilidade — vários clientes
+MCP reais o usam — com o risco residual registrado: a resolução de `localhost`
+depende do resolvedor da máquina. As formas por IP literal são preferíveis.
+
+**Porta de loopback variável — único afrouxamento da igualdade exata.** Cliente
+nativo escolhe uma porta livre em tempo de execução (RFC 8252 §7.3), então a
+porta não pode fazer parte da comparação para URI de loopback: compara-se
+esquema, host e caminho exatos, **ignorando a porta**. Esse afrouxamento vale
+**só** para loopback. Host remoto e esquema customizado permanecem em igualdade
+absoluta, porta inclusive.
+
+**Esquema customizado** (`cursor://`, etc.) é aceito, com limite de tamanho.
+Registrado como elo fraco conhecido: no sistema operacional, outro aplicativo
+local pode reivindicar o mesmo esquema. A mitigação é o PKCE, que é obrigatório
+e é exatamente o controle desenhado para esse cenário.
+
+**Revalidação no `/token`.** A troca do código revalida:
+
+- o `client_id` apresentado é o **mesmo** que originou o código;
+- o `redirect_uri` apresentado é **idêntico** ao usado no `/authorize`.
+
+Código emitido para o aplicativo A não é trocável pelo aplicativo B, nem com o
+verifier correto. PKCE cobre o roubo do código em trânsito; esta checagem cobre
+a confusão de aplicativo, e é barata.
+
+### E4. Reivindicação atômica e detecção de reuso
+
+**Reivindicação atômica.** Código de autorização, credencial de renovação e
+Pedido de Autorização são consumidos por uma única instrução:
+
+```
+UPDATE <tabela>
+   SET consumed_at = now()
+ WHERE <coluna_digest> = $1
+   AND consumed_at IS NULL
+RETURNING <dados necessários>
+```
+
+**Zero linhas retornadas** significa "não existe ou já foi consumido" → tratar
+como reuso. É proibido `SELECT` seguido de `UPDATE`: duas requisições
+concorrentes passam ambas pelo `SELECT` e ambas emitem credencial. Essa corrida
+é o achado, e a instrução única é a correção.
+
+**Escopo da revogação em reuso.** Reuso detectado revoga **a família de
+credenciais originada daquele código** — e nada além disso. Não revoga o
+Consentimento. Derrubar o Consentimento por um reuso presumido:
+
+- desconecta o usuário de tudo por um evento que pode ser simples corrida de
+  rede; e
+- é vetor de negação de serviço — quem capturar um código velho derruba a
+  conexão inteira da vítima ao reapresentá-lo.
+
+Revogação de Consentimento fica reservada à **ação explícita do usuário** na
+tela de aplicativos conectados (e à expiração de E9).
+
+**Janela de graça na rotação de renovação.** A credencial de renovação
+recém-rotacionada continua aceita por uma janela curta (**10–30 s**) após a
+rotação, devolvendo **a mesma sucessora** já emitida — não uma nova. Motivo:
+clientes MCP reconectam em paralelo, duas chamadas legítimas do mesmo agente
+usam a mesma credencial de renovação, e sem a janela a segunda é classificada
+como reuso e derruba uma conexão boa. Fora da janela, é reuso de verdade.
+
+A graça vale **só para a sucessora imediata**. Apresentar uma credencial
+rotacionada há mais de uma geração é reuso, sem graça.
+
+### E5. Identidade do chamador no rate limiter
+
+- A chave de contagem é o **IP de peer real**, obtido do servidor Bun
+  (`server.requestIP(request)`) — **não** de header.
+- `X-Forwarded-For` e `X-Real-IP` só são considerados se houver **proxy confiável
+  configurado explicitamente** (config nova). Sem essa configuração, os headers
+  são ignorados por completo. Confiar neles por padrão torna o limitador inútil:
+  o atacante manda um valor diferente a cada requisição.
+- **Consequência concreta para a task 4**: o handler de rota do Bun recebe
+  `(request, server)` e o adaptador HTTP atual **descarta o segundo argumento**.
+  Sem propagá-lo (ou o IP já resolvido) até a fronteira que aplica o limite, não
+  existe identidade confiável para contar. Isso muda a assinatura do adaptador e
+  do handler do `/mcp`.
+- **Teto de chaves.** O mapa de contadores tem número máximo de entradas e
+  expurgo por expiração. Sem teto, contar por IP é ele próprio um vetor de
+  exaustão de memória — o atacante varia a origem ou o `client_id`. Atingido o
+  teto, a política para chaves novas é **fail-closed** (recusa), não fail-open.
+- Dimensões: `/token` por IP **e** por `client_id`; `/register` por IP;
+  `/authorize` por IP.
+
+### E6. Mitigação de phishing no registro e no consentimento
+
+- **Host exibido em ASCII (punycode).** A tela de consentimento mostra o host de
+  destino na forma ASCII, nunca a forma Unicode renderizada. Um host homógrafo é
+  indistinguível a olho nu em Unicode; em punycode aparece como `xn--…`, que é o
+  sinal que o usuário consegue ver.
+- **Caracteres bidi e de controle proibidos no nome do aplicativo.** Rejeitar no
+  registro os overrides bidirecionais (U+202A–U+202E, U+2066–U+2069), caracteres
+  de controle e null bytes. Eles permitem inverter visualmente o nome exibido.
+- **`logo_uri` é rejeitado no registro** — não apenas ignorado. Imagem remota
+  controlada por terceiro na tela de consentimento é o recurso gráfico que torna
+  o phishing convincente, além de canal de rastreamento e de SSRF. Sem logo,
+  todo aplicativo tem a mesma aparência e o usuário lê o texto.
+- **RFC 7592 (gestão do registro pelo próprio cliente) fica fora de escopo**, e
+  isso é declarado: sem `registration_access_token`, sem endpoints de leitura,
+  atualização ou exclusão do registro. Alterar registro exige registrar de novo.
+  Elimina uma superfície inteira — um token de gestão de vida longa emitido sem
+  nenhuma autenticação de usuário — a custo de UX nulo aqui. Não anunciar esses
+  endpoints no metadata.
+- O nome do aplicativo continua tratado como texto não confiável, escapado, e
+  rotulado ao usuário como **não verificado**.
+
+### E7. Log por allowlist
+
+- Nas rotas do protocolo, o log é por **allowlist de campos**. Nunca o objeto de
+  erro inteiro, nunca a requisição inteira.
+  - Permitido: nome do endpoint, código de erro OAuth, `client_id`, resultado,
+    timestamp, chave de rate limit, **host** do redirect.
+  - Proibido: `code`, `code_verifier`, `code_challenge`, credencial de acesso ou
+    de renovação, `redirect_uri` completo, header `Authorization`, corpo bruto,
+    URL completa.
+- O adaptador HTTP atual loga o objeto de erro inteiro em toda falha. Isso muda
+  **antes** de qualquer credencial passar por ali — é parte da task 4.
+- `ValidationError` originado de rota OAuth **nunca propaga o valor de entrada**,
+  nem no log nem na resposta. O projeto hoje serializa o erro do Zod com o
+  contexto do valor; nas rotas do protocolo a resposta é o código OAuth com uma
+  descrição fixa, e o detalhe da validação não sai do processo.
+
+### E8. Cache e CORS
+
+- **`Cache-Control: no-store` (e `Pragma: no-cache`) é o padrão** em todas as
+  rotas do protocolo, com exatamente duas exceções: os dois documentos de
+  metadata, que são cacheáveis. Padrão seguro por omissão — não "lembrar de pôr"
+  endpoint a endpoint.
+- **CORS restrito à URL do front, por configuração** — não `https://*`. O
+  middleware atual, em produção, aceita qualquer origem `https://` por
+  `startsWith`, o que é efetivamente `*` com credenciais habilitadas. Para as
+  rotas do protocolo e do consentimento, a origem permitida é a config do front,
+  exata.
+- Exceção deliberada: os dois documentos de metadata são o ponto de descoberta e
+  respondem a qualquer origem — **sem** credenciais.
+- O `/mcp` expõe `WWW-Authenticate` via `Access-Control-Expose-Headers`; sem
+  isso o cliente em navegador não consegue lê-lo, e o 401 não dispara o fluxo.
+
+### E9. Retenção e descarte
+
+- **Vida absoluta do Consentimento** — prazo máximo mesmo em uso contínuo.
+  Vencido, o usuário reautoriza. Sem isso, uma concessão feita uma vez vale para
+  sempre.
+- **Expiração por inatividade** — consentimento sem uso por um período é
+  encerrado sozinho. É o que limpa o aplicativo que o usuário testou e largou.
+- **Expurgo de linhas mortas** — rotina para pedidos expirados, códigos
+  consumidos, credenciais expiradas ou revogadas e registros de aplicativo nunca
+  consentidos. Sem ela a base cresce indefinidamente com material sensível (ainda
+  que em digest) e o "último uso" da tela vira ruído.
+- Isso é **modelo de dados** (task 5), não faxina posterior: as colunas de
+  expiração e os índices que o expurgo usa nascem com as tabelas.
+
+### E10. Formato do segredo e do digest
+
+- **SHA-256 sem salt é a escolha correta** — confirmado pela revisão. Não usar
+  KDF caro (bcrypt/argon) aqui. São segredos de alta entropia gerados pelo
+  servidor, não senhas humanas: não há dicionário a atacar, e um KDF caro no
+  caminho de verificação de **toda chamada MCP** seria DoS auto-infligido.
+- Segredo com **≥ 32 bytes de CSPRNG**, codificado em base64url.
+- **Índice único sobre a coluna de digest** — é o índice que a verificação usa e
+  a garantia de que colisão não passa despercebida.
+- O segredo nunca é gravado nem comparado em claro.
+
+---
+
 ## Diretrizes para o Desenvolvedor
 
 - Não implemente nada de OAuth em `src/core`. O subdomínio pertence ao BC Auth;
@@ -418,13 +710,24 @@ do consentimento: sem ela, o usuário concede acesso e não tem como retirá-lo.
 - O SDK MCP traz os schemas de validação das mensagens OAuth em módulos
   agnósticos de framework — reutilize-os. Os _handlers_ do SDK são Express e
   **não** servem a este projeto; não introduza Express.
-- Trate a igualdade de `redirect_uri` como comparação de string bruta. Qualquer
-  tentativa de ser esperto (normalizar, comparar host, aceitar prefixo) é bug de
-  segurança.
-- Separe com clareza os dois modos de erro do `/authorize`: o que redireciona e
-  o que não redireciona. Errar isso é criar um open redirect.
-- Nenhum segredo em claro no banco. Nenhuma URL de autorização, header de
-  autorização ou corpo de `/token` em log.
+- **A seção "Especificação de Segurança do Protocolo" (E1–E10) é normativa.**
+  Leia-a antes de escrever qualquer endpoint do protocolo. Ela não é contexto:
+  é o comportamento exigido, e prevalece sobre o texto mais acima em caso de
+  conflito.
+- Trate a igualdade de `redirect_uri` como comparação de string bruta (E3).
+  Qualquer tentativa de ser esperto (normalizar, comparar host, aceitar prefixo)
+  é bug de segurança. A **única** exceção é a porta em loopback, e ela está
+  especificada — não invente outras.
+- Implemente a ordem de validação do `/authorize` na sequência de E2, e trate o
+  modo de erro como parte da especificação, não como detalhe de apresentação.
+  Errar isso é criar um open redirect.
+- Todo consumo de uso único é uma instrução atômica com `RETURNING` (E4). Se
+  você escreveu um `SELECT` para decidir e um `UPDATE` para aplicar, a corrida
+  já está lá.
+- Cada endpoint do protocolo lê parâmetros de uma fonte só (E1). Não reutilize o
+  merge de `query`/`body`/`params` do adaptador atual nessas rotas.
+- Nenhum segredo em claro no banco. Log por allowlist de campos nas rotas do
+  protocolo (E7) — nunca o objeto de erro inteiro.
 - Todo campo de entrada dos endpoints novos com limite de tamanho e cardinalidade
   explícitos, e vocabulário fechado onde o spec fecha (`response_type`,
   `grant_type`, `code_challenge_method`, `token_endpoint_auth_method`).
@@ -439,7 +742,9 @@ do consentimento: sem ela, o usuário concede acesso e não tem como retirá-lo.
   volte ao Arquiteto.
 - A primitiva de rate limiting nasce genérica e aplicada por política declarada
   na rota, não com regra do OAuth embutida dentro dela. Ela não deve conhecer
-  OAuth. Não a expanda além do que estas rotas exigem.
+  OAuth. Não a expanda além do que estas rotas exigem. Identidade do chamador e
+  teto de chaves conforme E5 — e note que isso exige propagar o `server` do Bun
+  (ou o IP já resolvido) pelo adaptador, que hoje o descarta.
 - Gestão de aplicativos conectados é autenticada pela sessão do app, jamais pela
   credencial OAuth, e sempre restrita aos aplicativos do próprio usuário.
 - Os testes atuais do caminho MCP autenticam com JWT e vão quebrar por desenho.
@@ -478,17 +783,27 @@ do consentimento: sem ela, o usuário concede acesso e não tem como retirá-lo.
   solicitante já resolvido em vez de resolvê-lo por conta própria.
 - **`src/core/presentation/controller/controller.ts`** e
   **`src/core/infra/http/adapters/http_controller_adapter.ts`** — contrato de
-  resposta HTTP explícita (status/headers/corpo), leitura de corpo
-  `x-www-form-urlencoded`, e revisão do log de erro para não vazar credencial.
+  resposta HTTP explícita (status/headers/corpo); leitura de corpo
+  `x-www-form-urlencoded`; **declaração de fonte única de parâmetro** e detecção
+  de duplicata (E1), em vez do merge atual de `query`/`body`/`params`;
+  **propagação do `server` do Bun / IP de peer**, hoje descartado, para a
+  identidade do rate limiter (E5); log de erro por allowlist (E7); `no-store`
+  por padrão nas rotas do protocolo (E8).
 - **`src/core/presentation/middleware/cors.middleware.ts`** — exposição de
-  `WWW-Authenticate` e política própria para descoberta e endpoints do protocolo.
+  `WWW-Authenticate`, origem restrita à config do front nas rotas do protocolo
+  e do consentimento, e exceção pública sem credenciais para os dois documentos
+  de metadata (E8).
 - **`src/core/infra/http/routes/routes.ts`** — montagem das rotas novas,
   incluindo os caminhos de descoberta.
 - **`src/core/infra/database/drizzle/schemas/auth_schemas.ts`** — tabelas dos
-  novos agregados, com índices por digest e por consentimento, e expiração.
+  novos agregados, com **índice único por digest** (E10), colunas de consumo
+  (`consumed_at`) que sustentam a reivindicação atômica (E4), e as colunas de
+  expiração absoluta, inatividade e expurgo exigidas por E9.
 - **`src/core/infra/config/environments.ts`** — `API_BASE_URL` obrigatória fora
-  de desenvolvimento (identidade do issuer) e URL base do front de
-  consentimento; parâmetros de tempo de vida das credenciais.
+  de desenvolvimento (identidade do issuer); URL base do front (origem CORS e
+  destino do consentimento); **proxy confiável para `X-Forwarded-For`** (E5),
+  ausente por padrão; parâmetros de tempo de vida de credenciais, de vida
+  absoluta e inatividade do consentimento, e da janela de graça de rotação.
 - **`src/core/`** (transversal) — primitiva de rate limiting genérica, hoje
   inexistente no projeto, aplicada por política declarada na rota.
 - **`tests/core/`** — os testes atuais do caminho MCP (resolução de identidade e
@@ -510,10 +825,11 @@ do consentimento: sem ela, o usuário concede acesso e não tem como retirá-lo.
    com decisão explícita. Ver **Decisões Resolvidas**. Nenhuma task permanece
    bloqueada por decisão.
    - Dependencies: none
-2. **Revisão de contrato pelo Analista de Segurança** — revisar este documento
-   (validação de redirect, modos de erro do `/authorize`, contrato das duas telas
-   do front, registro aberto, armazenamento de segredo, política de rate
-   limiting) **antes** da implementação.
+2. ~~**Revisão de contrato pelo Analista de Segurança**~~ — **Concluída
+   (2026-08-08)**: 5 achados críticos e 9 moderados. O crítico de LGPD
+   (minimização de dado de hóspede) foi **deferido por decisão do usuário** e
+   está em Dívidas; os demais estão fechados como especificação normativa na
+   seção **Especificação de Segurança do Protocolo (E1–E10)**.
    - Dependencies: none
 3. **Autenticação na fronteira do transporte MCP** — mover a resolução de
    identidade do handler de tool para o portão do `/mcp`; falha vira 401 com
@@ -522,37 +838,57 @@ do consentimento: sem ela, o usuário concede acesso e não tem como retirá-lo.
    agora atrás da abstração de verificação que a task 13 substitui.
    - Dependencies: none
 4. **Contrato de resposta HTTP explícita** — controller pode devolver status,
-   headers e corpo próprios; adaptador lê corpo form-urlencoded; log de erro
-   deixa de expor credencial. Comportamento atual preservado por padrão.
+   headers e corpo próprios; leitura de corpo form-urlencoded; **fonte única de
+   parâmetro declarável e detecção de duplicata (E1)**; **propagação do `server`
+   do Bun / IP de peer, hoje descartado (E5)**; **log por allowlist, sem o objeto
+   de erro inteiro (E7)**; **`no-store` por padrão nas rotas do protocolo (E8)**.
+   Comportamento atual das demais rotas preservado.
    - Dependencies: none
 5. **Modelo de dados do acesso delegado** — agregados, repositórios e tabelas:
    registro de aplicativo, consentimento, pedido de autorização, código,
    credenciais. Invariantes de expiração, uso único, rotação e cascata.
+   Inclui: **coluna de consumo que sustenta a reivindicação atômica (E4)**,
+   **índice único por digest e segredo ≥ 32 bytes CSPRNG com SHA-256 sem salt
+   (E10)**, e as **colunas de vida absoluta, inatividade e expurgo (E9)**.
    - Dependencies: none
 6. **Primitiva de rate limiting** — genérica, em `src/core`, aplicada por política
-   declarada na rota. Sem conhecimento de OAuth.
-   - Dependencies: none
+   declarada na rota. Sem conhecimento de OAuth. Conforme **E5**: identidade pelo
+   IP de peer real do Bun, `X-Forwarded-For` só com proxy confiável configurado,
+   teto de chaves com expurgo e **fail-closed** ao atingir o teto.
+   - Dependencies: task 4 _(precisa do IP propagado pelo adaptador)_
 7. **Documentos de descoberta** — metadata do resource server (caminho canônico
    e variante com o caminho do recurso) e do authorization server, públicos e
-   cacheáveis, com issuer exato.
+   cacheáveis, com issuer exato. **Únicas rotas cacheáveis e de CORS público sem
+   credenciais (E8)**; não anunciam endpoints de RFC 7592 (E6).
    - Dependencies: task 4
-8. **Registro dinâmico de aplicativo** — validação estrita de URIs de retorno,
-   método de autenticação restrito a cliente público (confidencial é rejeitado),
-   limites de tamanho e cardinalidade, expurgo de registros sem uso.
+8. **Registro dinâmico de aplicativo** — método de autenticação restrito a
+   cliente público (confidencial é rejeitado), limites de tamanho e
+   cardinalidade, expurgo de registros sem uso. Validação de `redirect_uri`
+   conforme **E3** (lista de rejeição, loopback, esquema customizado) e
+   antiphishing conforme **E6** (bidi/controle proibidos no nome, `logo_uri`
+   rejeitado, RFC 7592 fora de escopo).
    - Dependencies: tasks 4, 5, 6
-9. **Início da autorização e pedido pendente** — validação dos parâmetros, os
-   dois modos de erro (com e sem redirect), criação do pedido com TTL, redirect
-   para o front, e o atalho de reconexão quando já há consentimento vigente.
+9. **Início da autorização e pedido pendente** — implementar a **ordem de
+   validação de E2 na sequência especificada**, com o modo de erro (A/B) correto
+   em cada passo, incluindo `redirect_uri` ausente e registro expurgado; tela de
+   erro do Modo A **sem link e sem navegação de qualquer natureza**; comparação
+   de `redirect_uri` conforme **E3**; criação do pedido com TTL; redirect para o
+   front; atalho de reconexão quando já há consentimento vigente.
    - Dependencies: tasks 4, 5, 8
 10. **Endpoints de consumo do front** — consulta do pedido pendente por
-    identificador opaco (dados de exibição, nada sensível) e decisão de
-    aprovar/negar autenticada pela sessão do app, emitindo o código e devolvendo
-    a URL de destino montada a partir do registro.
+    identificador opaco (dados de exibição, nada sensível, **host em punycode —
+    E6**) e decisão de aprovar/negar autenticada pela sessão do app, emitindo o
+    código e devolvendo a URL de destino montada a partir do registro.
+    **Reivindicação atômica do pedido (E4)**; pedido consumido ou expirado é
+    **Modo A na tela do front, sem redirect (E2)**.
     - Dependencies: task 9
 11. **Emissão e renovação de credenciais** — troca de código com verificação de
-    PKCE, uso único com revogação em caso de reuso, rotação de renovação com
-    detecção de reuso, vinculação ao recurso, digest em repouso, credencial
-    opaca.
+    PKCE, vinculação ao recurso, digest em repouso, credencial opaca.
+    Conforme **E4**: reivindicação atômica com `RETURNING` (nunca `SELECT` +
+    `UPDATE`), revogação em reuso escopada **à família, não ao Consentimento**,
+    e **janela de graça de 10–30 s** na rotação de renovação devolvendo a mesma
+    sucessora. Conforme **E3**: revalidação de `client_id` e `redirect_uri` na
+    troca. Conforme **E1**: parâmetros só do corpo form-urlencoded.
     - Dependencies: tasks 5, 6, 10
 12. **Revogação** — endpoint do protocolo e revogação por consentimento, com
     cascata sobre as credenciais derivadas.
@@ -565,29 +901,48 @@ do consentimento: sem ela, o usuário concede acesso e não tem como retirá-lo.
     - Dependencies: tasks 3, 11
 14. **Gestão de aplicativos conectados (backend)** — listar e desconectar,
     autenticado pela sessão do app, restrito aos aplicativos do próprio usuário,
-    expondo concessão e último uso.
+    expondo concessão e último uso, **host em punycode (E6)**. Inclui a
+    **retenção de E9**: vida absoluta do consentimento, expiração por
+    inatividade e rotina de expurgo de linhas mortas.
     - Dependencies: task 12
 15. **Cobertura de testes de abuso** — redirect não registrado, erro que não pode
     redirecionar, PKCE ausente/`plain`, código reusado, renovação reusada,
     credencial revogada, audiência errada, pedido expirado, limite de taxa,
     registro confidencial rejeitado, e um aplicativo tentando enxergar ou
-    revogar consentimento de outro usuário.
+    revogar consentimento de outro usuário. Acrescidos pela revisão de contrato:
+    **parâmetro duplicado e parâmetro na fonte errada (E1)**; **cada passo de E2
+    com o modo de erro correto**, em especial `redirect_uri` ausente e registro
+    expurgado; **tela do Modo A sem link nem navegação**; **variações de
+    `redirect_uri`** (normalização, double-encode, porta em loopback vs. host
+    remoto, credenciais embutidas, esquema perigoso); **troca de código por outro
+    `client_id`**; **duas trocas concorrentes do mesmo código** (a corrida — só a
+    primeira emite); **duas renovações concorrentes dentro da janela de graça**
+    (ambas legítimas, mesma sucessora); **reuso fora da janela** (revoga a
+    família e **não** o Consentimento); **`X-Forwarded-For` forjado sem proxy
+    confiável não altera a contagem**.
     - Dependencies: tasks 13, 14
-16. **Fluxo ponta a ponta com cliente MCP real** — validar descoberta, registro,
+16. **Teste de vazamento em log** — asserção de que nenhum registro de log
+    produzido pelas rotas do protocolo contém código, verifier, challenge,
+    credencial, `redirect_uri` completo, header de autorização ou URL completa,
+    inclusive nos caminhos de erro e de `ValidationError` (E7).
+    - Dependencies: tasks 13, 14
+17. **Fluxo ponta a ponta com cliente MCP real** — validar descoberta, registro,
     login, consentimento, reconexão silenciosa e revogação com um cliente
     genérico.
     - Dependencies: tasks 13, 14, e as duas telas no `stayhub-front`
-17. **Revisão de segurança pós-implementação** — Analista de Segurança sobre o
+18. **Revisão de segurança pós-implementação** — Analista de Segurança sobre o
     código produzido.
-    - Dependencies: task 16
-18. **Revisão arquitetural** — Revisor sobre aderência de camadas e fronteiras.
-    - Dependencies: task 16
+    - Dependencies: task 17
+19. **Revisão arquitetural** — Revisor sobre aderência de camadas e fronteiras.
+    - Dependencies: task 17
 
-> Com as decisões resolvidas, o paralelismo inicial é amplo: **tasks 2, 3, 4, 5 e
-> 6 não têm dependência nenhuma** e podem sair juntas — recomendo despachar a
-> task 2 em paralelo com as demais, já que 3–6 são estruturais e não implementam
-> o protocolo. Task 7 é independente das tasks 8–12. As tasks 15 e 16 são as
-> únicas com convergência total; a 16 tem dependência externa a este repositório.
+> Com as decisões resolvidas, o paralelismo inicial é amplo: **tasks 2, 3, 4 e 5
+> não têm dependência nenhuma** e podem sair juntas — recomendo despachar a task
+> 2 em paralelo com as demais, já que 3–5 são estruturais e não implementam o
+> protocolo. **Task 6 depende da task 4** (precisa do IP de peer propagado pelo
+> adaptador, E5) — sai logo depois. Task 7 é independente das tasks 8–12. As
+> tasks 15, 16 e 17 são as únicas com convergência total; a 17 tem dependência
+> externa a este repositório (as duas telas do `stayhub-front`).
 
 ---
 
