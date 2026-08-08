@@ -1187,9 +1187,93 @@ rotacionada há mais de uma geração é reuso, sem graça.
     explicitamente para revisão, como pedido.
     - Dependencies: tasks 5, 6, 10 — **todas concluídas**.
 
-12. **Revogação** — endpoint do protocolo e revogação por consentimento, com
-    cascata sobre as credenciais derivadas.
-    - Dependencies: task 11
+12. ~~**Revogação**~~ — **Concluída (2026-08-08)**: `POST /revoke`
+    (`RevokeController` + `RevokeTokenUseCase`, RFC 7009) e o mecanismo de
+    cascata por consentimento (`RevokeConsentUseCase`), sem endpoint nem
+    controller próprios — entregue para a task 14 consumir.
+
+    **`/revoke` nunca é oráculo (RFC 7009 §2.2).** A resposta é sempre `200`
+    com corpo vazio, idêntica para token inexistente, expirado, já revogado,
+    revogado com sucesso, ou pertencente a outro aplicativo. Só falha de
+    forma distinguível o que descreve a forma da própria requisição, não
+    algo sobre o status do token: parâmetro duplicado no corpo (E1, via
+    `parseUniqueFormParams`, mesmo helper de `TokenController`), `token`
+    ausente, `token_type_hint` fora do vocabulário fechado (`access_token`
+    ou `refresh_token`), ou `client_id` malformado. `RevokeTokenUseCase.execute()`
+    devolve um `outcome` (revogado, não encontrado ou aplicativo divergente)
+    que o controller só usa para a linha de log (E7 permite "resultado") —
+    nunca para variar a resposta.
+
+    **Busca por ordem, não por porta (E4-adjacente).** `token_type_hint` só
+    decide qual digest é consultado primeiro; nunca impede a segunda busca.
+    Um hint errado ainda encontra o token na segunda tentativa — sem hint,
+    access token é tentado primeiro. `client_id` é opcional aqui, ao
+    contrário do `/token`: RFC 7009 não o exige de um cliente público, já
+    que possuir o token em claro já é a prova de autoridade costumeira para
+    revogá-lo. Quando presente, ainda assim precisa bater com o registro do
+    aplicativo do Consentimento da credencial localizada (via
+    `ConsentRepository.findById`) — do contrário a revogação é pulada em
+    silêncio, sem nunca revelar isso na resposta. Um aplicativo não revoga
+    o token de outro por essa via, valor de token correto ou não.
+
+    **Escopo de revogação por tipo (invariante central desta task).**
+    Access token localizado revoga só aquela linha, via `revokeById` (novo
+    método em `IssuedCredentialRepository`, implementado em
+    `IssuedCredentialPostgresRepository`) — nunca a família nem as demais
+    credenciais do mesmo Consentimento, distinto de `revokeFamily` de
+    propósito. Refresh token localizado revoga a família inteira, via
+    `revokeFamily`, a mesma unidade que `RefreshAccessTokenUseCase` já
+    revoga em reuso (E4): o escopo de autoridade de um refresh token é a
+    família que ele origina. Em nenhum dos dois casos o Consentimento é
+    tocado — permanece reservado à ação explícita do usuário ou à
+    expiração de E9 (invariante 6).
+
+    **Rate limiting (E5, mesmo padrão do `/token` por instrução do
+    dispatch).** `rateLimitPolicy` automático por IP (30/min, aplicado pelo
+    adaptador antes de qualquer parsing) e, só quando `client_id` está
+    presente e é um UUID válido, uma segunda dimensão por `client_id`
+    (60/min), aplicada manualmente pelo controller — como `client_id` é
+    opcional aqui, essa segunda dimensão é condicional, ao contrário do
+    `/token`, onde é sempre obrigatória.
+
+    **Cascata de consentimento sem transação entre repositórios**
+    (`RevokeConsentUseCase`, novo, sem endpoint nem controller — só a task
+    14 consome). O subdomínio não tem nenhuma abstração de unidade de
+    trabalho cruzando `ConsentRepository` e `IssuedCredentialRepository` (a
+    única `db.transaction` existente, em `rotateRefreshToken`, é
+    inteiramente interna a um único repositório). A ordem escolhida revoga
+    primeiro as credenciais (`revokeAllByConsent`) e só depois marca o
+    Consentimento como revogado (`consentRepository.revoke`). Até o
+    primeiro passo terminar, o Consentimento ainda lê como ativo — a
+    direção segura, já que nada ainda afirma ter revogado algo. No momento
+    em que qualquer leitor observa o Consentimento como revogado, toda
+    credencial sob ele já carrega seu próprio `revoked_at`, exatamente o
+    que a invariante 5 exige. Uma falha entre os dois passos deixa
+    credenciais revogadas com o Consentimento ainda, incorretamente, lendo
+    como ativo — o oposto da janela proibida, e autocurável: chamar de
+    novo reexecuta o primeiro passo como no-op (`revokeAllByConsent` só
+    toca linhas com `revoked_at IS NULL`) e completa o segundo. A ordem
+    inversa foi descartada exatamente por seu único modo de falha ser o
+    proibido. Posse do Consentimento é verificada dentro do próprio use
+    case: um Consentimento que não pertence ao usuário autenticado é
+    tratado como inexistente (`ResourceNotFoundError`), a mesma convenção
+    de colapsar "não existe" com "não é seu" que `UpdatePropertyUseCase` e
+    `CancelStayUseCase` já usam no projeto — "os aplicativos do próprio
+    usuário" é invariante de autorização declarada no plano, não filtro de
+    UI que o controller da task 14 pudesse pular.
+
+    Log por allowlist (E7) no controller: `endpoint`, `result` (código de
+    erro OAuth ou o `outcome` interno do use case), `client_id` e
+    `rate_limit_key` (o peer IP) — nunca o token, seu digest, ou qualquer
+    outro campo do corpo.
+
+    **Para o Arquiteto/Revisor**: nenhuma migration foi necessária — `id` e
+    `revoked_at` já existiam em `issued_credentials` desde a task 5.
+    `revokeById` é extensão pontual de `IssuedCredentialRepository` (mesmo
+    espírito das extensões sinalizadas nas tasks 10 e 11), sinalizada aqui
+    por transparência.
+    - Dependencies: task 11 — **concluída**.
+
 13. **Troca da credencial do `/mcp` para OAuth** — a implementação de verificação
     passa a ser a da credencial OAuth (expiração, revogação, audiência) e o
     verificador de JWT é **removido** do caminho MCP, junto com a dependência de
