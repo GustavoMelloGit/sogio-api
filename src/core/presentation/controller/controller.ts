@@ -1,6 +1,7 @@
 import type { User } from "../../../auth/domain/entity/user";
 import type { ZodTypeAny } from "zod";
 import type { OpenApiOperation } from "../open_api/open_api_types";
+import type { RateLimitPolicy } from "../../application/rate_limit/rate_limit_policy";
 
 export enum HttpControllerMethod {
   GET = "GET",
@@ -79,4 +80,11 @@ export interface Controller {
   openApiSpec?: OpenApiOperation;
   inputSchema?: ZodTypeAny;
   parameterSource?: ControllerParameterSource;
+  /**
+   * Opt-in rate limit policy the adapter enforces before doing anything else
+   * (before parsing, validation, or auth) — see E5 in the MCP OAuth
+   * authorization plan. Unset means no limit. The primitive enforcing it
+   * knows nothing about this controller or why the numbers were chosen.
+   */
+  rateLimitPolicy?: RateLimitPolicy;
 }

@@ -17,11 +17,14 @@ import { CorsMiddleware } from "../../../presentation/middleware/cors.middleware
 import { MiddlewareDi } from "../../../../auth/infra/di/middleware";
 import { serializeDatesRecursively } from "../utils/date_serializer";
 import { CoreDi } from "../../di/core_di";
+import { resolveCallerIp } from "../../rate_limit/caller_ip_resolver";
+import { env } from "../../config/environments";
 
 const middlewareDi = new MiddlewareDi();
 const corsMiddleware = new CorsMiddleware();
 const coreDi = new CoreDi();
 const logger = coreDi.makeLogger();
+const rateLimiter = coreDi.makeRateLimiter();
 
 class ControllerRequestParser {
   #rawBody: string | null = null;
@@ -187,6 +190,21 @@ function buildErrorLogContext(error: unknown): Record<string, unknown> {
   return { name: error.name, message: error.message, stack: error.stack };
 }
 
+function buildRateLimitKey(controller: Controller, callerIp: string): string {
+  return `${controller.method}:${controller.path}:${callerIp}`;
+}
+
+function buildRateLimitedResponse(retryAfterSeconds: number): Response {
+  return buildExplicitResponse(
+    new ControllerHttpResponse({
+      status: 429,
+      body: { error: "rate_limited" },
+      headers: { "Retry-After": String(retryAfterSeconds) },
+      cache: "no-store",
+    })
+  );
+}
+
 function buildExplicitResponse(response: ControllerHttpResponse): Response {
   const headers = new Headers(response.headers);
 
@@ -222,6 +240,21 @@ export function BunHttpControllerAdapter(
 
     try {
       const peerIp = server?.requestIP(request)?.address ?? null;
+
+      if (controller.rateLimitPolicy) {
+        const callerIp = resolveCallerIp(request, peerIp, env.TRUSTED_PROXY);
+        const decision = rateLimiter.consume(
+          buildRateLimitKey(controller, callerIp),
+          controller.rateLimitPolicy
+        );
+        if (!decision.allowed) {
+          return corsMiddleware.addCorsHeaders(
+            buildRateLimitedResponse(decision.retryAfterSeconds),
+            request.headers.get("Origin")
+          );
+        }
+      }
+
       const controllerRequestParser = new ControllerRequestParser(
         request,
         controller
