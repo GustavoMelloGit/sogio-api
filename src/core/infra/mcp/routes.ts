@@ -1,13 +1,15 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { z } from "zod";
-import type { User } from "../../../auth/domain/entity/user";
+import type { Requester } from "../../../auth/application/service/credential_verifier";
 import { MiddlewareDi } from "../../../auth/infra/di/middleware";
 import type { PropertyDi } from "../../../booking/infra/di/property_di";
 import type { StayDi } from "../../../booking/infra/di/stay_di";
 import type { FinanceDi } from "../../../finance/infra/di/finance_di";
 import type { PropertyManagementDi } from "../../../property_management/infra/di/property_management_di";
 import { UnauthorizedError } from "../../application/error/unauthorized_error";
+import type { Logger } from "../../application/logger/logger";
+import { CoreDi } from "../di/core_di";
 import { McpIdentityResolver } from "./identity_resolver";
 import { createMcpServer } from "./mcp_server";
 import type { McpToolDefinition } from "./mcp_tool";
@@ -53,9 +55,16 @@ export type McpRouteDependencies = {
  * at this transport boundary, before anything MCP-specific is touched: on
  * failure the handler returns `401` directly — see `unauthorizedResponse` —
  * and never instantiates a `McpServer`/transport pair or reaches a tool
- * handler. On success, the resolved `User` is handed to `createMcpServer`,
+ * handler. The credential accepted here is the OAuth access token issued by
+ * the Auth BC's delegated-access subdomain (task 13) — resolution goes
+ * through `MiddlewareDi.makeCredentialVerifier()`, never a JWT session
+ * token, and there is no environment branch that falls back to one. On
+ * success, the resolved `Requester`'s `user` is handed to `createMcpServer`,
  * which binds every tool registered for this request to that same caller
- * (see `mcp_tool.ts`); tools no longer resolve identity on their own.
+ * (see `mcp_tool.ts`); tools still only ever see the `User`, never the rest
+ * of the `Requester` — the application identity (`appRegistrationId`) is a
+ * transport-level concern, logged here by allowlist (E7), not something a
+ * tool handler needs.
  *
  * Only the `McpServer`/transport pair is rebuilt per request:
  * `WebStandardStreamableHTTPServerTransport` refuses to be reused once it
@@ -72,9 +81,9 @@ export function makeMcpRequestHandler(
 ): (request: Request) => Promise<Response> {
   const middlewareDi = new MiddlewareDi();
   const identityResolver = new McpIdentityResolver(
-    middlewareDi.makeAuthRepository(),
-    middlewareDi.makeSessionManager()
+    middlewareDi.makeCredentialVerifier()
   );
+  const logger: Logger = new CoreDi().makeLogger();
 
   const tools: McpToolDefinition<z.ZodRawShape>[] = [
     makeListPropertiesTool(dependencies.propertyManagementDi),
@@ -87,21 +96,28 @@ export function makeMcpRequestHandler(
     const authorizationHeader =
       request.headers.get("authorization") ?? undefined;
 
-    let user: User;
+    let requester: Requester;
     try {
-      user = await identityResolver.resolveUser(authorizationHeader);
+      requester = await identityResolver.resolveRequester(authorizationHeader);
     } catch (error) {
       if (error instanceof UnauthorizedError) {
+        logger.warn("mcp", { endpoint: "mcp", result: "unauthorized" });
         return unauthorizedResponse(request, authorizationHeader !== undefined);
       }
 
       throw error;
     }
 
+    logger.info("mcp", {
+      endpoint: "mcp",
+      result: "authenticated",
+      client_id: requester.appRegistrationId,
+    });
+
     const server = createMcpServer({
       name: MCP_SERVER_NAME,
       version: MCP_SERVER_VERSION,
-      user,
+      user: requester.user,
       tools,
     });
     const transport = new WebStandardStreamableHTTPServerTransport({
@@ -135,7 +151,16 @@ export function makeMcpRequestHandler(
  *
  * `hadCredential` distinguishes "no credential presented" (`invalid_request`)
  * from "credential presented but rejected" (`invalid_token`), per RFC 6750 —
- * both cases still resolve to the same `401`.
+ * both cases still resolve to the same `401`. Never distinguishes *why* a
+ * presented credential was rejected (nonexistent, expired, revoked, or
+ * wrong audience — see `CredentialVerifier`): all four collapse to the same
+ * `invalid_token`, so this response is never an oracle over the reason.
+ *
+ * `Access-Control-Expose-Headers` is set so a browser-based MCP client can
+ * actually read `WWW-Authenticate` off a cross-origin response (E8) —
+ * without it, the header exists on the wire but is invisible to
+ * `fetch`/`XMLHttpRequest`, and the 401 never triggers the client's OAuth
+ * flow.
  */
 function unauthorizedResponse(
   request: Request,
@@ -157,6 +182,7 @@ function unauthorizedResponse(
       headers: {
         "Content-Type": "application/json",
         "WWW-Authenticate": `Bearer error="${error}", error_description="${errorDescription}", resource_metadata="${resourceMetadataUrl}"`,
+        "Access-Control-Expose-Headers": "WWW-Authenticate",
       },
     }
   );

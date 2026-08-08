@@ -123,6 +123,7 @@ export async function issueCredentialFixture(input: {
   consentId: string;
   familyId?: string;
   resource?: string;
+  accessTokenExpiresAt?: Date;
 }): Promise<{
   issuedCredential: IssuedCredential;
   accessToken: string;
@@ -136,7 +137,8 @@ export async function issueCredentialFixture(input: {
     consent_id: input.consentId,
     family_id: input.familyId ?? crypto.randomUUID(),
     access_token_digest: access.digest,
-    access_token_expires_at: new Date(Date.now() + 60 * 60 * 1000),
+    access_token_expires_at:
+      input.accessTokenExpiresAt ?? new Date(Date.now() + 60 * 60 * 1000),
     refresh_token_digest: refresh.digest,
     refresh_token_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     resource: input.resource ?? "https://api.stayhub.dev/mcp",
@@ -149,4 +151,37 @@ export async function issueCredentialFixture(input: {
     accessToken: access.secret,
     refreshToken: refresh.secret,
   };
+}
+
+/**
+ * Composes an app registration, a consent, and an issued credential into a
+ * single ready-to-use `/mcp` access token — the fixture equivalent of
+ * driving the full `/authorize` + `/token` flow, for tests that only care
+ * about the resulting credential (task 13: the MCP path authenticates with
+ * this instead of a JWT session token). `resource` defaults to `undefined`,
+ * which `issueCredentialFixture` resolves to a placeholder that will *not*
+ * match a real server's canonical `/mcp` URL — callers that exercise actual
+ * audience verification must pass the real `expectedResource` explicitly.
+ */
+export async function createMcpAccessTokenFixture(input: {
+  userId: string;
+  resource?: string;
+  accessTokenExpiresAt?: Date;
+}): Promise<{
+  accessToken: string;
+  appRegistrationId: string;
+  consentId: string;
+}> {
+  const app = await createAppRegistrationFixture();
+  const consent = await createConsentFixture({
+    userId: input.userId,
+    appRegistrationId: app.id,
+  });
+  const { accessToken } = await issueCredentialFixture({
+    consentId: consent.id,
+    resource: input.resource,
+    accessTokenExpiresAt: input.accessTokenExpiresAt,
+  });
+
+  return { accessToken, appRegistrationId: app.id, consentId: consent.id };
 }

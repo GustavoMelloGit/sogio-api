@@ -3,7 +3,9 @@ import { api } from "../helpers/server";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
-import { createAuthToken } from "../helpers/fixtures/auth_token";
+import { createMcpAccessTokenFixture } from "../helpers/fixtures/delegated_access";
+import { MCP_RESOURCE_PATH } from "../../src/auth/presentation/controller/delegated_access/oauth_protected_resource_metadata.controller";
+import { apiBaseUrl } from "../../src/core/infra/config/environments";
 
 type JsonRpcResponse = {
   jsonrpc: "2.0";
@@ -16,6 +18,15 @@ type OAuthErrorBody = {
   error: string;
   error_description: string;
 };
+
+/**
+ * `/mcp` verifies the access token against this server's canonical resource
+ * URL (`apiBaseUrl` + `MCP_RESOURCE_PATH`, task 13) regardless of which port
+ * the test HTTP server actually listens on — every credential fixture below
+ * has to be issued for this exact audience or the transport gate rejects it
+ * with `invalid_token`, indistinguishable from a garbage token.
+ */
+const MCP_RESOURCE = `${apiBaseUrl}${MCP_RESOURCE_PATH}`;
 
 async function callMcp(
   body: Record<string, unknown>,
@@ -45,7 +56,14 @@ async function callMcp(
 
 describe("POST /mcp", () => {
   beforeEach(async () => {
-    await truncate(["properties", "addresses", "users"]);
+    await truncate([
+      "issued_credentials",
+      "consents",
+      "app_registrations",
+      "properties",
+      "addresses",
+      "users",
+    ]);
   });
 
   it("rejects a request without an Authorization header before reaching the transport", async () => {
@@ -92,13 +110,46 @@ describe("POST /mcp", () => {
     expect(body.error).toBe("invalid_token");
   });
 
+  it("rejects a request whose access token was issued for a different resource", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao.wrong-audience@stayhub.dev",
+      password: "password123",
+    });
+    const { accessToken } = await createMcpAccessTokenFixture({
+      userId: user.id,
+      resource: "https://not-this-server.example.com/mcp",
+    });
+
+    const response = await api("/mcp", {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {},
+      }),
+    });
+    const body = (await response.json()) as OAuthErrorBody;
+
+    expect(response.status).toBe(401);
+    expect(body.error).toBe("invalid_token");
+  });
+
   it("lists the 4 registered tools", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
       email: "joao.tools-list@stayhub.dev",
       password: "password123",
     });
-    const token = await createAuthToken(user.id);
+    const { accessToken: token } = await createMcpAccessTokenFixture({
+      userId: user.id,
+      resource: MCP_RESOURCE,
+    });
 
     const { body } = await callMcp(
       {
@@ -137,7 +188,10 @@ describe("POST /mcp", () => {
       userId: otherUser.id,
       name: "Apê do Centro",
     });
-    const token = await createAuthToken(owner.id);
+    const { accessToken: token } = await createMcpAccessTokenFixture({
+      userId: owner.id,
+      resource: MCP_RESOURCE,
+    });
 
     const { body } = await callMcp(
       {
