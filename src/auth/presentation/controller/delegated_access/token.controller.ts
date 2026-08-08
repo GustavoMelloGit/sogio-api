@@ -8,6 +8,7 @@ import {
 import type { RateLimitPolicy } from "../../../../core/application/rate_limit/rate_limit_policy";
 import type { RateLimiter } from "../../../../core/application/rate_limit/rate_limiter";
 import type { Logger } from "../../../../core/application/logger/logger";
+import type { AppRegistrationRepository } from "../../../domain/repository/delegated_access/app_registration_repository";
 import { apiBaseUrl } from "../../../../core/infra/config/environments";
 import type { ExchangeAuthorizationCodeUseCase } from "../../../application/use_case/exchange_authorization_code";
 import type { RefreshAccessTokenUseCase } from "../../../application/use_case/refresh_access_token";
@@ -47,6 +48,16 @@ const PEER_IP_RATE_LIMIT_POLICY: RateLimitPolicy = {
  * about peer IP — see `RateLimitKeyDimension`'s docstring). Looser than the
  * per-IP policy because one application's `client_id` is shared by every
  * user who has connected it, not just one caller.
+ *
+ * **Correção pós-revisão (M6).** Este contador só é alimentado depois que
+ * `client_id` é confirmado como um registro existente (ver `handle()`) — não
+ * bastava o formato UUID já validado antes. Sem essa checagem, um
+ * `crypto.randomUUID()` novo por requisição custava zero ao chamador e
+ * enchia o mapa compartilhado do `RateLimiter` (fail-closed ao atingir o
+ * teto — `InMemoryRateLimiter`) só com lixo, negando `/token` a qualquer
+ * aplicativo genuinamente novo. Exigir um registro real ancora o custo de
+ * inflar esta dimensão ao custo de passar por `/register` (já limitado por
+ * IP), não a uma chamada de função gratuita.
  */
 const CLIENT_ID_RATE_LIMIT_POLICY: RateLimitPolicy = {
   keyDimension: "caller-key",
@@ -95,6 +106,7 @@ export class TokenController implements Controller {
   constructor(
     private readonly exchangeAuthorizationCodeUseCase: ExchangeAuthorizationCodeUseCase,
     private readonly refreshAccessTokenUseCase: RefreshAccessTokenUseCase,
+    private readonly appRegistrationRepository: AppRegistrationRepository,
     private readonly rateLimiter: RateLimiter,
     private readonly logger: Logger
   ) {}
@@ -120,6 +132,17 @@ export class TokenController implements Controller {
       );
     }
     const clientId = clientIdCheck.data;
+
+    const appRegistration =
+      await this.appRegistrationRepository.findById(clientId);
+    if (!appRegistration) {
+      this.#log("error", clientId, "invalid_client", request.peerIp);
+      return oauthProtocolError(
+        400,
+        "invalid_client",
+        "client_id is required and must identify a registered application."
+      );
+    }
 
     const rateLimitDecision = this.rateLimiter.consume(
       buildClientRateLimitKey(clientId),
@@ -202,6 +225,7 @@ export class TokenController implements Controller {
 
     const result = await this.refreshAccessTokenUseCase.execute({
       refreshToken,
+      clientId,
     });
 
     return this.#respond(result, clientId, peerIp);

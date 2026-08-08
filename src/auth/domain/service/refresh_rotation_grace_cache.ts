@@ -27,10 +27,19 @@ export type GraceSuccessorPayload = {
  * a legitimate request.
  *
  * Deliberately a short-lived, process-memory cache and not a store of
- * record: entries are read at most a handful of times within a few seconds
- * of being written and are never persisted to disk, so this doesn't create
- * a new form of "secret at rest" the way a database column would (E10's
- * concern). Single-instance only, like the rate limiter (see the MCP OAuth
+ * record, and never persisted to disk, so this doesn't create a new form of
+ * "secret at rest" the way a database column would (E10's concern). An
+ * entry is removed the moment it stops being useful: `get` deletes it on its
+ * first successful read (there is only ever one legitimate loser to hand it
+ * to — see E4's two-way race), and a `put` that is never read is removed
+ * automatically once `ttlMs` elapses via a scheduled timer, not on some
+ * later, unrelated write or only once the map hits capacity.
+ * **Correção pós-revisão (M4)**: this is the fix — the previous
+ * implementation only purged expired entries when the map reached its
+ * 10,000-entry cap, so a process doing fewer rotations than that never
+ * removed a single expired entry, holding every rotation's clear-text
+ * payload in memory indefinitely instead of for the intended few seconds.
+ * Single-instance only, like the rate limiter (see the MCP OAuth
  * authorization plan's Dívidas) — a second process instance would need this
  * moved to shared storage.
  */

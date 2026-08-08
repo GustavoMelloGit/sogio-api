@@ -10,6 +10,7 @@ import type { TokenExchangeResult } from "./token_exchange_result";
 
 export type RefreshAccessTokenInput = {
   refreshToken: string;
+  clientId: string;
 };
 
 /**
@@ -51,6 +52,15 @@ export type RefreshAccessTokenInput = {
  * caso não esteja, a família inteira é revogada via
  * `revokeConsentCascadeIfNotAlreadyRevoked` (que também cobre a credencial
  * atual) e a resposta é o mesmo `invalid_grant` genérico das demais causas.
+ *
+ * **Vínculo ao `client_id` apresentado (correção pós-revisão, M2).** RFC 6749
+ * §6 exige validar que a credencial de renovação foi emitida ao aplicativo
+ * autenticado. Antes desta correção, `input.clientId` nem existia aqui — um
+ * refresh token emitido ao App A era honrado com o `client_id` do App B, ou
+ * mesmo com um UUID nunca registrado. Agora, resolvido o Consentimento,
+ * `consent.app_registration_id !== input.clientId` colapsa no mesmo
+ * `invalid_grant` genérico das demais causas (risco #4) — o `/token` não
+ * revela que o motivo foi o vínculo de aplicativo, não a credencial em si.
  */
 export class RefreshAccessTokenUseCase
   implements UseCase<RefreshAccessTokenInput, TokenExchangeResult>
@@ -87,6 +97,10 @@ export class RefreshAccessTokenUseCase
 
     const consent = await this.consentRepository.findById(current.consent_id);
     if (!consent) {
+      return { outcome: "invalid_grant" };
+    }
+
+    if (consent.app_registration_id !== input.clientId) {
       return { outcome: "invalid_grant" };
     }
 

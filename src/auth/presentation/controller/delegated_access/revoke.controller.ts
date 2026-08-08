@@ -8,6 +8,7 @@ import {
 import type { RateLimitPolicy } from "../../../../core/application/rate_limit/rate_limit_policy";
 import type { RateLimiter } from "../../../../core/application/rate_limit/rate_limiter";
 import type { Logger } from "../../../../core/application/logger/logger";
+import type { AppRegistrationRepository } from "../../../domain/repository/delegated_access/app_registration_repository";
 import type {
   RevocableTokenType,
   RevokeTokenUseCase,
@@ -39,6 +40,14 @@ const PEER_IP_RATE_LIMIT_POLICY: RateLimitPolicy = {
  * `client_id` is present — unlike `/token`, `client_id` is optional at
  * `/revoke` (see `RevokeTokenUseCase`'s docstring for why), so this
  * dimension is opt-in rather than mandatory on every request.
+ *
+ * **Correção pós-revisão (M6).** Como em `TokenController`, só é alimentado
+ * depois de confirmar que `client_id` identifica um registro existente —
+ * `RevokeController` e `TokenController` são construídos pelo mesmo `AuthDi`
+ * e portanto compartilham a mesma instância de `RateLimiter`: sem essa
+ * checagem aqui também, um UUID novo por requisição enviado a `/revoke`
+ * esgotaria o mesmo mapa que a dimensão `client_id` de `/token` usa, negando
+ * `/token` a aplicativos novos por uma porta diferente da nomeada no achado.
  */
 const CLIENT_ID_RATE_LIMIT_POLICY: RateLimitPolicy = {
   keyDimension: "caller-key",
@@ -81,6 +90,7 @@ export class RevokeController implements Controller {
 
   constructor(
     private readonly revokeTokenUseCase: RevokeTokenUseCase,
+    private readonly appRegistrationRepository: AppRegistrationRepository,
     private readonly rateLimiter: RateLimiter,
     private readonly logger: Logger
   ) {}
@@ -108,6 +118,17 @@ export class RevokeController implements Controller {
     const clientId = clientIdResolution;
 
     if (clientId !== undefined) {
+      const appRegistration =
+        await this.appRegistrationRepository.findById(clientId);
+      if (!appRegistration) {
+        this.#log("warn", "invalid_client", clientId, request.peerIp);
+        return oauthProtocolError(
+          400,
+          "invalid_client",
+          "client_id, when present, must identify a registered application."
+        );
+      }
+
       const rateLimitDecision = this.rateLimiter.consume(
         buildClientRateLimitKey(clientId),
         CLIENT_ID_RATE_LIMIT_POLICY

@@ -1824,3 +1824,402 @@ ocupada pelo container de desenvolvimento **deste** projeto,
 migrations 0000–0003 aplicadas; servidor real (`bun run src/index.ts`) subido
 contra ele para as reproduções acima via `curl`, ponta a ponta, sem mock.
 Container temporário removido ao final.
+
+---
+
+## Correções Pós-Revisão — Segunda Leva (2026-08-08)
+
+Origem: os 5 achados moderados de segurança restantes da revisão pós-
+implementação (task 18) e os 2 baixos (B3, B6) que vivem na mesma superfície
+de código de M5. A primeira leva já havia corrigido os 2 críticos e o buraco
+de E9 (seção acima). Fora desta rodada, por decisão do Orquestrador: M4's
+alternativa cifrada, e os 9 desvios arquiteturais da task 19 — todos
+registrados em **Dívidas Registradas — Achados do Arquiteto e do Analista
+(task 19)**, ao final desta seção.
+
+### M1 — Duas trocas concorrentes do mesmo código revogavam a família do vencedor
+
+**Onde:** `src/auth/application/use_case/exchange_authorization_code.ts`.
+
+**Causa raiz.** A perdedora de uma corrida entre dois `POST /token` com o
+mesmo código sempre cai em "zero linhas" no `claim()` atômico. Sem mais
+nada, ela localizava a credencial que a vencedora **acabou** de emitir via
+`findByAuthorizationCodeDigest` e revogava a família inteira — o mesmo modo
+de falha que E4 já havia previsto para a rotação de renovação e resolvido
+com uma janela de graça, nunca estendida ao caminho do código.
+
+**Correção.** `#handleReplay(codeDigest)` (antes `#revokeFamilyIfAlreadyIssued`)
+só revoga quando `alreadyIssued.created_at` estiver **fora** de
+`graceWindowMs` — a mesma constante de E4, `REFRESH_ROTATION_GRACE_WINDOW_SECONDS`,
+recebida agora como novo parâmetro do construtor (`AuthDi.makeExchangeAuthorizationCodeUseCase`
+passa `refreshRotationGraceWindowMs`). Dentro da janela, a chamada perdedora
+continua recebendo `invalid_grant` — nunca ganha credencial própria — mas a
+família da vencedora sobrevive. Não abre superfície nova: quem só observa o
+código (sem o `code_verifier`) nunca conseguiria reivindicar a linha nem
+emitir nada por conta própria, e o replay tardio (fora da janela) continua
+revogando exatamente como antes.
+
+**Reprodução medida (Postgres real + servidor real, ver Verificação):**
+fluxo completo `/authorize` → aprovação → `POST /token` disparado duas vezes
+em paralelo com o mesmo `code`/`client_id`/`code_verifier`:
+
+```
+r1: {"access_token":"3dtT7...", ...}                 <- 200, com credenciais
+r2: {"error":"invalid_grant", ...}
+POST /mcp com o access_token de r1 -> 200 (tools/list)  <- não mais revogado
+```
+
+Antes da correção este último passo respondia `401` (comportamento medido
+pelo Analista). Confirmado com esta instância que agora responde `200`.
+
+### M2 — O grant `refresh_token` não era vinculado ao `client_id` apresentado
+
+**Onde:** `src/auth/application/use_case/refresh_access_token.ts` (novo
+campo `clientId` no input) e
+`src/auth/presentation/controller/delegated_access/token.controller.ts`
+(repassa o `clientId` já validado ao invés de descartá-lo).
+
+**Correção.** Resolvido o Consentimento, `consent.app_registration_id !==
+input.clientId` colapsa no mesmo `invalid_grant` genérico das demais causas
+(risco #4) — nunca revela que o motivo foi o vínculo de aplicativo. A
+checagem entra **antes** de `isUsable`, mas isso não importa
+observacionalmente: todo ramo devolve o mesmo `invalid_grant`.
+
+**Reprodução medida:** refresh token emitido ao App A —
+
+```
+client_id do App B         -> {"error":"invalid_grant", ...}
+UUID nunca registrado       -> {"error":"invalid_client", ...}  (ver nota)
+client_id correto (App A)   -> 200, com credenciais novas
+```
+
+Nota: o UUID nunca registrado responde `invalid_client`, não `invalid_grant`
+— porque a correção de M6 (abaixo) intercepta qualquer `client_id` que não
+identifique um registro existente **antes** mesmo do `grant_type` ser
+despachado ao caso de uso. Não é uma divergência do achado: a consequência —
+"200 com credenciais" deixando de acontecer — está igualmente fechada para
+os dois casos medidos pelo Analista, e a distinção `invalid_client` vs.
+`invalid_grant` não vaza nada sensível (`client_id` não é segredo em um
+fluxo de cliente público — `token_endpoint_auth_method: none`; qualquer um
+obtém um `client_id` válido via `/register`, sem autenticação).
+
+### M4 — O cache de graça retinha credenciais em claro muito além da janela
+
+**Onde:** `src/auth/infra/service/in_memory_refresh_rotation_grace_cache.ts`
+e o docstring de `src/auth/domain/service/refresh_rotation_grace_cache.ts`
+(corrigido para descrever o que o código agora faz, não mais a intenção que
+o código anterior não implementava).
+
+**Correção.** Reescrito para nunca depender de uma escrita futura ou do
+mapa atingir a capacidade para liberar espaço: todo `put` agenda sua própria
+remoção via `setTimeout(ttlMs).unref()`, e `get` apaga a entrada no primeiro
+acerto (só existe um perdedor legítimo por rotação — a corrida de duas
+pontas de E4). Um processo que nunca mais rotaciona nada não retém payload
+nenhum além do `ttlMs` da última rotação, ao contrário de antes, onde o
+purge só rodava ao atingir o teto de 10.000 entradas.
+
+**Verificação.** Não há reprodução por HTTP possível para "quanto tempo uma
+entrada em memória sobrevive" — é exatamente por isso que o achado só foi
+identificado por leitura de código, não por sintoma observável (os dois
+caminhos, antigo e novo, respondem de forma idêntica no request/response).
+Verificado por: (1) leitura do código reescrito, garantindo remoção
+determinística por temporizador ou por leitura; (2) reprodução funcional em
+runtime de que a janela de graça **continua correta** após a reescrita —
+duas renovações concorrentes com o mesmo refresh token superado ainda
+recebem a mesma sucessora:
+
+```
+g1: {"access_token":"PAt-W...","refresh_token":"rLJNZ...", ...}
+g2: {"access_token":"PAt-W...","refresh_token":"rLJNZ...", ...}   (idênticos a g1)
+```
+
+**Nota do Analista, mantida como dívida, não implementada agora:** a
+alternativa estruturalmente melhor — persistir o payload da sucessora
+cifrado com chave derivada do refresh token superado
+(`AES-GCM(payload, HKDF(refresh_superado))`) — ver **Dívidas Registradas**
+ao final.
+
+### M5 (+ B3, B6) — Corpo bruto e stack trace em log; erro fora do formato do protocolo e sem `no-store`
+
+**Onde:** `src/core/infra/http/adapters/http_controller_adapter.ts`
+(`#parseBody`, `buildErrorLogContext`, novo helper `withNoStore` aplicado no
+`catch` do adaptador) e `src/core/infra/mcp/routes.ts` (novo helper
+`withNoStore` local, aplicado às respostas de sucesso e de 401 do `/mcp`).
+
+**Correção:**
+
+1. `#parseBody()` nunca tenta `JSON.parse` quando o controller declara
+   `parameterSource: "form"`, independente do header `Content-Type` — a
+   fonte declarada (E1) é a verdade, não um header que o chamador controla.
+   Isso fechou a causa raiz: `/token` sem `Content-Type` ou com um
+   `Content-Type` incorreto caía no `JSON.parse` de um corpo que não é JSON,
+   lançando um `SyntaxError` cuja mensagem embute um fragmento **literal**
+   do corpo (ex.: `Unexpected identifier "grant_type"` ou o próprio segredo
+   enviado como corpo `text/plain`) — antes mesmo de `TokenController.handle()`
+   rodar.
+2. Quando ainda assim é JSON (rotas com `parameterSource: "json"` ou sem
+   fonte declarada), `JSON.parse` agora está em `try/catch`: um corpo
+   malformado vira `{}` em vez de lançar — para uma rota com `inputSchema`,
+   isso falha normalmente como `ValidationError` (422), não como um erro não
+   mapeado (500) com o corpo vazando no log.
+3. `buildErrorLogContext` ganhou `isProtocolRoute` (verdadeiro quando o
+   controller declara `parameterSource` — hoje, exclusivamente os endpoints
+   OAuth de acesso delegado): para essas rotas, um erro **não mapeado**
+   nunca loga `message`/`stack`, só `name`. Erros mapeados (`ValidationError`
+   e afins) continuam logando `message` em toda rota — são falhas tipadas
+   cujo texto o próprio projeto já controla.
+4. `withNoStore` (novo, em ambos os arquivos) aplica `Cache-Control: no-store`
+   e `Pragma: no-cache` a **toda** resposta de erro do adaptador para uma
+   rota de protocolo — mapeada ou não, `4xx` ou `500` — fechando B6 (o `401`
+   de `/connect/authorize/decision`, que vinha de `AuthMiddleware`/`errorCodeMap`,
+   nunca do próprio controller, então nunca passava pelo `oauthProtocolError`
+   que já carregava `no-store`). E ao `/mcp` (B3), que nunca passa pelo
+   `BunHttpControllerAdapter` — aplicado diretamente em `handleMcpRequest`,
+   tanto no 401 quanto na resposta de sucesso.
+
+**Reprodução medida (servidor real, log real inspecionado):**
+
+```
+POST /token, sem Content-Type, corpo "grant_type=refresh_token&refresh_token=x&client_id=y"
+ -> 400 {"error":"invalid_client",...}, com Cache-Control: no-store
+ log: {"endpoint":"token","result":"error","rate_limit_key":"127.0.0.1","error":"invalid_client"}
+     (sem "message", sem "stack", sem qualquer fragmento do corpo)
+
+POST /token, Content-Type: text/plain, corpo "SUPERSECRETREFRESHTOKEN"
+ -> 400 {"error":"invalid_client",...}, com Cache-Control: no-store
+ log: idêntico ao acima — a string "SUPERSECRETREFRESHTOKEN" não aparece em
+      lugar nenhum do log do processo (`grep` confirmou)
+
+POST /connect/authorize/decision sem sessão -> 401 {"message":"Unauthorized"}
+ com Cache-Control: no-store, Pragma: no-cache   (B6)
+
+POST /mcp sem credencial -> 401, com Cache-Control: no-store, Pragma: no-cache (B3)
+POST /mcp com credencial válida -> 200, com Cache-Control: no-store, Pragma: no-cache (B3)
+```
+
+Antes da correção, os dois primeiros casos respondiam `500` com
+`{"message":"Internal server error"}` sem `no-store`, e o log continha a
+mensagem bruta do `SyntaxError` — incluindo, no segundo caso, o valor do
+corpo inteiro — mais o `stack` completo.
+
+### M6 — Teto fail-closed sobre dimensão controlada pelo chamador negava o `/token` globalmente
+
+**Onde:** `src/auth/presentation/controller/delegated_access/token.controller.ts`
+e, por extensão (ver justificativa abaixo),
+`src/auth/presentation/controller/delegated_access/revoke.controller.ts`;
+`src/auth/infra/di/auth_di.ts` (injeção de `AppRegistrationRepository` nos
+dois controllers); `src/core/infra/di/core_di.ts` (correlato).
+
+**Correção escolhida, com justificativa.** Das duas alternativas propostas
+("só criar chave depois de confirmar que o registro existe" ou "dar teto
+próprio à dimensão `caller-key`"), escolhi a primeira: `TokenController` e
+`RevokeController` agora chamam `AppRegistrationRepository.findById(clientId)`
+**antes** de consumir a dimensão `caller-key` do `RateLimiter` — um
+`client_id` que não identifica um registro existente responde `invalid_client`
+sem nunca tocar o limitador. Um mapa separado (a segunda alternativa) só
+limitaria o raio de dano a `/token`/`/revoke`; não fecharia a vulnerabilidade
+em si, porque um `crypto.randomUUID()` novo por requisição continuaria
+gratuito para o atacante e continuaria esgotando **esse** mapa dedicado,
+negando `/token` a aplicativos genuinamente novos exatamente como o achado
+descreve. Exigir um registro real ancora o custo de inflar essa dimensão ao
+custo de passar por `/register` (que já tem rate limit próprio por IP,
+task 8) — não a uma chamada de função gratuita.
+
+**Por que `/revoke` também mudou, sem estar no texto original do achado.**
+`RevokeController` e `TokenController` são montados pelo mesmo `AuthDi` e já
+compartilhavam a mesma instância de `RateLimiter` (`this.#rateLimiter` de
+`AuthDi`) **antes** de qualquer mudança nesta rodada — logo, um atacante já
+conseguia esgotar a dimensão `caller-key` que `/token` usa simplesmente
+mandando UUIDs novos para `/revoke` (`client_id` ali é opcional, mas quando
+presente já alimentava o mesmo mapa). Deixar `/revoke` sem a mesma checagem
+teria corrigido a porta nomeada no achado e deixado a porta ao lado aberta,
+alcançando exatamente o mesmo resultado ("nega `/token` globalmente").
+
+**Correlato — `CoreDi` instanciava um `InMemoryRateLimiter` novo a cada `new
+CoreDi()`.** Confirmado antes da correção: `AuthDi` constrói seu próprio
+`new CoreDi()` internamente, então o `RateLimiter` que `TokenController`/
+`RevokeController` usam para a dimensão `caller-key` era uma instância
+**diferente** da que `http_controller_adapter.ts` usa (em escopo de módulo,
+para a dimensão `peer-ip` automática de toda rota, incluindo essas mesmas
+duas). O docstring de `makeRateLimiter()` ("shared across every route in the
+process") era falso. Corrigido tornando `#logger`/`#rateLimiter` singletons
+de **módulo** em vez de campos de instância — todo `new CoreDi()`, presente
+ou futuro, devolve exatamente o mesmo `RateLimiter`. Isso só é seguro
+**depois** da correção acima: sem o `findById` prévio, unificar as duas
+dimensões num único mapa teria ampliado o raio de dano do achado (UUIDs de
+`/revoke` esgotando o mesmo teto usado pela dimensão `peer-ip` de qualquer
+outra rota do processo), não apenas o de `/token`.
+
+**Reprodução medida:**
+
+```
+POST /token, grant_type=refresh_token, client_id=deadbeef-0000-4000-8000-000000000000
+ -> 400 {"error":"invalid_client",...}   (nunca chega a RateLimiter.consume)
+
+POST /revoke, client_id=deadbeef-0000-4000-8000-000000000000
+ -> 400 {"error":"invalid_client",...}   (mesma checagem, aplicada por extensão)
+
+POST /revoke, client_id=<App A real> -> 200 (fluxo legítimo intacto)
+
+new CoreDi().makeRateLimiter() === new CoreDi().makeRateLimiter()  -> true
+ (antes da correção: false)
+```
+
+### Verificação (Segunda Leva)
+
+`bun run typecheck`, `lint:check` e `format:check` limpos. Suíte rodada
+**por diretório** (`tests/auth`, `tests/core`, `tests/backoffice`,
+`tests/booking`, `tests/finance` — `bun test` sozinho ainda sofre o segfault
+conhecido do Bun ao entrar em `oauth_discovery_metadata.test.ts`, alheio a
+este código): **todos os 23 arquivos de teste passam, 144 testes, 0
+falhas**. Nenhum teste existente precisou de ajuste — os novos parâmetros de
+construtor (`graceWindowMs` em `ExchangeAuthorizationCodeUseCase`,
+`clientId` no input de `RefreshAccessTokenUseCase`,
+`AppRegistrationRepository` em `TokenController`/`RevokeController`) só são
+exercitados via DI (`AuthDi`), não instanciados diretamente em teste algum.
+
+Nota sobre a contagem: a leva anterior reportou 129 testes para os mesmos 23
+arquivos; a execução desta leva mediu 144. Nenhuma mudança desta rodada
+adiciona teste algum (restrição de processo mantida) — a diferença não foi
+investigada a fundo por estar fora do escopo desta tarefa, mas fica
+registrada para não parecer inconsistência silenciosa.
+
+Postgres temporário e isolado subido em `15433` via `docker run` direto
+(não `docker compose` — mais simples para uma instância descartável), já que
+a `5433` local segue ocupada pelo `stayhub_db` deste projeto (não tocado).
+As quatro migrations (`drizzle/0000`–`0003`) foram aplicadas via `psql`
+diretamente sobre os arquivos `.sql` gerados — `drizzle-kit push` não se
+conectava de forma confiável ao container temporário nesta sessão (motivo
+não investigado; não é uma mudança de comportamento desta tarefa) e `psql`
+contornou o problema sem risco, já que as migrations já existiam,
+versionadas, de tasks anteriores. Servidor real (`bun run src/index.ts`)
+subido contra esse Postgres para todas as reproduções via `curl` acima,
+ponta a ponta: registro de dois aplicativos, fluxo completo `/authorize` →
+`/connect/authorize/decision` → `/token` → `/mcp` → `/revoke`. Arquivo de
+ambiente temporário (`.env.verify`) e container removidos ao final; o
+container de desenvolvimento deste projeto (`stayhub_db`, porta `5433`)
+nunca foi tocado.
+
+---
+
+## Dívidas Registradas — Achados do Arquiteto (task 19) e Baixos do Analista (não corrigidos)
+
+Origem: relatório do Arquiteto (task 19, revisão arquitetural) e achados
+baixos da revisão de segurança pós-implementação (task 18) que o usuário
+decidiu **não** corrigir nesta rodada. Registrados aqui, na forma pedida
+pelo Orquestrador, para sobreviver à conversa. Nenhum destes itens foi
+implementado — apenas mapeado.
+
+1. **A1** — `AppRegistration` não enforça a lista de rejeição de
+   `redirect_uri` de E3 na própria entidade; a invariante é só de borda
+   (`RegisterAppController`/`redirect_uri_policy.ts`). Hoje,
+   `AppRegistration.create({redirect_uris:["javascript:alert(1)"]})` passa
+   sem lançar. Correção futura: mover a validação de E3 para dentro do
+   `create()`/schema Zod da entidade, para que a invariante valha
+   independente de quem a chama.
+2. **A3** — `ControllerParameterSource`/`#collectUnique` em
+   `http_controller_adapter.ts` são inalcançáveis na prática: só rodam
+   quando o controller declara `inputSchema`, e **nenhum** controller de
+   protocolo declara — todos validam à mão (E7). Consequência: as fontes
+   **JSON** (`/register`, `/connect/authorize/decision`) ficam sem detecção
+   de duplicata de chave pelo caminho genérico (não conformidade literal com
+   E1 regras 2 e 3 — achado **B1** do Analista, ainda aberto). Duplicado
+   também com `unique_query_params.ts`, que resolve o mesmo problema para
+   `query`/`form` de forma independente. Correção futura: ou os controllers
+   JSON passam a chamar uma checagem de duplicata equivalente à de
+   `unique_query_params.ts` sobre o corpo bruto, ou o mecanismo genérico do
+   adaptador é reaproveitado de fato — não os dois convivendo, um deles
+   morto.
+3. **A4** — `MCP_RESOURCE_PATH` e o well-known do protected resource moram
+   em `presentation/` e estão duplicados como literal em
+   `src/core/infra/mcp/routes.ts`; o `resource_metadata` do 401 de `/mcp`
+   deriva de `request.url` em vez de `apiBaseUrl` (inconsistente com o resto
+   do sistema, que trata `apiBaseUrl` como fonte da verdade da identidade do
+   issuer — risco #11).
+4. **A5** — `OAuthCredentialVerifier` é lógica de aplicação (decide se uma
+   credencial ainda é válida, cruzando expiração/revogação/audiência/vigência
+   de Consentimento) arquivada em `infra/service/`, quando deveria estar em
+   `application/service/` — só a implementação Postgres dos repositórios
+   que ela consome pertence a `infra/`.
+5. **Coalescer `touchLastUsedAt`** — escreve em `consents.last_used_at` a
+   cada requisição MCP autenticada, numa coluna cuja granularidade
+   semântica (E9, tela de "aplicativos conectados") é de dias, não de
+   milissegundos. Candidato a debounce (ex.: só escrever se a última escrita
+   foi há mais de N minutos).
+6. **A6** — `RateLimitPolicy.keyDimension` (`"peer-ip"` | `"caller-key"`)
+   não é lido nem por `RateLimiter`/`InMemoryRateLimiter` nem pelo
+   `BunHttpControllerAdapter` — é um discriminante puramente documental que
+   nada no código atual discrimina sobre. Ou passa a ser usado para algo
+   real (ex.: validar em runtime que a política declarada bate com o uso),
+   ou é removido do tipo.
+7. **A7** — falta o agrupamento `delegated_access/` (que já existe em
+   `domain/entity`, `domain/repository` e `presentation/controller`) em
+   `application/use_case`, `application/service`, `domain/service` e
+   `infra/service` — os arquivos do subdomínio ficam misturados com os do
+   restante do BC Auth nessas quatro pastas.
+8. **A8** — vocabulário "client" vazou para DTOs de aplicação e domínio
+   (`clientId` em `RefreshAccessTokenInput`/`ExchangeAuthorizationCodeInput`/
+   `RevokeTokenInput`, `"client_mismatch"` em `RevokeTokenResult`,
+   `#belongsToClient` em `RevokeTokenUseCase`), contra a Linguagem Ubíqua do
+   plano ("a linguagem do produto é **aplicativo**", não "cliente"). Nomear
+   como `appRegistrationId`/`"app_mismatch"`/`#belongsToApp` alinharia com o
+   restante do domínio (`AppRegistration`, `app_registration_id`).
+9. **A9** — `IssuedCredentialRepository.deleteExpiredOrRevoked(before)`
+   ignora o parâmetro `before` no ramo que apaga credenciais **revogadas**
+   (só o respeita para as expiradas) — expurga revogadas de qualquer idade,
+   não só as anteriores ao corte.
+10. **Renames do contrato com o `stayhub-front`**, pedidos pelo Arquiteto
+    **antes** do front implementar (para não vazar vocabulário interno):
+    `GET /connect/authorize/pending-request` → `/connect/authorize/request`;
+    `DELETE /auth/connected-apps/:consentId` → `/auth/connected-apps/:id`
+    (não vazar o nome do agregado interno — "Consentimento" — no vocabulário
+    do front, que só enxerga "aplicativo conectado"). O Arquiteto classificou
+    o segundo como o único caro de mudar depois de o front já ter
+    implementado contra o nome atual.
+11. **Portas técnicas hoje em `domain/service`** — `RefreshRotationGraceCache`
+    e `DelegatedSecretService` são portas de infraestrutura (cache em
+    processo, geração/digest de segredo), não conceitos do domínio de
+    negócio; pertencem a `application/service`, como as demais portas do
+    projeto.
+12. **Alternativa cifrada ao cache de graça (nota de M4).** Persistir o
+    payload da sucessora cifrado com chave derivada do próprio refresh token
+    superado (`AES-GCM(payload, HKDF(refresh_superado))`) em vez de cache em
+    memória: só quem apresenta o token superado decifra, um dump do banco
+    rende ciphertext, e funciona multi-instância e através de restart — sem
+    a limitação de processo único que `InMemoryRefreshRotationGraceCache`
+    (e o rate limiter) têm hoje. É o alvo estrutural correto; o cache em
+    memória, mesmo corrigido nesta rodada, continua paliativo.
+13. **Baixos do Analista não corrigidos:**
+    - **B1** — ver A3 acima (fontes JSON sem detecção de duplicata pelo
+      caminho genérico).
+    - **B2** — normalização residual de `.`/`..`, userinfo e fragmento no
+      ramo loopback de `matchesIgnoringLoopbackPort`
+      (`redirect_uri_policy.ts`) — não explorável hoje, porque o host
+      continua sendo resolvido como loopback de qualquer forma, mas é
+      comparação mais permissiva do que a igualdade estrita que E3 pede para
+      o resto da string.
+    - **B4** — `resolveRequester` (`McpIdentityResolver`) faz
+      `header.split(" ")[1]` sem conferir que o primeiro token é literalmente
+      `Bearer` (case-sensitive ou não) — um header `Basic xyz` ou `xyz` sem
+      esquema algum ainda tenta usar `xyz`/`split(" ")[1]` como credencial.
+    - **B5** — a lista de rejeição de esquema em `redirect_uri_policy.ts`
+      (`javascript:`, `data:`, `vbscript:`, `file:`, `blob:`) é uma
+      blocklist, não allowlist: `filesystem:` e `view-source:`, entre
+      outros, passam sem serem esquemas HTTP(S) ou loopback pretendidos.
+    - **B7** — o expurgo de registros nunca usados (E9, task 8) só dispara
+      como efeito colateral de tráfego em `/register` ou
+      `GET /auth/connected-apps` — uma instalação onde ninguém jamais abre a
+      tela de aplicativos conectados nem registra um segundo app nunca
+      aciona o expurgo, mesmo tendo registros mortos há meses.
+14. **Questão de contrato em aberto, para o Arquiteto antes da task 17**:
+    CORS restrito à origem do front nas rotas do protocolo (E8) significa
+    que um cliente MCP **em navegador** não consegue chamar `/token` nem
+    `/register` cross-origin — só o `/mcp` recebeu a política pública
+    (task 14). É a letra de E8 (que só menciona a exceção pública para os
+    dois documentos de metadata e, por extensão já decidida, para `/mcp`),
+    mas colide com o cenário do risco 12 do plano ("Clientes MCP em
+    navegador buscam o metadata e chamam `/token` e `/register` via
+    fetch"). Não é falha de implementação — é decisão de contrato a
+    confirmar: ou o risco 12 estava descrevendo um cenário que a decisão de
+    E8 conscientemente não cobre, ou `/token`/`/register` precisam da mesma
+    exceção pública que `/mcp` já tem.

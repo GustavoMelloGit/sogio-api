@@ -111,18 +111,44 @@ class ControllerRequestParser {
     return paramsObject;
   }
 
+  /**
+   * Correção pós-revisão (M5). Two changes from the version this replaces:
+   *
+   * 1. A controller that declares `parameterSource: "form"` never has its
+   *    body parsed as JSON, regardless of the `Content-Type` header — the
+   *    declared source is the single source of truth (E1), not a header the
+   *    caller controls. Presenting `/token` a body with a wrong or missing
+   *    `Content-Type` used to fall through to `JSON.parse` below.
+   * 2. `JSON.parse` is wrapped in a `try/catch`. It used to throw straight
+   *    into the adapter's top-level `catch`, which logged the raw
+   *    `SyntaxError` — whose message embeds a fragment of the *body itself*
+   *    (`Unexpected identifier "SUPERSECRETREFRESHTOKEN"`) — verbatim,
+   *    stack included. Malformed JSON now just resolves to `{}`, which for
+   *    an `inputSchema`-validated route fails cleanly as a normal
+   *    `ValidationError` (422) instead of leaking into a log line as an
+   *    unmapped 500.
+   */
   #parseBody(): Record<string, unknown> {
     if (!this.#rawBody) {
       return {};
     }
 
     const contentType = this.request.headers.get("content-type") ?? "";
+    const isDeclaredForm = this.controller.parameterSource === "form";
 
-    if (contentType.includes("application/x-www-form-urlencoded")) {
+    if (
+      isDeclaredForm ||
+      contentType.includes("application/x-www-form-urlencoded")
+    ) {
       return Object.fromEntries(new URLSearchParams(this.#rawBody).entries());
     }
 
-    const body = JSON.parse(this.#rawBody);
+    let body: unknown;
+    try {
+      body = JSON.parse(this.#rawBody);
+    } catch {
+      return {};
+    }
 
     if (!body) {
       return {};
@@ -174,9 +200,27 @@ const errorCodeMap: Record<string, number> = {
   [IllegalStateError.name]: 500,
 };
 
-function buildErrorLogContext(error: unknown): Record<string, unknown> {
+/**
+ * Correção pós-revisão (M5 / E7). `isProtocolRoute` — true for any
+ * controller that declares `parameterSource` (today, exclusively the OAuth
+ * delegated-access endpoints; see `ControllerParameterSource`'s docstring)
+ * — strips `message`/`stack` from an *unmapped* error before it's logged.
+ * An unmapped error reaching this adapter for one of those routes is, by
+ * construction, a bug nobody anticipated, so its message can contain
+ * anything — including, as measured, a fragment of a raw request body
+ * carrying `code`, `code_verifier`, or a refresh token. Mapped errors
+ * (`ValidationError` and friends) still log their `message` for every
+ * route: those are expected, typed failures whose text the project already
+ * controls, not an arbitrary thrown value's `.message`.
+ */
+function buildErrorLogContext(
+  error: unknown,
+  isProtocolRoute: boolean
+): Record<string, unknown> {
   if (!Error.isError(error)) {
-    return { name: "UnknownThrownValue", message: String(error) };
+    return isProtocolRoute
+      ? { name: "UnknownThrownValue" }
+      : { name: "UnknownThrownValue", message: String(error) };
   }
 
   const isExpectedError = Object.prototype.hasOwnProperty.call(
@@ -186,6 +230,10 @@ function buildErrorLogContext(error: unknown): Record<string, unknown> {
 
   if (isExpectedError) {
     return { name: error.name, message: error.message };
+  }
+
+  if (isProtocolRoute) {
+    return { name: error.name };
   }
 
   return { name: error.name, message: error.message, stack: error.stack };
@@ -204,6 +252,27 @@ function buildRateLimitedResponse(retryAfterSeconds: number): Response {
       cache: "no-store",
     })
   );
+}
+
+/**
+ * Correção pós-revisão (M5 / B6 / E8). Applied to every error response the
+ * catch block below builds for a protocol route (`isProtocolRoute`, see
+ * `buildErrorLogContext`) — mapped or unmapped, `4xx` or `500`. Before this,
+ * only a controller's own handler-level error path (`oauthProtocolError`,
+ * `ControllerHttpResponse`) carried `no-store`; anything thrown *up to* the
+ * adapter — including `AuthMiddleware` rejecting `/connect/authorize/decision`
+ * with `UnauthorizedError` — fell through to a plain `Response.json` with no
+ * cache header at all (B6).
+ */
+function withNoStore(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "no-store");
+  headers.set("Pragma", "no-cache");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function buildExplicitResponse(response: ControllerHttpResponse): Response {
@@ -308,7 +377,11 @@ export function BunHttpControllerAdapter(
         controller.corsPolicy
       );
     } catch (e) {
-      logger.error("Error in HTTP controller adapter", buildErrorLogContext(e));
+      const isProtocolRoute = Boolean(controller.parameterSource);
+      logger.error(
+        "Error in HTTP controller adapter",
+        buildErrorLogContext(e, isProtocolRoute)
+      );
       let errorResponse: Response;
 
       if (Error.isError(e)) {
@@ -337,6 +410,10 @@ export function BunHttpControllerAdapter(
             status: 500,
           }
         );
+      }
+
+      if (isProtocolRoute) {
+        errorResponse = withNoStore(errorResponse);
       }
 
       return corsMiddleware.addCorsHeaders(

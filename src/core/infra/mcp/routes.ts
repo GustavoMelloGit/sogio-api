@@ -75,7 +75,11 @@ export type McpRouteDependencies = {
  * JavaScript ever got to inspect a status code or a header — `WWW-Authenticate`
  * exposure alone (already in place since task 13) is not reachable without
  * it. See `CorsMiddleware.getPublicCorsHeaders` for why the wildcard origin
- * is safe here.
+ * is safe here. For the same reason — no `BunHttpControllerAdapter` in the
+ * way — every response also gets `no-store`/`no-cache` applied directly here
+ * (`withNoStore`, correção pós-revisão B3): `/mcp` carries guest personal
+ * data and would otherwise ship with no cache header at all, unlike every
+ * other protocol route (E8's default).
  *
  * Only the `McpServer`/transport pair is rebuilt per request:
  * `WebStandardStreamableHTTPServerTransport` refuses to be reused once it
@@ -115,8 +119,9 @@ export function makeMcpRequestHandler(
     } catch (error) {
       if (error instanceof UnauthorizedError) {
         logger.warn("mcp", { endpoint: "mcp", result: "unauthorized" });
+        const hadCredential = authorizationHeader !== undefined;
         return corsMiddleware.addCorsHeaders(
-          unauthorizedResponse(request, authorizationHeader !== undefined),
+          withNoStore(unauthorizedResponse(request, hadCredential)),
           origin,
           "public"
         );
@@ -146,7 +151,7 @@ export function makeMcpRequestHandler(
       const response = await transport.handleRequest(request);
 
       return corsMiddleware.addCorsHeaders(
-        closeServerWhenResponseEnds(response, server),
+        withNoStore(closeServerWhenResponseEnds(response, server)),
         origin,
         "public"
       );
@@ -187,6 +192,25 @@ export function makeMcpRequestHandler(
  * (`handleMcpRequest`) adds that via `CorsMiddleware.addCorsHeaders` (task
  * 14), which preserves this header untouched.
  */
+/**
+ * Correção pós-revisão (B3). `/mcp` carries guest personal data (task 15/16
+ * of the MCP server plan) over responses that, before this, shipped neither
+ * `Cache-Control` nor `Pragma` at all — unlike every other protocol route,
+ * which defaults to `no-store` (E8). Applied to both the 401 and the
+ * success path, mirroring how `BunHttpControllerAdapter` now does the same
+ * for every OAuth protocol route it fronts (M5).
+ */
+function withNoStore(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "no-store");
+  headers.set("Pragma", "no-cache");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 function unauthorizedResponse(
   request: Request,
   hadCredential: boolean

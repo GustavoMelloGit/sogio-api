@@ -55,6 +55,24 @@ export type ExchangeAuthorizationCodeInput = {
  * evaluated on that row, no reuse handling — this is not a replay, it's the
  * code's only (late) presentation.
  *
+ * **Janela de graça no zero-linhas (correção pós-revisão, M1).** Duas trocas
+ * concorrentes do mesmo código só têm uma vencedora no `claim()` atômico — a
+ * perdedora sempre cai em "zero linhas". Sem mais nada, ela encontraria a
+ * credencial que a vencedora *acabou* de receber via
+ * `findByAuthorizationCodeDigest` e a revogaria, matando uma conexão boa por
+ * uma corrida de rede, não por comprometimento — exatamente o modo de falha
+ * que E4 já havia previsto e resolvido para a rotação de renovação com uma
+ * janela de graça (ver `RefreshAccessTokenUseCase`), mas que nunca tinha sido
+ * aplicado a este caminho. A correção reusa a mesma constante,
+ * `graceWindowMs` (`REFRESH_ROTATION_GRACE_WINDOW_SECONDS`): se a credencial
+ * encontrada foi emitida há menos que essa janela, a revogação é pulada — a
+ * perdedora ainda recebe `invalid_grant` (nunca ganha credencial própria),
+ * mas a vencedora sobrevive. Fora da janela, é replay de verdade e a família
+ * é revogada como antes. Isso não abre superfície nova: quem só observa o
+ * código (sem o verifier) nunca teria conseguido reivindicar a linha nem
+ * emitir nada por conta própria, e o replay tardio (fora da janela) continua
+ * revogando exatamente como antes.
+ *
  * **E3 revalidation.** `claimed.app_registration_id` must equal the
  * presented `client_id` and `redirectUriMatches(claimed.redirect_uri,
  * input.redirectUri)` must hold — a code minted for one application is not
@@ -86,6 +104,7 @@ export class ExchangeAuthorizationCodeUseCase
     private readonly secretService: DelegatedSecretService,
     private readonly accessTokenTtlMs: number,
     private readonly refreshTokenTtlMs: number,
+    private readonly graceWindowMs: number,
     private readonly consentAbsoluteLifetimeMs: number,
     private readonly consentInactivityTtlMs: number
   ) {}
@@ -97,7 +116,7 @@ export class ExchangeAuthorizationCodeUseCase
     const claimed = await this.authorizationCodeRepository.claim(codeDigest);
 
     if (!claimed) {
-      await this.#revokeFamilyIfAlreadyIssued(codeDigest);
+      await this.#handleReplay(codeDigest);
       return { outcome: "invalid_grant" };
     }
 
@@ -167,16 +186,26 @@ export class ExchangeAuthorizationCodeUseCase
     };
   }
 
-  async #revokeFamilyIfAlreadyIssued(codeDigest: string): Promise<void> {
+  /**
+   * M1: only a replay presented *after* the grace window revokes anything.
+   * A concurrent loser inside the window still gets `invalid_grant` from the
+   * caller above — this only decides whether the winner's family survives.
+   */
+  async #handleReplay(codeDigest: string): Promise<void> {
     const alreadyIssued =
       await this.issuedCredentialRepository.findByAuthorizationCodeDigest(
         codeDigest
       );
 
-    if (alreadyIssued) {
-      await this.issuedCredentialRepository.revokeFamily(
-        alreadyIssued.family_id
-      );
+    if (!alreadyIssued) {
+      return;
     }
+
+    const elapsedMs = Date.now() - alreadyIssued.created_at.getTime();
+    if (elapsedMs <= this.graceWindowMs) {
+      return;
+    }
+
+    await this.issuedCredentialRepository.revokeFamily(alreadyIssued.family_id);
   }
 }

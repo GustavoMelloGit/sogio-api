@@ -235,6 +235,7 @@ export class AuthDi {
       this.#delegatedSecretService,
       accessTokenTtlMs,
       refreshTokenTtlMs,
+      refreshRotationGraceWindowMs,
       consentAbsoluteLifetimeMs,
       consentInactivityTtlMs
     );
@@ -258,6 +259,7 @@ export class AuthDi {
     return new TokenController(
       this.makeExchangeAuthorizationCodeUseCase(),
       this.makeRefreshAccessTokenUseCase(),
+      this.#appRegistrationRepository,
       this.#rateLimiter,
       this.#logger
     );
@@ -275,6 +277,7 @@ export class AuthDi {
   makeRevokeController() {
     return new RevokeController(
       this.makeRevokeTokenUseCase(),
+      this.#appRegistrationRepository,
       this.#rateLimiter,
       this.#logger
     );
