@@ -14,6 +14,7 @@ import { PropertyManagementDi } from "../../../../property_management/infra/di/p
 import { BackofficeDi } from "../../../../backoffice/infra/di/backoffice_di";
 import { OpenApiBuilder } from "../swagger/open_api_builder";
 import { swaggerUiHtml } from "../swagger/swagger_ui";
+import { makeMcpRequestHandler } from "../../mcp/routes";
 
 const tenantDi = new TenantDi();
 const propertyDi = new PropertyDi();
@@ -209,6 +210,19 @@ controllers.forEach(({ authenticated, adminOnly, controller }) => {
         corsMiddleware.handlePreflightRequest(request),
     });
   }
+});
+
+const handleMcpRequest = makeMcpRequestHandler({
+  propertyDi,
+  stayDi,
+  financeDi,
+  propertyManagementDi,
+});
+
+routeMap.set("/mcp", {
+  [HttpControllerMethod.POST]: handleMcpRequest,
+  [HttpControllerMethod.GET]: handleMcpRequest,
+  [HttpControllerMethod.DELETE]: handleMcpRequest,
 });
 
 const openApiSpec = new OpenApiBuilder(controllers).build();
