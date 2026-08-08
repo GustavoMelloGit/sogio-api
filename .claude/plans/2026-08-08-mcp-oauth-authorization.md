@@ -644,3 +644,11 @@ vez só, pago agora, contra dívida de segurança permanente. Endosso.
 - As dívidas do plano do servidor MCP (`2026-08-07-servidor-mcp-stayhub.md`)
   permanecem abertas — em especial ausência de idempotência nas escritas e
   ausência de log/auditoria no caminho MCP.
+- **LGPD — dado de hóspede (nome/telefone/sexo) processado por aplicativo de
+  terceiro conectado via OAuth, sem minimização nem texto de consentimento
+  declarando categorias de dado de terceiro.** Achado crítico #4 da revisão de
+  contrato (Analista de Segurança, 2026-08-08). Decisão explícita do usuário:
+  **fora de escopo por agora** — seguir com o fluxo OAuth como desenhado,
+  autenticação resolve quem pode chamar a tool, mas não resolve para onde o
+  dado vai depois nem a finalidade em relação ao hóspede (titular do dado, que
+  não é quem consente). Revisitar antes de expor a feature a usuários reais.
