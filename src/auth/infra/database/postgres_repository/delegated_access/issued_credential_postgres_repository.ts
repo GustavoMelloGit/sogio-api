@@ -188,6 +188,18 @@ export class IssuedCredentialPostgresRepository
       );
   }
 
+  async revokeById(id: string): Promise<void> {
+    await db
+      .update(issuedCredentialsTable)
+      .set({ revoked_at: new Date(), updated_at: new Date() })
+      .where(
+        and(
+          eq(issuedCredentialsTable.id, id),
+          isNull(issuedCredentialsTable.revoked_at)
+        )
+      );
+  }
+
   async revokeAllByConsent(consentId: string): Promise<void> {
     await db
       .update(issuedCredentialsTable)

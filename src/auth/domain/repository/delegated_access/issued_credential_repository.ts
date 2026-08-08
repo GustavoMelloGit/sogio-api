@@ -35,6 +35,14 @@ export interface IssuedCredentialRepository {
   findByFamily(familyId: string): Promise<IssuedCredential[]>;
   /** Reuso fora da janela de graça: revoga apenas a família originada do código. */
   revokeFamily(familyId: string): Promise<void>;
+  /**
+   * `POST /revoke` (RFC 7009) quando o token apresentado é uma credencial de
+   * acesso: revoga só esta linha, nunca a família nem as demais credenciais
+   * do mesmo Consentimento. Distinto de `revokeFamily` de propósito — o
+   * escopo de revogação de um access token é ele mesmo, não a família que
+   * o originou.
+   */
+  revokeById(id: string): Promise<void>;
   /** Cascata de revogação do Consentimento (ação explícita do usuário ou E9). */
   revokeAllByConsent(consentId: string): Promise<void>;
 }

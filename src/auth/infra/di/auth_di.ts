@@ -33,7 +33,10 @@ import type { RefreshRotationGraceCache } from "../../domain/service/refresh_rot
 import { InMemoryRefreshRotationGraceCache } from "../service/in_memory_refresh_rotation_grace_cache";
 import { ExchangeAuthorizationCodeUseCase } from "../../application/use_case/exchange_authorization_code";
 import { RefreshAccessTokenUseCase } from "../../application/use_case/refresh_access_token";
+import { RevokeTokenUseCase } from "../../application/use_case/revoke_token";
+import { RevokeConsentUseCase } from "../../application/use_case/revoke_consent";
 import { TokenController } from "../../presentation/controller/delegated_access/token.controller";
+import { RevokeController } from "../../presentation/controller/delegated_access/revoke.controller";
 import {
   OAuthProtectedResourceMetadataController,
   OAUTH_PROTECTED_RESOURCE_METADATA_PATH,
@@ -241,6 +244,37 @@ export class AuthDi {
       this.makeRefreshAccessTokenUseCase(),
       this.#rateLimiter,
       this.#logger
+    );
+  }
+
+  // Delegated Access — protocol revocation, RFC 7009 (task 12)
+  makeRevokeTokenUseCase() {
+    return new RevokeTokenUseCase(
+      this.#issuedCredentialRepository,
+      this.#consentRepository,
+      this.#delegatedSecretService
+    );
+  }
+
+  makeRevokeController() {
+    return new RevokeController(
+      this.makeRevokeTokenUseCase(),
+      this.#rateLimiter,
+      this.#logger
+    );
+  }
+
+  /**
+   * Consent-cascade revocation mechanism (task 12) — not wired to any route
+   * by this task. Task 14's "connected apps" screen is the intended
+   * consumer: authenticated by the app's own session, and responsible for
+   * confirming the consent being disconnected belongs to the requesting
+   * user before calling this.
+   */
+  makeRevokeConsentUseCase() {
+    return new RevokeConsentUseCase(
+      this.#consentRepository,
+      this.#issuedCredentialRepository
     );
   }
 }
