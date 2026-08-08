@@ -43,25 +43,50 @@ describe("POST /mcp", () => {
     await truncate(["properties", "addresses", "users"]);
   });
 
-  it("does not require HTTP-level authentication to reach the transport", async () => {
-    const { status, body } = await callMcp({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/list",
-      params: {},
+  it("rejects a request without an Authorization header before reaching the transport", async () => {
+    const response = await api("/mcp", {
+      method: "POST",
+      headers: { Accept: "application/json, text/event-stream" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {},
+      }),
     });
+    const body = (await response.json()) as JsonRpcResponse;
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toBe("Bearer");
+    expect(body.jsonrpc).toBe("2.0");
+    expect(body.error).toEqual({ code: -32000, message: "Unauthorized" });
+  });
+
+  it("reaches the transport once an Authorization header is present, even if the token is invalid", async () => {
+    const { status, body } = await callMcp(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {},
+      },
+      "not-a-real-token"
+    );
 
     expect(status).toBe(200);
     expect(body.error).toBeUndefined();
   });
 
   it("lists the 4 registered tools", async () => {
-    const { body } = await callMcp({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/list",
-      params: {},
-    });
+    const { body } = await callMcp(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {},
+      },
+      "not-a-real-token"
+    );
 
     const result = body.result as { tools: Array<{ name: string }> };
     const names = result.tools.map(tool => tool.name).sort();
@@ -116,13 +141,16 @@ describe("POST /mcp", () => {
     ]);
   });
 
-  it("rejects a tool call made without a bearer token", async () => {
-    const { body } = await callMcp({
-      jsonrpc: "2.0",
-      id: 3,
-      method: "tools/call",
-      params: { name: "list_properties", arguments: {} },
-    });
+  it("rejects a tool call whose Authorization header carries an invalid token", async () => {
+    const { body } = await callMcp(
+      {
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: "list_properties", arguments: {} },
+      },
+      "not-a-real-token"
+    );
 
     const result = body.result as { isError?: boolean };
     expect(result.isError).toBe(true);
