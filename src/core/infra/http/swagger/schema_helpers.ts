@@ -5,7 +5,6 @@ import type {
 } from "../../../presentation/open_api/open_api_types";
 
 function toSchema(schema: z.ZodTypeAny): Record<string, unknown> {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { $schema, ...rest } = z.toJSONSchema(schema, {
     unrepresentable: "any",
   }) as Record<string, unknown>;

@@ -84,7 +84,6 @@ export function makeBookStayTool(
       idempotentHint: false,
     },
     handler: async (input, user) => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { entrance_code, ...rest } = await useCase.execute(
         {
           guests: input.guests,

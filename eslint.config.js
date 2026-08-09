@@ -19,4 +19,13 @@ export default defineConfig([
   },
   eslintConfigPrettier,
   ...tseslint.configs.recommended,
+  {
+    files: ["src/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { ignoreRestSiblings: true },
+      ],
+    },
+  },
 ]);

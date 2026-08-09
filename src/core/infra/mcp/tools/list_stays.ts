@@ -75,7 +75,6 @@ export function makeListStaysTool(
       });
 
       return {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         data: data.map(({ entrance_code, ...rest }) => rest),
         pagination,
       };
