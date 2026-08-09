@@ -2223,3 +2223,67 @@ implementado — apenas mapeado.
     confirmar: ou o risco 12 estava descrevendo um cenário que a decisão de
     E8 conscientemente não cobre, ou `/token`/`/register` precisam da mesma
     exceção pública que `/mcp` já tem.
+
+---
+
+## Dívidas Registradas — Revisão da PR #24 e SDK do MCP (2026-08-09)
+
+Origem: revisão do usuário na PR #24 (`feat/mcp-server` → `main`) e investigação
+do Orquestrador sobre o estado do protocolo MCP. Os 8 itens acionáveis da review
+foram corrigidos (commits `75e0beb`, `ea130a2`, `869efc5`); o que segue é o que
+foi deliberadamente **não** corrigido.
+
+15. **Migração para o SDK v2 do MCP (`@modelcontextprotocol/server` 2.0.0) e a
+    revisão de protocolo `2026-07-28`.** Decisão explícita do usuário
+    (2026-08-09): **ficar no v1 por enquanto.**
+
+    Situação atual: o projeto usa `@modelcontextprotocol/sdk@1.30.0` (última do
+    v1) e **já opera em modo stateless** — `WebStandardStreamableHTTPServerTransport`
+    com `sessionIdGenerator: undefined` e par `McpServer`+transport novo por
+    requisição (`src/core/infra/mcp/routes.ts`). Isso não é dívida: é o padrão
+    correto, e a documentação de migração confirma que a hospedagem v1 stateless
+    "mapeia diretamente" na entrada default do v2.
+
+    O que a revisão `2026-07-28` muda: modelo **por requisição** substituindo a
+    arquitetura de sessão; entrega de input in-band (`inputRequired(...)` no lugar
+    de requisições servidor→cliente); notificações por subscrição via
+    `subscriptions/listen`; `requestState` opaco no lugar de estado de sessão;
+    identidade de cliente por `_meta` por requisição em vez de capabilities no
+    `initialize`.
+
+    Por que não migrar agora: a migração é **opt-in** — _"Nothing in v2 puts a
+    2026-07-28 byte on the wire by default"_ — e o `createMcpHandler(factory)`
+    com `legacy: 'stateless'` (default) serve as duas eras. Como já somos
+    stateless, é drop-in. O motivo de adiar é de risco, não técnico: `routes.ts`
+    é onde vive o portão de autenticação OAuth, recém-revisado por segurança
+    (task 18) e arquitetura (task 19); mexer nele agora exigiria nova revisão.
+
+    Caminho de migração quando for a hora: trocar `server.connect(transport)` +
+    `transport.handleRequest(request)` por `createMcpHandler(factory)` do pacote
+    `@modelcontextprotocol/server`, mantendo `legacy: 'stateless'`. O portão de
+    credencial e o 401 com `WWW-Authenticate` continuam **antes** do handler,
+    como estão hoje. Referência:
+    <https://ts.sdk.modelcontextprotocol.io/v2/migration/support-2026-07-28>
+
+    Encerrado na review: `carlosedp/mcp-bun`, citado em dois comentários da PR
+    #24, **não é biblioteca para construir servidores MCP** — é um servidor MCP
+    que expõe capacidades do runtime Bun (rodar scripts, testes, builds) como
+    tools para um assistente. Não substitui nem concorre com o SDK oficial.
+
+16. **`eslint.config.js`: o glob dos arquivos TypeScript nunca casa com nenhum
+    arquivo.** Achado colateral do Desenvolvedor ao remover os `eslint-disable`
+    (2026-08-09), confirmado via `eslint --print-config`. O padrão declarado nos
+    dois primeiros blocos da configuração é:
+
+    ```
+    src/**/*.{ts}
+    ```
+
+    Chaves com um único item não funcionam como alternação no matcher do flat
+    config, então esses blocos — que declaram `js/recommended`, `no-console`,
+    `prefer-const` e `no-var` — **nunca se aplicaram a nenhum arquivo TypeScript
+    da base**, e isso é anterior a qualquer mudança desta feature.
+
+    Não corrigido de propósito: consertar o glob habilitaria `js/recommended` e
+    `no-console: warn` sobre todo o código pela primeira vez, com efeito
+    abrangente e imprevisível. É decisão do time, não conserto de passagem.
