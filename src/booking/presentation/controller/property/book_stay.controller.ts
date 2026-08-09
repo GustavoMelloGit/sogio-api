@@ -19,7 +19,7 @@ const inputSchema = z.object({
   property_id: z.uuid(),
   entrance_code: z
     .string()
-    .length(7, "Entrance code must be 7 characters long")
+    .max(10, "Entrance code must be at most 10 characters long")
     .optional(),
   check_in: z.coerce.date(),
   check_out: z.coerce.date(),

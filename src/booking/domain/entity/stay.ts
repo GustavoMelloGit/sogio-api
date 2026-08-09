@@ -12,7 +12,7 @@ export const staySchema = baseEntitySchema.extend({
   tenant_id: z.uuidv4(),
   property_id: z.uuidv4(),
   guests: z.number().int().positive(),
-  entrance_code: z.string().length(7),
+  entrance_code: z.string().max(10),
   price: z.number().int().nonnegative(),
   source: z.string().max(100),
 });
