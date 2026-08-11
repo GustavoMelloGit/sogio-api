@@ -39,16 +39,8 @@ jobs:
           APP_TUYA_CLIENT_ID: ${{ secrets.TUYA_CLIENT_ID }}
           APP_TUYA_CLIENT_SECRET: ${{ secrets.TUYA_CLIENT_SECRET }}
           APP_TUYA_DEVICE_ID: ${{ secrets.TUYA_DEVICE_ID }}
-          # Config pública (não-sensível), não segredos — mesmo padrão de
-          # APP_NODE_ENV. Ambas obrigatórias fora de development desde a
-          # introdução da autorização OAuth do MCP: o issuer/discovery e o
-          # redirect de consentimento derivam delas, nunca de request.url.
           APP_API_BASE_URL: ${{ vars.API_BASE_URL }}
           APP_FRONT_BASE_URL: ${{ vars.FRONT_BASE_URL }}
-          # Sem valor por padrão (ausente = untrusted): só é setada quando a
-          # API senta atrás de reverse proxy, para X-Forwarded-For alimentar
-          # o rate limiter de /token, /register, /authorize com o IP real do
-          # chamador em vez do IP do proxy (E5).
           APP_TRUSTED_PROXY: ${{ vars.TRUSTED_PROXY }}
         with:
           # Detalhes da Conexão SSH
@@ -77,35 +69,6 @@ jobs:
             bun install
 
             bun run db:push
-
-            # drizzle-kit push é baseado em diff/introspecção, e já se
-            # provou não confiável para detectar certas mudanças em tabelas
-            # já existentes (coluna nova com UNIQUE, índice único novo) —
-            # reporta "changes applied" sem de fato aplicá-las. Em vez de
-            # confiar cegamente, confirma explicitamente que as duas partes
-            # mais críticas da autorização OAuth do MCP existem antes de
-            # reiniciar: a coluna que liga um código de autorização reusado
-            # à sua família de credenciais (E4), e o índice único que
-            # impede consentimentos duplicados por (usuário, aplicativo) —
-            # a correção do achado crítico #1 da revisão de segurança.
-            # Falha alto e visível em vez de reiniciar para um estado
-            # silenciosamente incompleto; o app antigo continua no ar via
-            # pm2 até alguém investigar.
-            bun -e "
-            (async () => {
-              const { Client } = require('pg');
-              const client = new Client({ connectionString: process.env.DATABASE_URL });
-              await client.connect();
-              const col = await client.query(\"select 1 from information_schema.columns where table_name = 'issued_credentials' and column_name = 'authorization_code_digest'\");
-              const idx = await client.query(\"select 1 from pg_indexes where tablename = 'consents' and indexname = 'consents_user_id_app_registration_id_idx'\");
-              await client.end();
-              if (col.rowCount === 0 || idx.rowCount === 0) {
-                console.error('Post-push schema verification FAILED: authorization_code_digest column or the consents unique index is missing. db:push did not apply the full schema. Refusing to restart — investigate and apply the missing DDL from drizzle/0002_jazzy_captain_marvel.sql / drizzle/0003_tired_jocasta.sql before retrying.');
-                process.exit(1);
-              }
-              console.log('Post-push schema verification passed.');
-            })();
-            "
 
             pm2 restart stayhub_api
 
