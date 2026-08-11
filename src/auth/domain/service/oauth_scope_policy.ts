@@ -16,6 +16,18 @@ export function isSupportedScope(scope: string): boolean {
   return OAUTH_SUPPORTED_SCOPES.includes(scope);
 }
 
+/**
+ * The `scope` a request is granted when it omits the parameter entirely.
+ * RFC 6749 §3.3 permits a server to fall back to a pre-defined default
+ * rather than reject the request outright, and that is the interoperable
+ * choice here: a generic MCP client (observed with Claude Code) may omit
+ * `scope` and simply expect the server's default, and with exactly one
+ * supported scope there is no ambiguity about what that default is.
+ */
+export function defaultScope(): string {
+  return OAUTH_MCP_SCOPE;
+}
+
 const SCOPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   [OAUTH_MCP_SCOPE]:
     "Book stays, record expenses, and view your properties and stays on your behalf.",

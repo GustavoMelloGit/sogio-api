@@ -4,7 +4,10 @@ import type { AppRegistrationRepository } from "../../domain/repository/delegate
 import type { AuthorizationRequestRepository } from "../../domain/repository/delegated_access/authorization_request_repository";
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 import { redirectUriMatches } from "../../domain/service/redirect_uri_policy";
-import { isSupportedScope } from "../../domain/service/oauth_scope_policy";
+import {
+  defaultScope,
+  isSupportedScope,
+} from "../../domain/service/oauth_scope_policy";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 
 export type InitiateAuthorizationInput = {
@@ -137,8 +140,18 @@ export class InitiateAuthorizationUseCase
       );
     }
 
-    const scope = input.scope;
-    if (!scope || !isSupportedScope(scope)) {
+    /**
+     * RFC 6749 §3.3: a client may omit `scope` entirely, and the server
+     * falls back to a pre-defined default rather than rejecting the
+     * request — observed in practice with Claude Code's generic MCP OAuth
+     * client, which sends no `scope` parameter at all. A *present but
+     * unsupported* scope is still rejected.
+     */
+    const scope =
+      input.scope === undefined || input.scope === ""
+        ? defaultScope()
+        : input.scope;
+    if (!isSupportedScope(scope)) {
       return this.#modeB(
         redirectUri,
         input.state,
