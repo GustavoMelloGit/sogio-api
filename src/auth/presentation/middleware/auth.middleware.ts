@@ -27,4 +27,20 @@ export class AuthMiddleware {
 
     return user;
   }
+
+  /**
+   * Same verification as `handle`, for callers where a missing or invalid
+   * credential is a legitimate outcome rather than a failure — e.g. the
+   * pending authorization request lookup (task 10), which the front may
+   * call before the user has logged in, and which only needs to know
+   * *whether* a caller is identified, never to reject the request when one
+   * isn't.
+   */
+  async handleOptional(request: ControllerRequest): Promise<User | null> {
+    try {
+      return await this.handle(request);
+    } catch {
+      return null;
+    }
+  }
 }

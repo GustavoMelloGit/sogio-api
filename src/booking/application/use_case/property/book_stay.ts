@@ -8,11 +8,12 @@ import type { UseCase } from "../../../../core/application/use_case/use_case";
 import type { EventDispatcher } from "../../../../core/application/event/event_dispatcher";
 import { StayBookedEvent } from "../../../domain/event/stay_booked_event";
 import type { BookingPropertyRepository } from "../../../domain/repository/booking_property_repository";
+import type { EntranceCodeGenerator } from "../../../domain/service/entrance_code_generator";
 
 type Input = {
   guests: number;
   property_id: string;
-  entrance_code: string;
+  entrance_code?: string;
   check_in: Date;
   check_out: Date;
   price: number;
@@ -41,7 +42,8 @@ export class BookStayUseCase implements UseCase<Input, Output> {
     private readonly propertyRepository: BookingPropertyRepository,
     private readonly stayRepository: StayRepository,
     private readonly bookingPolicy: BookingPolicy,
-    private readonly eventDispatcher: EventDispatcher
+    private readonly eventDispatcher: EventDispatcher,
+    private readonly entranceCodeGenerator: EntranceCodeGenerator
   ) {}
 
   async execute(input: Input, user: User): Promise<Output> {
@@ -66,11 +68,14 @@ export class BookStayUseCase implements UseCase<Input, Output> {
       tenant = await this.tenantRepository.save(newTenant);
     }
 
+    const entrance_code =
+      input.entrance_code ?? this.entranceCodeGenerator.generate();
+
     const stayInput = {
       guests: input.guests,
       tenant_id: tenant.id,
       property_id: input.property_id,
-      entrance_code: input.entrance_code,
+      entrance_code,
       check_in: input.check_in,
       check_out: input.check_out,
       price: input.price,

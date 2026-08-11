@@ -5,10 +5,21 @@ import {
 } from "../../../core/domain/entity/base_entity";
 import { ValidationError } from "../../../core/application/error/validation_error";
 
+export const expenseCategorySchema = z.enum([
+  "MANUTENÇÃO",
+  "ESTADIA",
+  "AQUISIÇÕES",
+  "FINANCIAMENTO",
+  "GASTOS_FIXOS",
+  "OUTROS",
+]);
+
+export type ExpenseCategory = z.infer<typeof expenseCategorySchema>;
+
 export const ledgerEntrySchema = baseEntitySchema.extend({
   amount: z.int(),
   description: z.string().max(500).nullable(),
-  category: z.string().max(50),
+  category: z.string().max(100),
   property_id: z.uuidv4(),
 });
 
@@ -45,6 +56,14 @@ export class LedgerEntry {
   ): LedgerEntry {
     if (data.amount >= 0) {
       throw new ValidationError("Amount must be less than 0");
+    }
+
+    const category = expenseCategorySchema.safeParse(data.category);
+
+    if (!category.success) {
+      throw new ValidationError(
+        `Category must be one of: ${expenseCategorySchema.options.join(", ")}`
+      );
     }
 
     return new LedgerEntry({

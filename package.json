@@ -39,6 +39,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@tuya/tuya-connector-nodejs": "^2.1.2",
     "date-fns": "^4.4.0",
     "drizzle-orm": "^0.44.7",

@@ -1,0 +1,211 @@
+import { IssuedCredential } from "../../domain/entity/delegated_access/issued_credential";
+import type { AuthorizationCodeRepository } from "../../domain/repository/delegated_access/authorization_code_repository";
+import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
+import type { IssuedCredentialRepository } from "../../domain/repository/delegated_access/issued_credential_repository";
+import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
+import { redirectUriMatches } from "../../domain/service/redirect_uri_policy";
+import { verifyPkceS256 } from "../../domain/service/pkce_policy";
+import { revokeConsentCascadeIfNotAlreadyRevoked } from "../service/consent_cascade";
+import type { UseCase } from "../../../core/application/use_case/use_case";
+import type { TokenExchangeResult } from "./token_exchange_result";
+
+export type ExchangeAuthorizationCodeInput = {
+  code: string;
+  redirectUri: string;
+  codeVerifier: string;
+  clientId: string;
+  /**
+   * The canonical `/mcp` resource URL, computed by the controller (mirrors
+   * `InitiateAuthorizationUseCase`'s `expectedResource` — this use case
+   * never reaches into the presentation controller that owns
+   * `MCP_RESOURCE_PATH`).
+   */
+  expectedResource: string;
+};
+
+/**
+ * `grant_type=authorization_code` (task 11) — the second half of the flow
+ * `DecideAuthorizationRequestUseCase` (task 10) started by minting the
+ * code. Every failure branch below returns the same generic
+ * `{ outcome: "invalid_grant" }` (see `TokenExchangeResult`'s docstring):
+ * `TokenController` turns that into one fixed OAuth error, so a nonexistent
+ * code, an expired one, one issued to another client, a mismatched
+ * redirect_uri, and a wrong PKCE verifier are answered identically (risk #4).
+ *
+ * **Reivindicação atômica e reuso (E4).** `AuthorizationCodeRepository.claim`
+ * is the single `UPDATE ... WHERE consumed_at IS NULL RETURNING` — never a
+ * `SELECT` then an `UPDATE`. Zero rows back means "doesn't exist or was
+ * already consumed," and per the plan's explicit correction (not the
+ * `AuthorizationRequestRepository.claim` fix from task 10 — that one
+ * doesn't apply here on purpose): this `claim` intentionally does **not**
+ * filter on `expires_at`, because a code that's expired but was *never*
+ * used must return its (single) row so the caller can tell "expired" apart
+ * from "reused" — only the latter revokes anything. Zero rows here is
+ * therefore always treated as presumed reuse: `AuthorizationCode` doesn't
+ * record which family it minted, so the only way to find it is
+ * `IssuedCredentialRepository.findByAuthorizationCodeDigest` — a credential
+ * exists with this digest only if a *prior* exchange of this exact code
+ * already succeeded. Found means genuine replay, so `revokeFamily` on that
+ * family (never the Consent — E4). Not found means this code either never
+ * existed or was claimed once already but failed validation before
+ * minting anything (e.g. wrong PKCE on its only real attempt) — nothing
+ * was ever issued, so there is nothing to revoke.
+ *
+ * A row *is* returned but `expires_at` is in the past: plain `invalid_grant`,
+ * evaluated on that row, no reuse handling — this is not a replay, it's the
+ * code's only (late) presentation.
+ *
+ * **Janela de graça no zero-linhas (correção pós-revisão, M1).** Duas trocas
+ * concorrentes do mesmo código só têm uma vencedora no `claim()` atômico — a
+ * perdedora sempre cai em "zero linhas". Sem mais nada, ela encontraria a
+ * credencial que a vencedora *acabou* de receber via
+ * `findByAuthorizationCodeDigest` e a revogaria, matando uma conexão boa por
+ * uma corrida de rede, não por comprometimento — exatamente o modo de falha
+ * que E4 já havia previsto e resolvido para a rotação de renovação com uma
+ * janela de graça (ver `RefreshAccessTokenUseCase`), mas que nunca tinha sido
+ * aplicado a este caminho. A correção reusa a mesma constante,
+ * `graceWindowMs` (`REFRESH_ROTATION_GRACE_WINDOW_SECONDS`): se a credencial
+ * encontrada foi emitida há menos que essa janela, a revogação é pulada — a
+ * perdedora ainda recebe `invalid_grant` (nunca ganha credencial própria),
+ * mas a vencedora sobrevive. Fora da janela, é replay de verdade e a família
+ * é revogada como antes. Isso não abre superfície nova: quem só observa o
+ * código (sem o verifier) nunca teria conseguido reivindicar a linha nem
+ * emitir nada por conta própria, e o replay tardio (fora da janela) continua
+ * revogando exatamente como antes.
+ *
+ * **E3 revalidation.** `claimed.app_registration_id` must equal the
+ * presented `client_id` and `redirectUriMatches(claimed.redirect_uri,
+ * input.redirectUri)` must hold — a code minted for one application is not
+ * redeemable by another, correct verifier or not.
+ *
+ * **Resource binding (RFC 8707).** The issued credential's `resource` is
+ * `claimed.resource`, carried unchanged from the code (itself carried
+ * unchanged from the Pending Authorization Request `/authorize` already
+ * validated against the canonical `/mcp` URL) — re-checked here against
+ * `expectedResource` as defense in depth, not because `/authorize` could
+ * plausibly have let anything else through.
+ *
+ * **Vigência do Consentimento (Achado 3 da revisão pós-implementação).**
+ * Antes de emitir, `claimed.consent_id` é resolvido e checado via
+ * `Consent#isUsable` — nem revogado, nem vencido por E9. Sem isso, um
+ * código minted (60s de vida, E4) sobrevivia a uma revogação explícita do
+ * usuário que aconteça nesse intervalo, e a troca emitia credencial nova
+ * sob um Consentimento já morto. Não usável cai no mesmo `invalid_grant`
+ * genérico das demais falhas (risco #4) — nunca revela ao chamador que o
+ * motivo foi vigência do Consentimento, não o código em si.
+ */
+export class ExchangeAuthorizationCodeUseCase
+  implements UseCase<ExchangeAuthorizationCodeInput, TokenExchangeResult>
+{
+  constructor(
+    private readonly authorizationCodeRepository: AuthorizationCodeRepository,
+    private readonly issuedCredentialRepository: IssuedCredentialRepository,
+    private readonly consentRepository: ConsentRepository,
+    private readonly secretService: DelegatedSecretService,
+    private readonly accessTokenTtlMs: number,
+    private readonly refreshTokenTtlMs: number,
+    private readonly graceWindowMs: number,
+    private readonly consentAbsoluteLifetimeMs: number,
+    private readonly consentInactivityTtlMs: number
+  ) {}
+
+  async execute(
+    input: ExchangeAuthorizationCodeInput
+  ): Promise<TokenExchangeResult> {
+    const codeDigest = this.secretService.digest(input.code);
+    const claimed = await this.authorizationCodeRepository.claim(codeDigest);
+
+    if (!claimed) {
+      await this.#handleReplay(codeDigest);
+      return { outcome: "invalid_grant" };
+    }
+
+    if (claimed.expires_at.getTime() <= Date.now()) {
+      return { outcome: "invalid_grant" };
+    }
+
+    if (claimed.app_registration_id !== input.clientId) {
+      return { outcome: "invalid_grant" };
+    }
+
+    if (!redirectUriMatches(claimed.redirect_uri, input.redirectUri)) {
+      return { outcome: "invalid_grant" };
+    }
+
+    if (claimed.resource !== input.expectedResource) {
+      return { outcome: "invalid_grant" };
+    }
+
+    if (!verifyPkceS256(input.codeVerifier, claimed.code_challenge)) {
+      return { outcome: "invalid_grant" };
+    }
+
+    const consent = await this.consentRepository.findById(claimed.consent_id);
+    if (!consent) {
+      return { outcome: "invalid_grant" };
+    }
+
+    if (
+      !consent.isUsable(
+        this.consentAbsoluteLifetimeMs,
+        this.consentInactivityTtlMs
+      )
+    ) {
+      await revokeConsentCascadeIfNotAlreadyRevoked(
+        consent,
+        this.consentRepository,
+        this.issuedCredentialRepository
+      );
+      return { outcome: "invalid_grant" };
+    }
+
+    const familyId = crypto.randomUUID();
+    const access = this.secretService.generate();
+    const refresh = this.secretService.generate();
+    const now = Date.now();
+
+    const credential = IssuedCredential.create({
+      consent_id: claimed.consent_id,
+      family_id: familyId,
+      access_token_digest: access.digest,
+      access_token_expires_at: new Date(now + this.accessTokenTtlMs),
+      refresh_token_digest: refresh.digest,
+      refresh_token_expires_at: new Date(now + this.refreshTokenTtlMs),
+      resource: claimed.resource,
+      authorization_code_digest: codeDigest,
+    });
+
+    await this.issuedCredentialRepository.issue(credential);
+
+    return {
+      outcome: "success",
+      accessToken: access.secret,
+      refreshToken: refresh.secret,
+      expiresIn: Math.floor(this.accessTokenTtlMs / 1000),
+      scope: claimed.scope,
+    };
+  }
+
+  /**
+   * M1: only a replay presented *after* the grace window revokes anything.
+   * A concurrent loser inside the window still gets `invalid_grant` from the
+   * caller above — this only decides whether the winner's family survives.
+   */
+  async #handleReplay(codeDigest: string): Promise<void> {
+    const alreadyIssued =
+      await this.issuedCredentialRepository.findByAuthorizationCodeDigest(
+        codeDigest
+      );
+
+    if (!alreadyIssued) {
+      return;
+    }
+
+    const elapsedMs = Date.now() - alreadyIssued.created_at.getTime();
+    if (elapsedMs <= this.graceWindowMs) {
+      return;
+    }
+
+    await this.issuedCredentialRepository.revokeFamily(alreadyIssued.family_id);
+  }
+}
