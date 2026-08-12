@@ -142,6 +142,25 @@ Achados relevantes da investigação:
 - Não existe chave de idempotência em nenhuma operação de escrita.
 - `BookStayUseCase` reaproveita o `Tenant` pelo telefone e ignora nome/sexo
   divergentes enviados na reserva.
+- `/mcp` não tem rate limiting. O projeto tem infraestrutura pronta
+  (`CoreDi.makeRateLimiter()` / `InMemoryRateLimiter`), mas ela só é aplicada
+  dentro de `BunHttpControllerAdapter` via `controller.rateLimitPolicy` — a
+  rota `/mcp` é montada como handler cru (`routes.ts`) e não passa pelo
+  adapter, então nenhuma tool tem limite de chamadas por token/app. Ficou mais
+  grave com a chegada de `cancel_stay` (2026-08-12): um token vazado ou um
+  agente comprometido pode iterar `list_stays` → `cancel_stay` sem nenhum
+  throttle.
+- Cancelar uma estadia não revoga a senha temporária da fechadura física.
+  `StayCanceledEvent` só tem handler de estorno no Finance
+  (`RevertRevenueOnStayCancel`); não existe handler simétrico ao
+  `CreateTempPasswordOnBook` que chame algo como
+  `DeviceManagementService.revokeTempPassword`, e a interface nem declara esse
+  método. Achado do Arquiteto e confirmado pelo Analista de Segurança
+  (2026-08-12) durante a criação da tool `cancel_stay`: a senha continua
+  válida até `check_out`, e a estadia some da API (soft-delete), então o
+  proprietário não tem superfície para descobrir qual código revogar
+  manualmente. Mitigado por ora só pela `description` da tool, que avisa o
+  chamador de que o acesso físico não é revogado.
 
 ## Revisão de Segurança (2026-08-07) — Task 12: correções críticas
 

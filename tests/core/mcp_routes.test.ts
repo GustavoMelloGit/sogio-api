@@ -140,7 +140,7 @@ describe("POST /mcp", () => {
     expect(body.error).toBe("invalid_token");
   });
 
-  it("lists the 4 registered tools", async () => {
+  it("lists the 5 registered tools", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
       email: "joao.tools-list@stayhub.dev",
@@ -165,7 +165,13 @@ describe("POST /mcp", () => {
     const names = result.tools.map(tool => tool.name).sort();
 
     expect(names).toEqual(
-      ["book_stay", "list_properties", "list_stays", "record_expense"].sort()
+      [
+        "book_stay",
+        "cancel_stay",
+        "list_properties",
+        "list_stays",
+        "record_expense",
+      ].sort()
     );
   });
 
