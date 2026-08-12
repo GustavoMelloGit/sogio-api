@@ -16,6 +16,7 @@ import { createMcpServer } from "./mcp_server";
 import type { McpToolDefinition } from "./mcp_tool";
 import {
   makeBookStayTool,
+  makeCancelStayTool,
   makeListPropertiesTool,
   makeListStaysTool,
   makeRecordExpenseTool,
@@ -106,6 +107,7 @@ export function makeMcpRequestHandler(
     makeListStaysTool(dependencies.stayDi),
     makeRecordExpenseTool(dependencies.financeDi),
     makeBookStayTool(dependencies.propertyDi),
+    makeCancelStayTool(dependencies.stayDi),
   ];
 
   return async function handleMcpRequest(request: Request): Promise<Response> {
