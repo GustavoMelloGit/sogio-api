@@ -2323,3 +2323,13 @@ avaliado pelo usuário e deliberadamente **não corrigido** nesta PR.
     consentimentos anteriores à mudança deixem de ser "utilizáveis" via o
     atalho silencioso e exijam nova tela — em vez de aplicar a capacidade nova
     retroativamente a autorizações antigas.
+
+    **Atualização (2026-08-12, branch `feat/mcp-cancel-stay-tool`, commit
+    `PLACEHOLDER_COMMIT_HASH`):** a parte textual foi corrigida —
+    `SCOPE_DESCRIPTIONS[OAUTH_MCP_SCOPE]` agora menciona `cancel_stay` e
+    declara a irreversibilidade do cancelamento. Escopo dessa correção era
+    apenas o texto de consentimento; nenhum re-consentimento foi forçado. O
+    que permanece como dívida em aberto é exclusivamente o versionamento da
+    superfície do escopo (`scope_surface_version`) e a invalidação de
+    consentimentos anteriores à mudança — segue sem correção, pela mesma
+    decisão do usuário registrada acima.
