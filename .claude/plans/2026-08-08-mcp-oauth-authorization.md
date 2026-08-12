@@ -2287,3 +2287,39 @@ foi deliberadamente **não** corrigido.
     Não corrigido de propósito: consertar o glob habilitaria `js/recommended` e
     `no-console: warn` sobre todo o código pela primeira vez, com efeito
     abrangente e imprevisível. É decisão do time, não conserto de passagem.
+
+---
+
+## Dívidas Registradas — Revisão de Segurança da tool `cancel_stay` (2026-08-12)
+
+Origem: revisão do Analista de Segurança na branch `feat/mcp-cancel-stay-tool`
+(PR de `feat: add cancel_stay mcp tool`, commit `b9601b4`). Achado crítico
+avaliado pelo usuário e deliberadamente **não corrigido** nesta PR.
+
+17. **A descrição do escopo OAuth `mcp` não menciona a capacidade de cancelar
+    estadias, e consentimentos já concedidos herdam essa capacidade em
+    silêncio.** `SCOPE_DESCRIPTIONS[OAUTH_MCP_SCOPE]` em
+    `src/auth/domain/service/oauth_scope_policy.ts` descreve o escopo como
+    "Book stays, record expenses, and view your properties and stays on your
+    behalf" — só ações construtivas. A PR que adicionou a tool `cancel_stay`
+    (destrutiva e irreversível: estorna receita no ledger) não atualizou esse
+    texto.
+
+    Consequência: `#hasUsableConsent` (mesmo arquivo) trata qualquer
+    consentimento vigente como utilizável para todo o escopo `mcp`, incluindo
+    capacidades adicionadas depois da concessão original — o "atalho
+    silencioso de reconexão" do fluxo delegado passa a cobrir `cancel_stay`
+    sem nova tela de consentimento.
+
+    Decisão explícita do usuário (2026-08-12): **não corrigir agora.** No
+    momento apenas o próprio usuário utiliza o servidor MCP — não há terceiro
+    cujo consentimento estaria desatualizado. Reavaliar antes de qualquer
+    integração de terceiros ser conectada ao escopo `mcp`.
+
+    Caminho de correção quando for a hora (conforme laudo do Analista de
+    Segurança): atualizar o texto de `SCOPE_DESCRIPTIONS` para mencionar
+    cancelamento, e considerar versionar a superfície do escopo
+    (`scope_surface_version` no registro de consentimento) para que
+    consentimentos anteriores à mudança deixem de ser "utilizáveis" via o
+    atalho silencioso e exijam nova tela — em vez de aplicar a capacidade nova
+    retroativamente a autorizações antigas.
