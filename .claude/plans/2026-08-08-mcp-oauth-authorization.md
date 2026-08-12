@@ -2325,7 +2325,7 @@ avaliado pelo usuário e deliberadamente **não corrigido** nesta PR.
     retroativamente a autorizações antigas.
 
     **Atualização (2026-08-12, branch `feat/mcp-cancel-stay-tool`, commit
-    `PLACEHOLDER_COMMIT_HASH`):** a parte textual foi corrigida —
+    `5bd330b`):** a parte textual foi corrigida —
     `SCOPE_DESCRIPTIONS[OAUTH_MCP_SCOPE]` agora menciona `cancel_stay` e
     declara a irreversibilidade do cancelamento. Escopo dessa correção era
     apenas o texto de consentimento; nenhum re-consentimento foi forçado. O
