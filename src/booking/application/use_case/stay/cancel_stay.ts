@@ -1,3 +1,4 @@
+import { IllegalStateError } from "../../../../core/application/error/illegal_state_error";
 import { ResourceNotFoundError } from "../../../../core/application/error/resource_not_found_error";
 import type { UseCase } from "../../../../core/application/use_case/use_case";
 import type { User } from "../../../../auth/domain/entity/user";
@@ -45,7 +46,13 @@ export class CancelStayUseCase implements UseCase<Input, Output> {
     await this.stayRepository.saveStay(stay);
 
     const event = new StayCanceledEvent(stay.id, property.id, stay.price);
-    await this.eventDispatcher.dispatch(event);
+    try {
+      await this.eventDispatcher.dispatch(event);
+    } catch {
+      throw new IllegalStateError(
+        "Stay was cancelled, but the ledger reversal failed. Do not retry — escalate to a human operator."
+      );
+    }
 
     return {
       id: stay.id,
