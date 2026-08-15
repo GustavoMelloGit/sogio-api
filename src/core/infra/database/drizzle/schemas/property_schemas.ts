@@ -1,6 +1,15 @@
-import { pgEnum, pgTable, varchar, uuid, integer, text } from "drizzle-orm/pg-core";
+import {
+  pgEnum,
+  pgTable,
+  varchar,
+  uuid,
+  integer,
+  text,
+  jsonb,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { baseSchema } from "./base_schema";
-import { relations } from "drizzle-orm";
+import { relations, isNull } from "drizzle-orm";
 import { usersTable } from "./auth_schemas";
 import { staysTable } from "./stay_schemas";
 
@@ -74,6 +83,44 @@ export const externalBookingSourcesRelations = relations(
   ({ one }) => ({
     property: one(propertiesTable, {
       fields: [externalBookingSources.property_id],
+      references: [propertiesTable.id],
+    }),
+  }),
+);
+
+export const propertySettingsTable = pgTable(
+  "property_settings",
+  {
+    ...baseSchema,
+    property_id: uuid()
+      .references(() => propertiesTable.id)
+      .notNull(),
+    key: varchar({ length: 255 }).notNull(),
+    // Nullable: a soft-deleted setting has its value redacted to `null` (see
+    // `PropertySetting.softDelete()`) rather than retaining its content
+    // indefinitely.
+    value: jsonb(),
+    type: varchar({ length: 20 }).notNull(),
+    description: varchar({ length: 500 }),
+  },
+  table => [
+    /**
+     * Unlike `app_settings`' global `UNIQUE(key)`, uniqueness here is scoped
+     * to `(property_id, key)` and restricted to non-deleted rows via a
+     * partial index — a soft-deleted setting must not block recreating the
+     * same key on the same property.
+     */
+    uniqueIndex("property_settings_property_id_key_idx")
+      .on(table.property_id, table.key)
+      .where(isNull(table.deleted_at)),
+  ],
+);
+
+export const propertySettingsRelations = relations(
+  propertySettingsTable,
+  ({ one }) => ({
+    property: one(propertiesTable, {
+      fields: [propertySettingsTable.property_id],
       references: [propertiesTable.id],
     }),
   }),

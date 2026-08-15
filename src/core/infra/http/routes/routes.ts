@@ -90,6 +90,26 @@ const propertyManagementControllers: Route[] = [
     authenticated: true,
     controller: propertyManagementDi.makeFindPropertyController(),
   },
+  {
+    authenticated: true,
+    controller: propertyManagementDi.makeCreatePropertySettingController(),
+  },
+  {
+    authenticated: true,
+    controller: propertyManagementDi.makeListPropertySettingsController(),
+  },
+  {
+    authenticated: true,
+    controller: propertyManagementDi.makeGetPropertySettingController(),
+  },
+  {
+    authenticated: true,
+    controller: propertyManagementDi.makeUpdatePropertySettingController(),
+  },
+  {
+    authenticated: true,
+    controller: propertyManagementDi.makeDeletePropertySettingController(),
+  },
 ];
 
 const stayControllers: Route[] = [

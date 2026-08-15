@@ -17,9 +17,14 @@ import type { McpToolDefinition } from "./mcp_tool";
 import {
   makeBookStayTool,
   makeCancelStayTool,
+  makeCreatePropertySettingTool,
+  makeDeletePropertySettingTool,
+  makeGetPropertySettingTool,
   makeListPropertiesTool,
+  makeListPropertySettingsTool,
   makeListStaysTool,
   makeRecordExpenseTool,
+  makeUpdatePropertySettingTool,
 } from "./tools";
 
 const MCP_SERVER_NAME = "stayhub";
@@ -108,6 +113,11 @@ export function makeMcpRequestHandler(
     makeRecordExpenseTool(dependencies.financeDi),
     makeBookStayTool(dependencies.propertyDi),
     makeCancelStayTool(dependencies.stayDi),
+    makeListPropertySettingsTool(dependencies.propertyManagementDi),
+    makeGetPropertySettingTool(dependencies.propertyManagementDi),
+    makeCreatePropertySettingTool(dependencies.propertyManagementDi),
+    makeUpdatePropertySettingTool(dependencies.propertyManagementDi),
+    makeDeletePropertySettingTool(dependencies.propertyManagementDi),
   ];
 
   return async function handleMcpRequest(request: Request): Promise<Response> {

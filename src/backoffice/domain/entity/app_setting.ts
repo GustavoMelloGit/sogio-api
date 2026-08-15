@@ -4,6 +4,14 @@ import {
   type WithoutBaseEntity,
 } from "../../../core/domain/entity/base_entity";
 import { ValidationError } from "../../../core/application/error/validation_error";
+import {
+  boundedJsonValue,
+  refineSettingValueForType,
+  settingDescriptionSchema,
+  settingKeySchema,
+  settingTypeSchema,
+  type SettingType,
+} from "../../../core/domain/value_object/setting_value";
 
 /**
  * Security invariant: AppSetting must NOT store secrets, credentials, or PII.
@@ -11,120 +19,26 @@ import { ValidationError } from "../../../core/application/error/validation_erro
  * only. Sensitive values must be managed via environment variables or a secrets manager.
  */
 
-// ---------------------------------------------------------------------------
-// boundedJsonValue — reusable refinement for the `value` field
-// Rejects: JSON > 16 KB, depth > 5, objects with > 50 root keys.
-// ---------------------------------------------------------------------------
+export { boundedJsonValue };
 
-function measureDepth(val: unknown, current = 0): number {
-  if (current > 5) return current;
-  if (Array.isArray(val))
-    return Math.max(...val.map(item => measureDepth(item, current + 1)));
-  if (val !== null && typeof val === "object") {
-    const values = Object.values(val as object);
-    if (values.length === 0) return current;
-    return Math.max(...values.map(v => measureDepth(v, current + 1)));
-  }
-  return current;
-}
+export const appSettingTypeSchema = settingTypeSchema;
 
-export const boundedJsonValue = z.unknown().superRefine((val, ctx) => {
-  if (val === undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Value is required",
-    });
-    return;
-  }
-  const json = JSON.stringify(val);
-  if (json.length > 16384) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Value exceeds maximum allowed size of 16 KB",
-    });
-    return;
-  }
-  if (measureDepth(val) > 5) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Value exceeds maximum nesting depth of 5",
-    });
-    return;
-  }
-  if (
-    val !== null &&
-    typeof val === "object" &&
-    !Array.isArray(val) &&
-    Object.keys(val as object).length > 50
-  ) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Object value must not have more than 50 root keys",
-    });
-  }
-});
-
-export const appSettingTypeSchema = z.enum([
-  "string",
-  "number",
-  "boolean",
-  "json",
-]);
-
-export type AppSettingType = z.infer<typeof appSettingTypeSchema>;
+export type AppSettingType = SettingType;
 
 export const appSettingSchema = baseEntitySchema
   .extend({
-    key: z
-      .string()
-      .min(1)
-      .max(255)
-      .regex(
-        /^[a-z0-9_.-]+$/,
-        "Key must contain only lowercase letters, digits, underscores, dots and hyphens"
-      ),
+    key: settingKeySchema,
     value: boundedJsonValue,
     type: appSettingTypeSchema,
-    description: z.string().max(500).nullable().optional().default(null),
+    description: settingDescriptionSchema,
   })
-  .superRefine((data, ctx) => {
-    const { type, value } = data;
-    if (type === "string" && typeof value !== "string") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Invalid value for type string",
-        path: ["value"],
-      });
-    } else if (type === "number") {
-      if (typeof value !== "number" || !Number.isFinite(value)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Invalid value for type number",
-          path: ["value"],
-        });
-      }
-    } else if (type === "boolean" && typeof value !== "boolean") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Invalid value for type boolean",
-        path: ["value"],
-      });
-    } else if (type === "json") {
-      if (value === null || typeof value !== "object") {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Invalid value for type json",
-          path: ["value"],
-        });
-      }
-    }
-  });
+  .superRefine((data, ctx) => refineSettingValueForType(data, ctx));
 
 export type AppSettingData = z.infer<typeof appSettingSchema>;
 
 /**
  * @kind Entity, Aggregate Root
- * @bc settings
+ * @bc backoffice
  *
  * Security note: do NOT store secrets, credentials, or PII in this entity.
  */
