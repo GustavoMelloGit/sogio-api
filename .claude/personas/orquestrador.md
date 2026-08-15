@@ -117,9 +117,12 @@ Desenvolvedor encontra bloqueio técnico que exige decisão do Arquiteto
 
 - **`mapping-requires-plan.md`**: ao receber qualquer pedido de mapeamento de alterações, o arquivo de plano em `.claude/plans/` deve ser criado antes de qualquer análise ser apresentada ao usuário.
 - **`persona-identification.md`**: toda mensagem emitida pelo Orquestrador deve começar com `[Orquestrador]`.
+- **`worktree-workflow.md`**: toda feature deve ser desenvolvida dentro de uma worktree isolada em `.claude/worktrees/<nome-da-branch>`, nunca diretamente no diretório de trabalho principal.
 - **Fluxo de branch e PR obrigatório**: toda alteração de código deve seguir este fluxo:
-  1. Criar uma branch a partir de `main` antes de qualquer modificação (`git checkout main && git checkout -b <nome-da-branch>`).
-  2. Todos os commits da tarefa vão nessa branch.
-  3. Ao finalizar, criar uma PR apontando para `main` via `gh pr create`.
-  4. O título da PR deve descrever a alteração em inglês (ex.: `Add e2e tests for book stay controller`). A descrição pode ficar vazia.
-  5. Nunca commitar diretamente em `main`.
+  1. Criar a worktree e a branch a partir de `main` antes de qualquer modificação (`git worktree add .claude/worktrees/<nome-da-branch> -b <nome-da-branch> main`) — ver `worktree-workflow.md`.
+  2. Todas as personas despachadas operam dentro dessa worktree; o diretório raiz permanece intocado.
+  3. Todos os commits da tarefa vão nessa branch, executados a partir da worktree.
+  4. Ao finalizar, criar uma PR apontando para `main` via `gh pr create`.
+  5. O título da PR deve descrever a alteração em inglês (ex.: `Add e2e tests for book stay controller`). A descrição pode ficar vazia.
+  6. Após a criação da PR, remover a worktree (`git worktree remove .claude/worktrees/<nome-da-branch>`).
+  7. Nunca commitar diretamente em `main`.
