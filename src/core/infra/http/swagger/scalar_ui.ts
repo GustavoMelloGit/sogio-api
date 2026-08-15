@@ -36,12 +36,12 @@ export function scalarUiHtml(
     </style>
   </head>
   <body>
-    <div id="api-reference"></div>
+    <div id="app"></div>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
     <script>
       const savedToken = localStorage.getItem('scalar_bearer_token');
 
-      const instance = Scalar.createApiReference('#api-reference', {
+      const instance = Scalar.createApiReference('#app', {
         url: '${specUrl}',
         theme: 'purple',
         persistAuth: true,
