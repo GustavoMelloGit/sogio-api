@@ -13,7 +13,7 @@ import { FinanceDi } from "../../../../finance/infra/di/finance_di";
 import { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
 import { BackofficeDi } from "../../../../backoffice/infra/di/backoffice_di";
 import { OpenApiBuilder } from "../swagger/open_api_builder";
-import { swaggerUiHtml } from "../swagger/swagger_ui";
+import { scalarUiHtml } from "../swagger/scalar_ui";
 import { makeMcpRequestHandler } from "../../mcp/routes";
 
 const tenantDi = new TenantDi();
@@ -316,7 +316,7 @@ routeMap.set("/docs/spec", {
 
 routeMap.set("/docs", {
   [HttpControllerMethod.GET]: async () =>
-    new Response(swaggerUiHtml("/docs/spec", { signInPath: "/auth/sign-in" }), {
+    new Response(scalarUiHtml("/docs/spec", { signInPath: "/auth/sign-in" }), {
       headers: { "Content-Type": "text/html" },
     }),
 });
