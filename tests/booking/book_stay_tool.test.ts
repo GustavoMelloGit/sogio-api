@@ -99,7 +99,7 @@ describe("book_stay tool", () => {
   it("books a stay and lets the use case generate the entrance_code automatically", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -133,7 +133,7 @@ describe("book_stay tool", () => {
   it("ignores an entrance_code sent by the caller instead of forwarding it to the use case", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -199,12 +199,12 @@ describe("book_stay tool", () => {
   it("rejects booking a property that belongs to another user", async () => {
     const { user: owner } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const { user: intruder } = await createUserFixture({
       name: "Maria Souza",
-      email: "maria@stayhub.dev",
+      email: "maria@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: owner.id });
@@ -229,7 +229,7 @@ describe("book_stay tool", () => {
   it("rejects overlapping dates for a stay already booked on the same property", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });

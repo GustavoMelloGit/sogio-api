@@ -25,7 +25,7 @@ describe("IssuedCredentialPostgresRepository", () => {
   async function setupConsent() {
     const { user } = await createUserFixture({
       name: "Ada Lovelace",
-      email: "ada@stayhub.dev",
+      email: "ada@sogio.dev",
       password: "correct-horse-battery",
     });
     const app = await createAppRegistrationFixture();
@@ -66,7 +66,7 @@ describe("IssuedCredentialPostgresRepository", () => {
       access_token_expires_at: new Date(Date.now() + 60_000),
       refresh_token_digest: secretService.digest("refresh-a"),
       refresh_token_expires_at: new Date(Date.now() + 60_000),
-      resource: "https://api.stayhub.dev/mcp",
+      resource: "https://api.sogio.dev/mcp",
     });
     await repository.issue(first);
 
@@ -77,7 +77,7 @@ describe("IssuedCredentialPostgresRepository", () => {
       access_token_expires_at: new Date(Date.now() + 60_000),
       refresh_token_digest: secretService.digest("refresh-b"),
       refresh_token_expires_at: new Date(Date.now() + 60_000),
-      resource: "https://api.stayhub.dev/mcp",
+      resource: "https://api.sogio.dev/mcp",
     });
 
     await expect(repository.issue(duplicate)).rejects.toThrow();

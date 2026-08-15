@@ -27,7 +27,7 @@ import {
   makeUpdatePropertySettingTool,
 } from "./tools";
 
-const MCP_SERVER_NAME = "stayhub";
+const MCP_SERVER_NAME = "sogio";
 const MCP_SERVER_VERSION = "1.0.0";
 
 /**

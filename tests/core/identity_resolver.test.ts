@@ -46,7 +46,7 @@ describe("McpIdentityResolver", () => {
   it("resolves the requester and touches the consent's last use for a valid access token", async () => {
     const { user } = await createUserFixture({
       name: "Ada Lovelace",
-      email: "ada@stayhub.dev",
+      email: "ada@sogio.dev",
       password: "password123",
     });
     const app = await createAppRegistrationFixture();
@@ -102,7 +102,7 @@ describe("McpIdentityResolver", () => {
   it("throws UnauthorizedError when the access token has expired", async () => {
     const { user } = await createUserFixture({
       name: "Grace Hopper",
-      email: "grace@stayhub.dev",
+      email: "grace@sogio.dev",
       password: "password123",
     });
     const app = await createAppRegistrationFixture();
@@ -125,7 +125,7 @@ describe("McpIdentityResolver", () => {
   it("throws UnauthorizedError when the credential has been revoked", async () => {
     const { user } = await createUserFixture({
       name: "Katherine Johnson",
-      email: "katherine@stayhub.dev",
+      email: "katherine@sogio.dev",
       password: "password123",
     });
     const app = await createAppRegistrationFixture();
@@ -148,7 +148,7 @@ describe("McpIdentityResolver", () => {
   it("throws UnauthorizedError when the credential was issued for a different audience", async () => {
     const { user } = await createUserFixture({
       name: "Margaret Hamilton",
-      email: "margaret@stayhub.dev",
+      email: "margaret@sogio.dev",
       password: "password123",
     });
     const app = await createAppRegistrationFixture();

@@ -78,7 +78,7 @@ describe("delete_property_setting tool", () => {
   it("soft-deletes a setting owned by the authenticated user's property and redacts its value/description", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -107,12 +107,12 @@ describe("delete_property_setting tool", () => {
   it("does not distinguish another owner's property setting from a nonexistent one", async () => {
     const { user: owner } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const { user: intruder } = await createUserFixture({
       name: "Maria Souza",
-      email: "maria@stayhub.dev",
+      email: "maria@sogio.dev",
       password: "password123",
     });
     const ownerProperty = await createPropertyFixture({ userId: owner.id });

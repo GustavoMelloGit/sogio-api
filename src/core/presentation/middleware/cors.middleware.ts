@@ -12,7 +12,7 @@ export class CorsMiddleware {
        * Exactly the front's origin (E8) — not a `https://*` wildcard. The
        * previous wildcard accepted any HTTPS origin, which combined with
        * `Access-Control-Allow-Credentials: true` below is effectively `*`
-       * with credentials enabled. `stayhub-front` is the API's one
+       * with credentials enabled. `sogio-front` is the API's one
        * legitimate browser caller (the app itself and the OAuth consent
        * screen both live there), so this is a like-for-like tightening, not
        * a behavior change for real traffic.
@@ -112,7 +112,7 @@ export class CorsMiddleware {
    *
    * `/mcp` (task 14) reuses this same policy instead of a third CORS mode:
    * it needs the same "any origin, no ambient credential" shape, since a
-   * browser-based MCP client isn't `stayhub-front` and can't be restricted
+   * browser-based MCP client isn't `sogio-front` and can't be restricted
    * to its origin. `/mcp` carries no cookie or other ambient browser
    * credential to protect — the bearer token is attached explicitly by the
    * caller's own JavaScript, not sent automatically the way a cookie would
@@ -147,8 +147,8 @@ export class CorsMiddleware {
        * allowance) is a genuine prefix match. Anything else — in
        * particular `frontBaseUrl` in production (E8) — has to match the
        * origin exactly; a `startsWith` here would let
-       * `https://front.stayhub.com.evil.com` through against an allowed
-       * origin of `https://front.stayhub.com`.
+       * `https://front.sogio.com.evil.com` through against an allowed
+       * origin of `https://front.sogio.com`.
        */
       if (allowedOrigin.endsWith("*")) {
         return origin.startsWith(allowedOrigin.slice(0, -1));

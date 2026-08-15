@@ -14,7 +14,7 @@ describe("RBAC — auth endpoints", () => {
         method: "POST",
         body: JSON.stringify({
           name: "Test User",
-          email: "test@stayhub.dev",
+          email: "test@sogio.dev",
           password: "password123",
         }),
       });
@@ -32,7 +32,7 @@ describe("RBAC — auth endpoints", () => {
         method: "POST",
         body: JSON.stringify({
           name: "Would-be Admin",
-          email: "attacker@stayhub.dev",
+          email: "attacker@sogio.dev",
           password: "password123",
           role: "admin",
         }),
@@ -51,7 +51,7 @@ describe("RBAC — auth endpoints", () => {
     it("returns role in output", async () => {
       const { user, plainPassword } = await createUserFixture({
         name: "Ada Lovelace",
-        email: "ada@stayhub.dev",
+        email: "ada@sogio.dev",
         password: "correct-horse-battery",
       });
 

@@ -84,7 +84,7 @@ describe("list_stays tool", () => {
   it("returns the stays booked for a property owned by the authenticated user", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -112,12 +112,12 @@ describe("list_stays tool", () => {
   it("rejects listing stays for a property that belongs to another user", async () => {
     const { user: owner } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const { user: intruder } = await createUserFixture({
       name: "Maria Souza",
-      email: "maria@stayhub.dev",
+      email: "maria@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: owner.id });

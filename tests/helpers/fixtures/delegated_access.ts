@@ -84,7 +84,7 @@ export async function createAuthorizationRequestFixture(input: {
     code_challenge: "test-code-challenge",
     code_challenge_method: "S256",
     scope: "mcp",
-    resource: "https://api.stayhub.dev/mcp",
+    resource: "https://api.sogio.dev/mcp",
     expires_at: input.expiresAt ?? new Date(Date.now() + 5 * 60 * 1000),
   });
 
@@ -110,7 +110,7 @@ export async function createAuthorizationCodeFixture(input: {
     code_challenge: "test-code-challenge",
     code_challenge_method: "S256",
     scope: "mcp",
-    resource: "https://api.stayhub.dev/mcp",
+    resource: "https://api.sogio.dev/mcp",
     expires_at: input.expiresAt ?? new Date(Date.now() + 60 * 1000),
   });
 
@@ -141,7 +141,7 @@ export async function issueCredentialFixture(input: {
       input.accessTokenExpiresAt ?? new Date(Date.now() + 60 * 60 * 1000),
     refresh_token_digest: refresh.digest,
     refresh_token_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    resource: input.resource ?? "https://api.stayhub.dev/mcp",
+    resource: input.resource ?? "https://api.sogio.dev/mcp",
   });
 
   const issuedCredential = await repository.issue(entity);

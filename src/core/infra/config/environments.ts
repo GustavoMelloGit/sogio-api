@@ -30,7 +30,7 @@ const envSchema = z
       })
       .optional(),
     /**
-     * Public base URL of the stayhub-front, with no trailing slash. It plays
+     * Public base URL of the sogio-front, with no trailing slash. It plays
      * two roles: the destination of the 302 redirect a successful
      * `/authorize` call issues (the front's consent page, identified only by
      * the opaque pending-request id — never any OAuth parameter, per the

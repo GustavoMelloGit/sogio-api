@@ -64,12 +64,12 @@ describe("list_properties tool", () => {
   it("returns only the properties administered by the authenticated user", async () => {
     const { user: owner } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const { user: otherUser } = await createUserFixture({
       name: "Maria Souza",
-      email: "maria@stayhub.dev",
+      email: "maria@sogio.dev",
       password: "password123",
     });
     const ownedProperty = await createPropertyFixture({

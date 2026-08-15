@@ -42,6 +42,6 @@ const SCOPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
  */
 export function describeScope(scope: string): string {
   return (
-    SCOPE_DESCRIPTIONS[scope] ?? "Access your StayHub account on your behalf."
+    SCOPE_DESCRIPTIONS[scope] ?? "Access your Sogio account on your behalf."
   );
 }

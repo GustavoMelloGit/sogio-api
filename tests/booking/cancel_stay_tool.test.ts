@@ -86,7 +86,7 @@ describe("cancel_stay tool", () => {
   it("cancels a stay owned by the authenticated user and reverses its revenue", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -122,12 +122,12 @@ describe("cancel_stay tool", () => {
   it("does not distinguish another owner's stay from a nonexistent one", async () => {
     const { user: owner } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const { user: intruder } = await createUserFixture({
       name: "Maria Souza",
-      email: "maria@stayhub.dev",
+      email: "maria@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: owner.id });

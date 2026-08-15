@@ -48,7 +48,7 @@ export class RegisterUserController implements Controller {
     requestBody: bodyFromZod(inputSchema, {
       example: {
         name: "Gustavo Marques",
-        email: "gustavo@stayhub.com",
+        email: "gustavo@sogio.com",
         password: "SenhaForte123",
       },
     }),

@@ -11,7 +11,7 @@ export type CreateMcpServerOptions = {
 };
 
 /**
- * Builds an MCP server for a single request, wired to the StayHub error
+ * Builds an MCP server for a single request, wired to the Sogio error
  * mapping pipeline and bound to `user` — the caller already resolved by the
  * transport gate in `routes.ts` before this server was even instantiated.
  * Every tool registered through `registerMcpTool` (or passed in `tools`)

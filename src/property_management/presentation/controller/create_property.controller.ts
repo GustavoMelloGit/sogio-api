@@ -100,7 +100,7 @@ export class CreatePropertyController implements Controller {
           country: "Brasil",
           complement: "Apto 302",
         },
-        images: ["https://cdn.stayhub.com/properties/vista-mar/1.jpg"],
+        images: ["https://cdn.sogio.com/properties/vista-mar/1.jpg"],
         capacity: 4,
       },
     }),
