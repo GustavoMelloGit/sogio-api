@@ -14,7 +14,13 @@ import {
 } from "../../../core/infra/http/swagger/schema_helpers";
 
 const inputSchema = z.object({
-  amount: z.int(),
+  amount: z
+    .int()
+    .positive("Amount must be greater than 0")
+    .max(
+      100_000_000,
+      "Amount must be at most 100000000 cents (R$ 1,000,000.00)"
+    ),
   description: z
     .string()
     .max(500, "Description must be at most 500 characters")

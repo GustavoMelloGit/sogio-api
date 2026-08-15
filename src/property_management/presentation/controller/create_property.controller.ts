@@ -58,7 +58,11 @@ const inputSchema = z.object({
   images: z
     .array(z.string().max(2048, "Image URL must be at most 2048 characters"))
     .min(1, "At least one image is required"),
-  capacity: z.number().int().positive("Capacity must be greater than 0"),
+  capacity: z
+    .number()
+    .int()
+    .positive("Capacity must be greater than 0")
+    .max(500, "Capacity must be at most 500"),
 });
 
 const outputSchema = z.object({

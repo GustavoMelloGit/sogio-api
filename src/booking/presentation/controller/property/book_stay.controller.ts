@@ -15,7 +15,11 @@ import {
 } from "../../../../core/infra/http/swagger/schema_helpers";
 
 const inputSchema = z.object({
-  guests: z.number().gt(0),
+  guests: z
+    .number()
+    .int()
+    .positive("Guests must be greater than 0")
+    .max(500, "Guests must be at most 500"),
   property_id: z.uuid(),
   entrance_code: z
     .string()
@@ -26,7 +30,11 @@ const inputSchema = z.object({
   price: z
     .number()
     .int()
-    .min(0, "Price must be a non-negative integer representing cents"),
+    .min(0, "Price must be a non-negative integer representing cents")
+    .max(
+      100_000_000,
+      "Price must be at most 100000000 cents (R$ 1,000,000.00)"
+    ),
   tenant: z.object({
     name: z
       .string()

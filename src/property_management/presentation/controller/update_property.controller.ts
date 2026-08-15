@@ -47,6 +47,7 @@ const inputSchema = z.object({
     .number()
     .int()
     .positive("Capacity must be greater than 0")
+    .max(500, "Capacity must be at most 500")
     .optional(),
 });
 
