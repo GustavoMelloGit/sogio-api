@@ -11,6 +11,7 @@ import {
   propertiesTable,
   addressesTable,
   externalBookingSources,
+  propertySettingsTable,
 } from "../../../../core/infra/database/drizzle/schema";
 
 type UserRow = typeof usersTable.$inferSelect;
@@ -70,26 +71,37 @@ export class AuthPostgresRepository implements AuthRepository {
   }
 
   async purgeUserData(userId: string): Promise<void> {
-    const properties = await db.query.propertiesTable.findMany({
-      where: eq(propertiesTable.user_id, userId),
-      columns: { id: true, address_id: true },
+    await db.transaction(async tx => {
+      const properties = await tx.query.propertiesTable.findMany({
+        where: eq(propertiesTable.user_id, userId),
+        columns: { id: true, address_id: true },
+      });
+
+      const propertyIds = properties.map(p => p.id);
+      const addressIds = properties.map(p => p.address_id);
+
+      if (propertyIds.length > 0) {
+        // Both `property_settings` and `external_booking_sources` reference
+        // `properties` with `ON DELETE no action`, so they must be purged
+        // explicitly before `users` is deleted — otherwise the cascade from
+        // `properties.user_id` (ON DELETE cascade) fails midway, leaving the
+        // account partially destroyed.
+        await tx
+          .delete(propertySettingsTable)
+          .where(inArray(propertySettingsTable.property_id, propertyIds));
+
+        await tx
+          .delete(externalBookingSources)
+          .where(inArray(externalBookingSources.property_id, propertyIds));
+      }
+
+      await tx.delete(usersTable).where(eq(usersTable.id, userId));
+
+      if (addressIds.length > 0) {
+        await tx
+          .delete(addressesTable)
+          .where(inArray(addressesTable.id, addressIds));
+      }
     });
-
-    const propertyIds = properties.map(p => p.id);
-    const addressIds = properties.map(p => p.address_id);
-
-    if (propertyIds.length > 0) {
-      await db
-        .delete(externalBookingSources)
-        .where(inArray(externalBookingSources.property_id, propertyIds));
-    }
-
-    await db.delete(usersTable).where(eq(usersTable.id, userId));
-
-    if (addressIds.length > 0) {
-      await db
-        .delete(addressesTable)
-        .where(inArray(addressesTable.id, addressIds));
-    }
   }
 }

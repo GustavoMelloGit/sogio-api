@@ -30,7 +30,7 @@ export function defaultScope(): string {
 
 const SCOPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   [OAUTH_MCP_SCOPE]:
-    "Book and cancel stays, record expenses, and view your properties and stays on your behalf. Cancelling a stay is irreversible.",
+    "Book and cancel stays, record expenses, view your properties and stays, and read, change, and remove your properties' configuration settings on your behalf. Cancelling a stay and removing a configuration setting's value are both irreversible.",
 };
 
 /**

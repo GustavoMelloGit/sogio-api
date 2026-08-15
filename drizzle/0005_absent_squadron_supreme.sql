@@ -1,0 +1,1 @@
+ALTER TABLE "property_settings" ALTER COLUMN "value" DROP NOT NULL;
