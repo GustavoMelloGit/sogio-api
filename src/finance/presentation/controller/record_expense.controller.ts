@@ -45,7 +45,13 @@ export class RecordExpenseController implements Controller {
         schema: { type: "string", format: "uuid" },
       },
     ],
-    requestBody: bodyFromZod(inputSchema.omit({ property_id: true })),
+    requestBody: bodyFromZod(inputSchema.omit({ property_id: true }), {
+      example: {
+        amount: 15000,
+        description: "Reparo no encanamento do banheiro",
+        category: "MANUTENÇÃO",
+      },
+    }),
     responses: {
       "204": noContentResponse("Expense recorded successfully"),
       "401": errorResponse("Unauthorized"),

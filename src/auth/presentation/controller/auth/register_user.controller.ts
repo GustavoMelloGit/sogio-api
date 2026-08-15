@@ -45,7 +45,13 @@ export class RegisterUserController implements Controller {
     summary: "Register user",
     description: "Creates a new user account and returns a JWT token.",
     tags: ["Auth"],
-    requestBody: bodyFromZod(inputSchema),
+    requestBody: bodyFromZod(inputSchema, {
+      example: {
+        name: "Gustavo Marques",
+        email: "gustavo@stayhub.com",
+        password: "SenhaForte123",
+      },
+    }),
     responses: {
       "200": responseFromZod("User registered successfully", outputSchema),
       "409": errorResponse("User already exists"),

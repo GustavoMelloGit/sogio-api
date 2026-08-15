@@ -80,7 +80,12 @@ export class UpdatePropertyController implements Controller {
         schema: { type: "string", format: "uuid" },
       },
     ],
-    requestBody: bodyFromZod(inputSchema.omit({ property_id: true })),
+    requestBody: bodyFromZod(inputSchema.omit({ property_id: true }), {
+      example: {
+        name: "Apartamento Vista Mar - Reformado",
+        capacity: 5,
+      },
+    }),
     responses: {
       "200": responseFromZod("Updated property", outputSchema),
       "401": errorResponse("Unauthorized"),

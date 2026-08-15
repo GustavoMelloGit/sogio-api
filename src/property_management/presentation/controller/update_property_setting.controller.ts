@@ -75,7 +75,16 @@ export class UpdatePropertySettingController implements Controller {
         schema: { type: "string", format: "uuid" },
       },
     ],
-    requestBody: bodyFromZod(inputSchema.omit({ property_id: true, id: true })),
+    requestBody: bodyFromZod(
+      inputSchema.omit({ property_id: true, id: true }),
+      {
+        example: {
+          value: "USD",
+          type: "string",
+          description: "Currency used to display prices for this property",
+        },
+      }
+    ),
     responses: {
       "200": responseFromZod("Property setting updated", outputSchema),
       "401": errorResponse("Unauthorized"),

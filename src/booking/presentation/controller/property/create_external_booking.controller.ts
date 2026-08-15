@@ -47,7 +47,13 @@ export class CreateExternalBookingSourceController implements Controller {
         schema: { type: "string", format: "uuid" },
       },
     ],
-    requestBody: bodyFromZod(inputSchema.omit({ property_id: true })),
+    requestBody: bodyFromZod(inputSchema.omit({ property_id: true }), {
+      example: {
+        platform_name: "AIRBNB",
+        sync_url:
+          "https://www.airbnb.com/calendar/ical/12345678.ics?s=abcdef1234567890",
+      },
+    }),
     responses: {
       "200": responseFromZod("External booking source created", outputSchema),
       "401": errorResponse("Unauthorized"),

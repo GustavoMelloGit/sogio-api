@@ -53,7 +53,14 @@ export class UpdateAppSettingController implements Controller {
         schema: { type: "string", format: "uuid" },
       },
     ],
-    requestBody: bodyFromZod(inputSchema.omit({ id: true })),
+    requestBody: bodyFromZod(inputSchema.omit({ id: true }), {
+      example: {
+        value: "Olá {cohost_name}, os dados da estadia são: {stay_details}",
+        type: "string",
+        description:
+          "Template da mensagem para o coanfitrião com dados da estadia",
+      },
+    }),
     responses: {
       "200": responseFromZod("App setting updated", outputSchema),
       "401": errorResponse("Unauthorized"),

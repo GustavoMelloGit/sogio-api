@@ -42,7 +42,12 @@ export class SignInController implements Controller {
     description:
       "Authenticates a user with email and password, returning a JWT token.",
     tags: ["Auth"],
-    requestBody: bodyFromZod(inputSchema),
+    requestBody: bodyFromZod(inputSchema, {
+      example: {
+        email: "gustavo@stayhub.com",
+        password: "SenhaForte123",
+      },
+    }),
     responses: {
       "200": responseFromZod("Successfully authenticated", outputSchema),
       "401": errorResponse("Invalid credentials"),

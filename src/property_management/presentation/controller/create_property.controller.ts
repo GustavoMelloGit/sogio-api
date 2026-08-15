@@ -83,7 +83,23 @@ export class CreatePropertyController implements Controller {
     summary: "Create property",
     description: "Creates a new property owned by the authenticated user.",
     tags: ["Properties"],
-    requestBody: bodyFromZod(inputSchema),
+    requestBody: bodyFromZod(inputSchema, {
+      example: {
+        name: "Apartamento Vista Mar",
+        address: {
+          street: "Avenida Beira Mar",
+          number: "1200",
+          neighborhood: "Praia do Canto",
+          city: "Vitória",
+          state: "ES",
+          zip_code: "29055-000",
+          country: "Brasil",
+          complement: "Apto 302",
+        },
+        images: ["https://cdn.stayhub.com/properties/vista-mar/1.jpg"],
+        capacity: 4,
+      },
+    }),
     responses: {
       "200": responseFromZod("Property created", outputSchema),
       "401": errorResponse("Unauthorized"),

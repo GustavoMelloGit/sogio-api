@@ -46,7 +46,13 @@ export class RecordRevenueController implements Controller {
         schema: { type: "string", format: "uuid" },
       },
     ],
-    requestBody: bodyFromZod(inputSchema.omit({ property_id: true })),
+    requestBody: bodyFromZod(inputSchema.omit({ property_id: true }), {
+      example: {
+        amount: 250000,
+        description: "Pagamento da hospedagem via plataforma",
+        category: "ESTADIA",
+      },
+    }),
     responses: {
       "204": noContentResponse("Revenue recorded successfully"),
       "401": errorResponse("Unauthorized"),

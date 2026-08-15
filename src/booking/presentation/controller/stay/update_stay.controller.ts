@@ -51,7 +51,14 @@ export class UpdateStayController implements Controller {
         schema: { type: "string", format: "uuid" },
       },
     ],
-    requestBody: bodyFromZod(inputSchema.omit({ stay_id: true })),
+    requestBody: bodyFromZod(inputSchema.omit({ stay_id: true }), {
+      example: {
+        check_in: "2039-10-29T12:00:00-03:00",
+        check_out: "2039-10-30T14:00:00-03:00",
+        guests: 3,
+        price: 120000,
+      },
+    }),
     responses: {
       "200": responseFromZod("Updated stay", outputSchema),
       "401": errorResponse("Unauthorized"),
