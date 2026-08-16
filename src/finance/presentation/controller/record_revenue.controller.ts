@@ -4,6 +4,7 @@ import {
   type Controller,
   type ControllerRequest,
 } from "../../../core/presentation/controller/controller";
+import type { User } from "../../../auth/domain/entity/user";
 import type { RecordRevenueUseCase } from "../../application/use_case/record_revenue";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
 import {
@@ -69,7 +70,7 @@ export class RecordRevenueController implements Controller {
 
   constructor(private readonly useCase: RecordRevenueUseCase) {}
 
-  async handle(request: ControllerRequest): Promise<void> {
-    await this.useCase.execute(request.body as Input);
+  async handle(request: ControllerRequest, user: User): Promise<void> {
+    await this.useCase.execute(request.body as Input, user);
   }
 }
