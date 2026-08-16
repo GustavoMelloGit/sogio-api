@@ -9,6 +9,7 @@ import { MarkSubscriptionPastDueUseCase } from "../../src/billing/application/us
 import { SubscriptionPostgresRepository } from "../../src/billing/infra/database/postgres_repository/subscription_postgres_repository";
 import { PlanPostgresRepository } from "../../src/billing/infra/database/postgres_repository/plan_postgres_repository";
 import { ProcessedGatewayEventPostgresRepository } from "../../src/billing/infra/database/postgres_repository/processed_gateway_event_postgres_repository";
+import { SubscriptionHistoryPostgresRepository } from "../../src/billing/infra/database/postgres_repository/subscription_history_postgres_repository";
 import { inMemoryEventDispatcher } from "../../src/core/infra/event/in_memory_event_dispatcher";
 import { UnauthorizedError } from "../../src/core/application/error/unauthorized_error";
 import type { Logger } from "../../src/core/application/logger/logger";
@@ -21,6 +22,8 @@ const subscriptionRepository = new SubscriptionPostgresRepository();
 const planRepository = new PlanPostgresRepository();
 const processedGatewayEventRepository =
   new ProcessedGatewayEventPostgresRepository();
+const subscriptionHistoryRepository =
+  new SubscriptionHistoryPostgresRepository();
 
 const silentLogger: Logger = {
   debug: () => {},
@@ -297,5 +300,186 @@ describe("ProcessGatewayWebhookUseCase — dispatch routing", () => {
 
     const reloaded = await subscriptionRepository.subscriptionOfUser(user.id);
     expect(reloaded?.status).toBe("past_due");
+  });
+});
+
+describe("ProcessGatewayWebhookUseCase — repeated gateway retries (§2.4, items e/f)", () => {
+  it("does not move grace_period_ends_at when invoice.payment_failed is delivered twice with different event_ids (item e)", async () => {
+    await truncate(TABLES);
+    const { user } = await createUserFixture({
+      name: "Conta Webhook Falha Repetida",
+      email: "webhook.payment-failed-twice@sogio.dev",
+      password: "password123",
+    });
+    const pro = await planRepository.planOfCode("pro");
+    if (!pro) throw new Error("no pro plan");
+
+    const subscription = await subscriptionRepository.subscriptionOfUser(
+      user.id
+    );
+    if (!subscription) throw new Error("no subscription");
+    subscription.linkCustomer("cus_webhook_failed_twice");
+    subscription.changePlan({
+      plan_id: pro.id,
+      trial_days: 0,
+      is_perpetual: false,
+      billing_interval: "monthly",
+      period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      external_reference: "sub_webhook_failed_twice",
+    });
+    await subscriptionRepository.save(subscription);
+
+    const firstEvent: GatewayBillingEvent = {
+      type: "payment_failed",
+      event_id: `evt_${crypto.randomUUID()}`,
+      occurred_at: new Date(),
+      external_reference: "sub_webhook_failed_twice",
+      external_customer_reference: "cus_webhook_failed_twice",
+      reason: "card_declined",
+    };
+    await makeRealUseCase(new StubVerifier(firstEvent)).execute({
+      raw_payload: "{}",
+      signature: "sig",
+    });
+
+    const afterFirst = await subscriptionRepository.subscriptionOfUser(user.id);
+    const graceAfterFirst = afterFirst?.grace_period_ends_at ?? null;
+
+    // A different event_id — a genuine second Stripe dunning retry, not a
+    // reentry the claim table would dedupe.
+    const secondEvent: GatewayBillingEvent = {
+      ...firstEvent,
+      event_id: `evt_${crypto.randomUUID()}`,
+      occurred_at: new Date(Date.now() + 1000),
+    };
+    await makeRealUseCase(new StubVerifier(secondEvent)).execute({
+      raw_payload: "{}",
+      signature: "sig",
+    });
+
+    const afterSecond = await subscriptionRepository.subscriptionOfUser(
+      user.id
+    );
+    expect(afterSecond?.grace_period_ends_at).toEqual(graceAfterFirst);
+  });
+
+  it("cancels once and both deliveries succeed when customer.subscription.deleted arrives twice with different event_ids (item f)", async () => {
+    await truncate(TABLES);
+    const { user } = await createUserFixture({
+      name: "Conta Webhook Fim Repetido",
+      email: "webhook.ended-twice@sogio.dev",
+      password: "password123",
+    });
+    const pro = await planRepository.planOfCode("pro");
+    if (!pro) throw new Error("no pro plan");
+
+    const subscription = await subscriptionRepository.subscriptionOfUser(
+      user.id
+    );
+    if (!subscription) throw new Error("no subscription");
+    subscription.linkCustomer("cus_webhook_ended_twice");
+    subscription.changePlan({
+      plan_id: pro.id,
+      trial_days: 0,
+      is_perpetual: false,
+      billing_interval: "monthly",
+      period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      external_reference: "sub_webhook_ended_twice",
+    });
+    await subscriptionRepository.save(subscription);
+
+    const firstEvent: GatewayBillingEvent = {
+      type: "subscription_ended",
+      event_id: `evt_${crypto.randomUUID()}`,
+      occurred_at: new Date(),
+      external_reference: "sub_webhook_ended_twice",
+      external_customer_reference: "cus_webhook_ended_twice",
+    };
+    const secondEvent: GatewayBillingEvent = {
+      ...firstEvent,
+      event_id: `evt_${crypto.randomUUID()}`,
+      occurred_at: new Date(Date.now() + 1000),
+    };
+
+    await expect(
+      makeRealUseCase(new StubVerifier(firstEvent)).execute({
+        raw_payload: "{}",
+        signature: "sig",
+      })
+    ).resolves.toBeUndefined();
+    await expect(
+      makeRealUseCase(new StubVerifier(secondEvent)).execute({
+        raw_payload: "{}",
+        signature: "sig",
+      })
+    ).resolves.toBeUndefined();
+
+    const reloaded = await subscriptionRepository.subscriptionOfUser(user.id);
+    expect(reloaded?.status).toBe("canceled");
+
+    const history = await subscriptionHistoryRepository.historyOfUser(user.id, {
+      page: 1,
+      limit: 20,
+    });
+    const canceledEntries = history.data.filter(
+      row => row.entry.type === "canceled"
+    );
+    expect(canceledEntries).toHaveLength(1);
+  });
+});
+
+describe("ProcessGatewayWebhookUseCase — idempotency writes a single history entry (item b)", () => {
+  it("writes exactly one history entry for two deliveries of the same checkout_completed event_id", async () => {
+    await truncate(TABLES);
+    const { user } = await createUserFixture({
+      name: "Conta Webhook Historico Unico",
+      email: "webhook.single-history-entry@sogio.dev",
+      password: "password123",
+    });
+    const pro = await planRepository.planOfCode("pro");
+    if (!pro) throw new Error("no pro plan");
+
+    const subscription = await subscriptionRepository.subscriptionOfUser(
+      user.id
+    );
+    if (!subscription) throw new Error("no subscription");
+    subscription.linkCustomer("cus_single_history");
+    subscription.changePlan({
+      plan_id: pro.id,
+      trial_days: 0,
+      is_perpetual: false,
+      billing_interval: "monthly",
+      period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      external_reference: "sub_does_not_matter",
+    });
+    await subscriptionRepository.save(subscription);
+
+    const eventId = `evt_${crypto.randomUUID()}`;
+    const event: GatewayBillingEvent = {
+      type: "subscription_ended",
+      event_id: eventId,
+      occurred_at: new Date(),
+      external_reference: "sub_does_not_matter",
+      external_customer_reference: "cus_single_history",
+    };
+
+    await makeRealUseCase(new StubVerifier(event)).execute({
+      raw_payload: "{}",
+      signature: "sig",
+    });
+    // Same event_id both times — must be claimed only once (DA-7).
+    await makeRealUseCase(new StubVerifier(event)).execute({
+      raw_payload: "{}",
+      signature: "sig",
+    });
+
+    const history = await subscriptionHistoryRepository.historyOfUser(user.id, {
+      page: 1,
+      limit: 20,
+    });
+    const canceledEntries = history.data.filter(
+      row => row.entry.type === "canceled"
+    );
+    expect(canceledEntries).toHaveLength(1);
   });
 });

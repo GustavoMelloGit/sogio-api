@@ -8,6 +8,7 @@ import { PlanPostgresRepository } from "../../src/billing/infra/database/postgre
 import { GrantPlanUseCase } from "../../src/billing/application/use_case/grant_plan";
 import { CancelSubscriptionUseCase } from "../../src/billing/application/use_case/cancel_subscription";
 import { inMemoryEventDispatcher } from "../../src/core/infra/event/in_memory_event_dispatcher";
+import { blockUser } from "../helpers/block_user";
 
 const TABLES = ["properties", "addresses", "users"];
 
@@ -47,18 +48,6 @@ type HistoryResponse = {
     has_previous: boolean;
   };
 };
-
-/** Puts a fixture user's Free subscription into a blocked state (DA-9). */
-async function blockUser(userId: string): Promise<void> {
-  const subscription = await subscriptionRepository.subscriptionOfUser(userId);
-  if (!subscription) {
-    throw new Error("test setup: fixture user has no subscription");
-  }
-
-  const alreadyExpiredGrace = new Date(Date.now() - 60 * 60 * 1000);
-  subscription.markPastDue(alreadyExpiredGrace);
-  await subscriptionRepository.save(subscription);
-}
 
 describe("GET /billing/subscription/history", () => {
   beforeEach(async () => {
