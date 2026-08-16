@@ -53,18 +53,17 @@ export class CreatePropertyUseCase
   ) {}
 
   async execute(input: CreatePropertyInput): Promise<CreatePropertyOutput> {
-    const [entitlement, currentCount] = await Promise.all([
-      this.entitlementService.entitlementOf(input.user_id),
-      this.propertyRepository.countFromUser(input.user_id),
-    ]);
-    PropertyQuotaPolicy.ensureWithinLimit(
-      currentCount,
-      entitlement.max_properties
+    const entitlement = await this.entitlementService.entitlementOf(
+      input.user_id
     );
-
     const property = Property.create(input);
 
-    await this.propertyRepository.save(property);
+    await this.propertyRepository.saveNewWithinQuota(property, currentCount =>
+      PropertyQuotaPolicy.ensureWithinLimit(
+        currentCount,
+        entitlement.max_properties
+      )
+    );
 
     return {
       id: property.id,

@@ -1,4 +1,4 @@
-import { and, count, eq, isNull } from "drizzle-orm";
+import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { Property } from "../../../domain/entity/property";
 import type { PropertyRepository } from "../../../domain/repository/property_repository";
 import { db } from "../../../../core/infra/database/drizzle/database";
@@ -7,6 +7,14 @@ import {
   addressesTable,
 } from "../../../../core/infra/database/drizzle/schema";
 import { Address } from "../../../domain/value_object/address";
+
+/** Arbitrary namespace for `pg_advisory_xact_lock`, scoped to property
+ *  creation so it never collides with other advisory lock uses. */
+const PROPERTY_QUOTA_LOCK_NAMESPACE = 728_314;
+
+type DbExecutor =
+  | typeof db
+  | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export class PropertyPostgresRepository implements PropertyRepository {
   async propertyOfId(id: string): Promise<Property | null> {
@@ -55,10 +63,37 @@ export class PropertyPostgresRepository implements PropertyRepository {
     return result[0]?.total ?? 0;
   }
 
+  async saveNewWithinQuota(
+    property: Property,
+    ensureWithinQuota: (currentCount: number) => void
+  ): Promise<void> {
+    await db.transaction(async tx => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(${PROPERTY_QUOTA_LOCK_NAMESPACE}, hashtext(${property.user_id}))`
+      );
+
+      const result = await tx
+        .select({ total: count() })
+        .from(propertiesTable)
+        .where(
+          and(
+            eq(propertiesTable.user_id, property.user_id),
+            isNull(propertiesTable.deleted_at)
+          )
+        );
+      const currentCount = result[0]?.total ?? 0;
+
+      ensureWithinQuota(currentCount);
+
+      await this.#createProperty(property, tx);
+    });
+  }
+
   async #createAddress(
-    address: Address
+    address: Address,
+    executor: DbExecutor = db
   ): Promise<{ value: Address; id: string }> {
-    const addressResult = await db
+    const addressResult = await executor
       .insert(addressesTable)
       .values(address.data)
       .returning();
@@ -80,9 +115,12 @@ export class PropertyPostgresRepository implements PropertyRepository {
     if (!addressResult[0]) throw new Error("Failed to update address");
   }
 
-  async #createProperty(property: Property): Promise<Property> {
-    const address = await this.#createAddress(property.address);
-    const propertyResult = await db
+  async #createProperty(
+    property: Property,
+    executor: DbExecutor = db
+  ): Promise<Property> {
+    const address = await this.#createAddress(property.address, executor);
+    const propertyResult = await executor
       .insert(propertiesTable)
       .values({
         ...property.data,
