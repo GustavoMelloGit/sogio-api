@@ -290,7 +290,7 @@ describe("SubscriptionAccessPolicy", () => {
       expect(entitlement.blocked_reason).toBeUndefined();
     });
 
-    it("treats a null period as still within period, keeping the subscription's own plan limits (perpetual-like edge case)", () => {
+    it("reverts to the Free plan's limits when the period is null, never granting the paid plan forever (fail-open regression)", () => {
       const subscription = makeSubscription({
         status: "canceled",
         canceled_at: PAST,
@@ -306,7 +306,43 @@ describe("SubscriptionAccessPolicy", () => {
       );
 
       expect(entitlement.has_platform_access).toBe(true);
-      expect(entitlement.max_properties).toBe(proPlan.max_properties);
+      expect(entitlement.max_properties).toBe(freePlan.max_properties);
+      expect(entitlement.blocked_reason).toBeUndefined();
+    });
+
+    it("never leaves current_period_end null after canceling a trialing subscription, so access reverts to Free once the trial would have ended", () => {
+      const subscription = Subscription.create({
+        user_id: "b3f6c1a0-0000-4000-8000-000000000003",
+        plan_id: proPlan.id,
+        trial_days: proPlan.trial_days,
+        is_perpetual: proPlan.is_perpetual,
+        billing_interval: proPlan.billing_interval,
+        now: PAST,
+      });
+      expect(subscription.status).toBe("trialing");
+      expect(subscription.current_period_end).toBeNull();
+
+      subscription.cancel({ is_perpetual: proPlan.is_perpetual, now: NOW });
+
+      expect(subscription.current_period_end).not.toBeNull();
+      expect(subscription.current_period_end).toEqual(
+        subscription.trial_ends_at
+      );
+
+      const entitlementAfterTrialWouldHaveEnded =
+        SubscriptionAccessPolicy.resolve(
+          subscription,
+          proPlan,
+          freePlan,
+          FUTURE
+        );
+
+      expect(entitlementAfterTrialWouldHaveEnded.has_platform_access).toBe(
+        true
+      );
+      expect(entitlementAfterTrialWouldHaveEnded.max_properties).toBe(
+        freePlan.max_properties
+      );
     });
   });
 });

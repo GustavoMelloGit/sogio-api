@@ -95,7 +95,11 @@ export class SubscriptionAccessPolicy {
     });
   }
 
-  /** Canceled + expired period reverts to Free — see DA-2's closed decision. */
+  /**
+   * Canceled + expired period reverts to Free — see DA-2's closed decision.
+   * A null `current_period_end` is never treated as "within period": that
+   * would perpetuate paid-plan access forever instead of reverting to Free.
+   */
   static #resolveCanceled(
     subscription: Subscription,
     plan: Plan,
@@ -103,7 +107,7 @@ export class SubscriptionAccessPolicy {
     now: Date
   ): Entitlement {
     if (
-      !subscription.current_period_end ||
+      subscription.current_period_end &&
       now <= subscription.current_period_end
     ) {
       return Entitlement.of({

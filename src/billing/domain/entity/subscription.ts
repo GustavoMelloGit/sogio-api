@@ -179,8 +179,14 @@ export class Subscription {
       throw new ConflictError("Subscription is already canceled");
     }
 
+    const now = input.now ?? new Date();
+
     this.#data.status = "canceled";
-    this.#data.canceled_at = input.now ?? new Date();
+    this.#data.canceled_at = now;
+    // Never leave current_period_end null — the policy can't revert to Free without it.
+    if (!this.#data.current_period_end) {
+      this.#data.current_period_end = this.#data.trial_ends_at ?? now;
+    }
     this.#touch();
   }
 
