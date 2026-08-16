@@ -5,6 +5,18 @@ import {
 } from "../../src/core/presentation/controller/controller";
 import { BunHttpControllerAdapter } from "../../src/core/infra/http/adapters/http_controller_adapter";
 import type { RateLimitPolicy } from "../../src/core/application/rate_limit/rate_limit_policy";
+import type { EntitlementService } from "../../src/billing/application/service/entitlement_service";
+
+/**
+ * Every route registered below is `authenticated: false`, so the DA-9 gate
+ * never runs and never calls this — it only exists to satisfy
+ * `BunHttpControllerAdapter`'s required parameter.
+ */
+const unusedEntitlementService: EntitlementService = {
+  entitlementOf: () => {
+    throw new Error("not implemented — unauthenticated routes never call this");
+  },
+};
 
 /**
  * A throwaway controller used only to prove the rate limit mechanism works
@@ -52,25 +64,29 @@ const server = Bun.serve({
     [allowController.path]: {
       [HttpControllerMethod.GET]: BunHttpControllerAdapter(
         allowController,
-        false
+        false,
+        unusedEntitlementService
       ),
     },
     [denyController.path]: {
       [HttpControllerMethod.GET]: BunHttpControllerAdapter(
         denyController,
-        false
+        false,
+        unusedEntitlementService
       ),
     },
     [windowController.path]: {
       [HttpControllerMethod.GET]: BunHttpControllerAdapter(
         windowController,
-        false
+        false,
+        unusedEntitlementService
       ),
     },
     [xffController.path]: {
       [HttpControllerMethod.GET]: BunHttpControllerAdapter(
         xffController,
-        false
+        false,
+        unusedEntitlementService
       ),
     },
   },

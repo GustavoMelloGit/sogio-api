@@ -7,6 +7,7 @@ import { ResourceNotFoundError } from "../../../application/error/resource_not_f
 import { UnauthorizedError } from "../../../application/error/unauthorized_error";
 import { ValidationError } from "../../../application/error/validation_error";
 import type { User } from "../../../../auth/domain/entity/user";
+import type { EntitlementService } from "../../../../billing/application/service/entitlement_service";
 import {
   ControllerHttpResponse,
   type Controller,
@@ -297,7 +298,9 @@ function buildExplicitResponse(response: ControllerHttpResponse): Response {
 export function BunHttpControllerAdapter(
   controller: Controller,
   authenticated: boolean,
-  adminOnly: boolean = false
+  entitlementService: EntitlementService,
+  adminOnly: boolean = false,
+  allowWithoutPlatformAccess: boolean = false
 ) {
   return async function (
     request: Request,
@@ -354,6 +357,29 @@ export function BunHttpControllerAdapter(
 
       if (adminOnly && user?.role !== "admin") {
         throw new ForbiddenError();
+      }
+
+      /**
+       * Platform-access gate (DA-9). Fail-closed: every `authenticated: true`
+       * route is gated unless the route itself opts out via
+       * `allowWithoutPlatformAccess`. Admins always pass — staff can't be
+       * locked out of the backoffice by a billing problem. Authentication
+       * (who you are) and entitlement (can you use this) are kept as two
+       * separate steps, not folded into `AuthMiddleware`, so `handleOptional()`
+       * callers (the OAuth flow) never pay for a billing lookup they don't need.
+       */
+      if (
+        requiresAuth &&
+        user &&
+        user.role !== "admin" &&
+        !allowWithoutPlatformAccess
+      ) {
+        const entitlement = await entitlementService.entitlementOf(user.id);
+        if (!entitlement.has_platform_access) {
+          throw new ForbiddenError(
+            entitlement.blocked_reason ?? "no_platform_access"
+          );
+        }
       }
 
       const response = await controller.handle(controllerRequest, user);

@@ -62,6 +62,8 @@ import { AuthMiddleware } from "../../presentation/middleware/auth.middleware";
 import type { Logger } from "../../../core/application/logger/logger";
 import type { RateLimiter } from "../../../core/application/rate_limit/rate_limiter";
 import type { EmailService } from "../../../core/application/email/email_service";
+import type { EventDispatcher } from "../../../core/application/event/event_dispatcher";
+import { inMemoryEventDispatcher } from "../../../core/infra/event/in_memory_event_dispatcher";
 import { CoreDi } from "../../../core/infra/di/core_di";
 import {
   accessTokenTtlMs,
@@ -88,6 +90,7 @@ export class AuthDi {
   #rateLimiter: RateLimiter;
   #emailService: EmailService;
   #passwordResetRequestRepository: PasswordResetRequestRepository;
+  #eventDispatcher: EventDispatcher;
 
   constructor() {
     this.#authRepository = new AuthPostgresRepository();
@@ -108,6 +111,7 @@ export class AuthDi {
     this.#logger = coreDi.makeLogger();
     this.#rateLimiter = coreDi.makeRateLimiter();
     this.#emailService = coreDi.makeEmailService();
+    this.#eventDispatcher = inMemoryEventDispatcher;
   }
 
   // Use Cases
@@ -115,7 +119,8 @@ export class AuthDi {
     return new RegisterUserUseCase(
       this.#authRepository,
       this.#hasher,
-      this.#sessionManager
+      this.#sessionManager,
+      this.#eventDispatcher
     );
   }
 

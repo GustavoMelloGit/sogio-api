@@ -2,7 +2,16 @@ import { User } from "../../../src/auth/domain/entity/user";
 import { AuthPostgresRepository } from "../../../src/auth/infra/database/postgres_repository/auth_postgres_repository";
 import { db } from "../../../src/core/infra/database/drizzle/database";
 import { usersTable } from "../../../src/core/infra/database/drizzle/schema";
+import { EnsureFreeSubscriptionUseCase } from "../../../src/billing/application/use_case/ensure_free_subscription";
+import { PlanPostgresRepository } from "../../../src/billing/infra/database/postgres_repository/plan_postgres_repository";
+import { SubscriptionPostgresRepository } from "../../../src/billing/infra/database/postgres_repository/subscription_postgres_repository";
 
+/**
+ * Bypasses `RegisterUserUseCase`, so `UserCreatedEvent` is never dispatched —
+ * the Free subscription is provisioned directly here instead, mirroring what
+ * `StartFreeSubscriptionOnUserCreated` does in production, so a fixture user
+ * behaves like a real one against the platform-access gate (DA-9).
+ */
 export async function createUserFixture(input: {
   name: string;
   email: string;
@@ -18,6 +27,12 @@ export async function createUserFixture(input: {
 
   const repository = new AuthPostgresRepository();
   const user = await repository.addUser(entity);
+
+  const ensureFreeSubscriptionUseCase = new EnsureFreeSubscriptionUseCase(
+    new SubscriptionPostgresRepository(),
+    new PlanPostgresRepository()
+  );
+  await ensureFreeSubscriptionUseCase.execute({ user_id: user.id });
 
   return { user, plainPassword: input.password };
 }
