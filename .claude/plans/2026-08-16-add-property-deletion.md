@@ -311,7 +311,7 @@ Mitigação obrigatória: comentário de uma linha em `propertyOfId` + teste que
 
 Entre o passo 3 e o passo 5 da DA-8, uma reserva concorrente pode entrar. Resultado: estadia pendente numa propriedade excluída — com senha na fechadura e sem tela para o dono ver.
 
-Probabilidade real: baixíssima (exige o **mesmo** dono disparando `DELETE` e `POST /book` no mesmo instante). Consequência: física, mas recuperável (restaurar no banco, ou cancelar a estadia pela rota pública de suporte).
+Probabilidade real: baixíssima (exige o **mesmo** dono disparando `DELETE` e `POST /book` no mesmo instante). Consequência: física, mas recuperável **apenas** por `UPDATE properties SET deleted_at = NULL` de suporte — `CancelStayUseCase` passa pela mesma `PropertyOwnershipPolicy` e também 404 numa propriedade excluída, então nem o próprio dono consegue cancelar a estadia por essa via. Corrigido pelo Analista de Segurança na revisão obrigatória (o texto original citava uma "rota pública de suporte" pra cancelamento que não existe).
 
 **Recomendação: aceitar, e registrar.** A alternativa robusta existe e o projeto já tem o padrão: um `softDeleteIfUnoccupied(property, ensureUnoccupied)` no repositório, com `pg_advisory_xact_lock` namespaced por `property_id`, espelhando `saveNewWithinQuota`. Custa uma transação e um método de repositório a mais. **Decisão do usuário — ver §7.**
 
