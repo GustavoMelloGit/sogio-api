@@ -45,6 +45,7 @@ export class StripePaymentGateway implements PaymentGateway {
       line_items: [{ price: input.external_price_reference, quantity: 1 }],
       success_url: input.success_url,
       cancel_url: input.cancel_url,
+      allow_promotion_codes: true,
       subscription_data:
         input.trial_period_days !== undefined
           ? { trial_period_days: input.trial_period_days }
