@@ -13,7 +13,7 @@ import type { EntitlementService } from "../../application/service/entitlement_s
 import { SubscriptionEntitlementService } from "../../application/service/subscription_entitlement_service";
 import { CreatePlanUseCase } from "../../application/use_case/create_plan";
 import { ListPlansUseCase } from "../../application/use_case/list_plans";
-import { SubscribeToPlanUseCase } from "../../application/use_case/subscribe_to_plan";
+import { GrantPlanUseCase } from "../../application/use_case/grant_plan";
 import { CancelSubscriptionUseCase } from "../../application/use_case/cancel_subscription";
 import { GetSubscriptionStatusUseCase } from "../../application/use_case/get_subscription_status";
 import { EnsureFreeSubscriptionUseCase } from "../../application/use_case/ensure_free_subscription";
@@ -126,8 +126,8 @@ export class BillingDi {
     return new ListPlansUseCase(this.#planRepository);
   }
 
-  makeSubscribeToPlanUseCase() {
-    return new SubscribeToPlanUseCase(
+  makeGrantPlanUseCase() {
+    return new GrantPlanUseCase(
       this.#subscriptionRepository,
       this.#planRepository,
       this.#eventDispatcher

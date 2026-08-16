@@ -8,7 +8,7 @@ import { SubscriptionPostgresRepository } from "../../src/billing/infra/database
 import { PlanPostgresRepository } from "../../src/billing/infra/database/postgres_repository/plan_postgres_repository";
 import { SubscriptionHistoryPostgresRepository } from "../../src/billing/infra/database/postgres_repository/subscription_history_postgres_repository";
 import { EnsureFreeSubscriptionUseCase } from "../../src/billing/application/use_case/ensure_free_subscription";
-import { SubscribeToPlanUseCase } from "../../src/billing/application/use_case/subscribe_to_plan";
+import { GrantPlanUseCase } from "../../src/billing/application/use_case/grant_plan";
 import { CancelSubscriptionUseCase } from "../../src/billing/application/use_case/cancel_subscription";
 import { MarkSubscriptionPastDueUseCase } from "../../src/billing/application/use_case/mark_subscription_past_due";
 import { RecordSubscriptionHistoryEntryUseCase } from "../../src/billing/application/use_case/record_subscription_history_entry";
@@ -25,7 +25,7 @@ const planRepository = new PlanPostgresRepository();
 const subscriptionHistoryRepository =
   new SubscriptionHistoryPostgresRepository();
 
-const subscribeToPlanUseCase = new SubscribeToPlanUseCase(
+const subscribeToPlanUseCase = new GrantPlanUseCase(
   subscriptionRepository,
   planRepository,
   inMemoryEventDispatcher
@@ -230,7 +230,7 @@ describe("Subscription history — integration (11b-f, h)", () => {
     });
 
     await subscribeToPlanUseCase.execute({ plan_code: "pro" }, user);
-    await cancelSubscriptionUseCase.execute({}, user);
+    await cancelSubscriptionUseCase.execute({ user_id: user.id });
 
     const subscription = await subscriptionRepository.subscriptionOfUser(
       user.id
