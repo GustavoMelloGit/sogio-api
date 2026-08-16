@@ -29,14 +29,23 @@ describe("PlanPostgresRepository.planOfExternalPriceReference", () => {
       .set({ external_price_reference: "price_pro_test" })
       .where(eq(plansTable.id, pro.id));
 
-    const resolved =
-      await planRepository.planOfExternalPriceReference("price_pro_test");
-    expect(resolved?.id).toBe(pro.id);
+    try {
+      const resolved =
+        await planRepository.planOfExternalPriceReference("price_pro_test");
+      expect(resolved?.id).toBe(pro.id);
 
-    const unmatched = await planRepository.planOfExternalPriceReference(
-      "price_does_not_exist"
-    );
-    expect(unmatched).toBeNull();
+      const unmatched = await planRepository.planOfExternalPriceReference(
+        "price_does_not_exist"
+      );
+      expect(unmatched).toBeNull();
+    } finally {
+      // `plans` isn't per-test truncated (it's shared, seeded once) — undo
+      // the mutation so other test files see the pro plan's original state.
+      await db
+        .update(plansTable)
+        .set({ external_price_reference: null })
+        .where(eq(plansTable.id, pro.id));
+    }
   });
 });
 
