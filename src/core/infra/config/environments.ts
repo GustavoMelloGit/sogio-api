@@ -120,6 +120,16 @@ const envSchema = z
       .int()
       .positive()
       .default(60 * 60 * 24 * 30),
+    /** Resend API key used to send transactional emails (e.g. password reset). */
+    RESEND_API_KEY: z.string().trim().optional(),
+    /** "Name <email>" sender used on every outgoing email. */
+    PASSWORD_RESET_EMAIL_FROM: z.string().trim().optional(),
+    /** Lifetime of a password reset request/link, in seconds (R5 — ~1h). */
+    PASSWORD_RESET_REQUEST_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(60 * 60),
   })
   .refine(data => data.NODE_ENV === "development" || !!data.API_BASE_URL, {
     message: "API_BASE_URL is required outside development",
@@ -128,7 +138,18 @@ const envSchema = z
   .refine(data => data.NODE_ENV === "development" || !!data.FRONT_BASE_URL, {
     message: "FRONT_BASE_URL is required outside development",
     path: ["FRONT_BASE_URL"],
-  });
+  })
+  .refine(data => data.NODE_ENV === "development" || !!data.RESEND_API_KEY, {
+    message: "RESEND_API_KEY is required outside development",
+    path: ["RESEND_API_KEY"],
+  })
+  .refine(
+    data => data.NODE_ENV === "development" || !!data.PASSWORD_RESET_EMAIL_FROM,
+    {
+      message: "PASSWORD_RESET_EMAIL_FROM is required outside development",
+      path: ["PASSWORD_RESET_EMAIL_FROM"],
+    }
+  );
 
 export const env = envSchema.parse(process.env);
 
@@ -158,3 +179,10 @@ export const refreshRotationGraceWindowMs =
 export const consentAbsoluteLifetimeMs =
   env.CONSENT_ABSOLUTE_LIFETIME_SECONDS * 1000;
 export const consentInactivityTtlMs = env.CONSENT_INACTIVITY_TTL_SECONDS * 1000;
+
+/** Only used in development, where the schema above still allows it to be absent. */
+export const resendEmailFrom =
+  env.PASSWORD_RESET_EMAIL_FROM ?? "Sogio <onboarding@resend.dev>";
+
+export const passwordResetRequestTtlMs =
+  env.PASSWORD_RESET_REQUEST_TTL_SECONDS * 1000;
