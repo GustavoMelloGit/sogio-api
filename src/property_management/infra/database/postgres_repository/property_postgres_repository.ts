@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, count, eq, isNull } from "drizzle-orm";
 import { Property } from "../../../domain/entity/property";
 import type { PropertyRepository } from "../../../domain/repository/property_repository";
 import { db } from "../../../../core/infra/database/drizzle/database";
@@ -39,6 +39,20 @@ export class PropertyPostgresRepository implements PropertyRepository {
       },
     });
     return properties.map(property => Property.reconstitute(property));
+  }
+
+  async countFromUser(userId: string): Promise<number> {
+    const result = await db
+      .select({ total: count() })
+      .from(propertiesTable)
+      .where(
+        and(
+          eq(propertiesTable.user_id, userId),
+          isNull(propertiesTable.deleted_at)
+        )
+      );
+
+    return result[0]?.total ?? 0;
   }
 
   async #createAddress(

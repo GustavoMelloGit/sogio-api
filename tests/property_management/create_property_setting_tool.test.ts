@@ -18,6 +18,7 @@ import { propertySettingsTable } from "../../src/core/infra/database/drizzle/sch
 import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
 import { makeCreatePropertySettingTool } from "../../src/core/infra/mcp/tools/create_property_setting";
 import { PropertyManagementDi } from "../../src/property_management/infra/di/property_management_di";
+import { makeTestEntitlementService } from "../helpers/entitlement_service";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
@@ -46,7 +47,9 @@ async function callTool(
 
 function registerCreatePropertySettingTool(user: User): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
-  const propertyManagementDi = new PropertyManagementDi();
+  const propertyManagementDi = new PropertyManagementDi(
+    makeTestEntitlementService()
+  );
 
   return registerMcpTool(
     server,

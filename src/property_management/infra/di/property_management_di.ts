@@ -1,5 +1,6 @@
 import type { PropertyRepository } from "../../domain/repository/property_repository";
 import type { PropertySettingRepository } from "../../domain/repository/property_setting_repository";
+import type { EntitlementService } from "../../../billing/application/service/entitlement_service";
 import { UpdatePropertyUseCase } from "../../application/use_case/update_property";
 import { UpdatePropertyController } from "../../presentation/controller/update_property.controller";
 import { PropertyPostgresRepository } from "../database/postgres_repository/property_postgres_repository";
@@ -24,15 +25,20 @@ import { DeletePropertySettingController } from "../../presentation/controller/d
 export class PropertyManagementDi {
   #propertyRepository: PropertyRepository;
   #propertySettingRepository: PropertySettingRepository;
+  #entitlementService: EntitlementService;
 
-  constructor() {
+  constructor(entitlementService: EntitlementService) {
     this.#propertyRepository = new PropertyPostgresRepository();
     this.#propertySettingRepository = new PropertySettingPostgresRepository();
+    this.#entitlementService = entitlementService;
   }
 
   // Use Cases
   makeCreatePropertyUseCase() {
-    return new CreatePropertyUseCase(this.#propertyRepository);
+    return new CreatePropertyUseCase(
+      this.#propertyRepository,
+      this.#entitlementService
+    );
   }
   makeUpdatePropertyUseCase() {
     return new UpdatePropertyUseCase(this.#propertyRepository);

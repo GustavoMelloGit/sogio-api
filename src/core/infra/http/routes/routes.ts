@@ -23,14 +23,16 @@ const authDi = new AuthDi();
 const stayDi = new StayDi();
 const corsMiddleware = new CorsMiddleware();
 const financeDi = new FinanceDi();
-const propertyManagementDi = new PropertyManagementDi();
-const backofficeDi = new BackofficeDi();
 /**
  * Registers `StartFreeSubscriptionOnUserCreated` on the shared event
  * dispatcher from its constructor (not idempotent) — must be instantiated
  * exactly once and this single instance reused everywhere (DA-7).
  */
 const billingDi = new BillingDi();
+const propertyManagementDi = new PropertyManagementDi(
+  billingDi.makeEntitlementService()
+);
+const backofficeDi = new BackofficeDi();
 
 type Route = {
   controller: Controller;
