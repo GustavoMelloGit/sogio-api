@@ -50,6 +50,13 @@
       "when": 1786847216331,
       "tag": "0006_glorious_toxin",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786884844745,
+      "tag": "0007_robust_cobalt_man",
+      "breakpoints": true
     }
   ]
 }

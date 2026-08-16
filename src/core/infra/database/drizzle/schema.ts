@@ -6,3 +6,4 @@ export * from "./schemas/property_schemas";
 export * from "./schemas/stay_schemas";
 export * from "./schemas/finance_schemas";
 export * from "./schemas/backoffice_schemas";
+export * from "./schemas/billing_schemas";
