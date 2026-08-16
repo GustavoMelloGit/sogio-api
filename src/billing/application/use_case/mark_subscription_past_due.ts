@@ -9,7 +9,6 @@ import { SubscriptionPaymentFailedEvent } from "../../domain/event/subscription_
 type Input = {
   user_id: string;
   reason?: string | null;
-  now?: Date;
 };
 
 type Output = {
@@ -37,8 +36,7 @@ export class MarkSubscriptionPastDueUseCase implements UseCase<Input, Output> {
       throw new ResourceNotFoundError("Subscription");
     }
 
-    const now = input.now ?? new Date();
-    const gracePeriodEndsAt = BillingCyclePolicy.gracePeriodEnd(now);
+    const gracePeriodEndsAt = BillingCyclePolicy.gracePeriodEnd(new Date());
 
     subscription.markPastDue(gracePeriodEndsAt);
     await this.subscriptionRepository.save(subscription);
