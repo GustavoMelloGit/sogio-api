@@ -44,7 +44,7 @@ bun run test          # Executa todos os testes
 
 Os testes ficam em `tests/<bounded context>/<test name>.test.ts`.
 
-> **Pré-requisito**: o arquivo `.env.test` na raiz do projeto deve conter a variável `DATABASE_URL` com as credenciais reais do banco local, a variável `API_BASE_URL` (ex: `http://localhost:4000`) — obrigatória fora de `development` desde a introdução dos documentos de descoberta OAuth —, a variável `FRONT_BASE_URL` (ex: `http://localhost:5173`) — obrigatória fora de `development` desde a introdução do `/authorize` (redirect de consentimento e origem de CORS do protocolo OAuth) —, e as variáveis `RESEND_API_KEY` e `PASSWORD_RESET_EMAIL_FROM` — obrigatórias fora de `development` desde a introdução da recuperação de senha por email; em `test` podem ser valores fake, já que o adapter Resend nunca é exercido de verdade nos testes.
+> **Pré-requisito**: o arquivo `.env.test` na raiz do projeto deve conter a variável `DATABASE_URL` com as credenciais reais do banco local, a variável `API_BASE_URL` (ex: `http://localhost:4000`) — obrigatória fora de `development` desde a introdução dos documentos de descoberta OAuth —, a variável `FRONT_BASE_URL` (ex: `http://localhost:5173`) — obrigatória fora de `development` desde a introdução do `/authorize` (redirect de consentimento do protocolo OAuth) —, e as variáveis `RESEND_API_KEY` e `PASSWORD_RESET_EMAIL_FROM` — obrigatórias fora de `development` desde a introdução da recuperação de senha por email; em `test` podem ser valores fake, já que o adapter Resend nunca é exercido de verdade nos testes.
 
 ## Arquitetura
 
@@ -94,6 +94,7 @@ Definidas em `src/core/infra/config/environments.ts`:
 - `RESEND_API_KEY` — chave da API do Resend, usada para enviar emails transacionais (ex: recuperação de senha). Obrigatória fora de `development`
 - `PASSWORD_RESET_EMAIL_FROM` — remetente (`"Nome <email>"`) usado nos emails enviados. Obrigatória fora de `development`
 - `PASSWORD_RESET_REQUEST_TTL_SECONDS` — tempo de vida de um pedido de recuperação de senha, em segundos; default 1 hora
+- `CORS_ALLOWED_ORIGINS` — lista opcional de origens permitidas para CORS, separadas por vírgula; se ausente, cai para `[FRONT_BASE_URL]`
 
 ### Estilo de Código
 
