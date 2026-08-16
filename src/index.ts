@@ -26,7 +26,7 @@ async function main() {
   const server = Bun.serve({
     port: env.PORT,
     routes: bunRoutes,
-    hostname: "0.0.0.0",
+    hostname: env.SERVER_HOSTNAME,
   });
 
   const isProduction = env.NODE_ENV === "production";

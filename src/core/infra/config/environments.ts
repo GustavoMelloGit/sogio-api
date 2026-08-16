@@ -60,6 +60,24 @@ const envSchema = z
       .optional()
       .transform(value => value === "true"),
     /**
+     * Address `Bun.serve()` binds to. In production the process sits behind
+     * a reverse proxy (nginx), so it must bind only to loopback (`127.0.0.1`)
+     * and never accept a connection straight from the internet. In
+     * development the default is `0.0.0.0`, to allow reaching the server
+     * from the LAN or from other containers.
+     *
+     * Not named `HOSTNAME`: Docker containers auto-export a `HOSTNAME`
+     * environment variable (set to the container id), and Bun gives
+     * precedence to variables already present in the process environment
+     * over `.env`. Naming this `HOSTNAME` would make any value set in `.env`
+     * be silently ignored in favor of the container id.
+     */
+    SERVER_HOSTNAME: z
+      .string()
+      .trim()
+      .optional()
+      .transform(value => value || "0.0.0.0"),
+    /**
      * Lifetime of an opaque MCP access token, in seconds ("ordem de uma
      * hora" — Decisão Resolvida #8). Defaulted rather than required: the
      * value only tunes how aggressively the resource server forces a
