@@ -277,6 +277,11 @@ const billingControllers: Route[] = [
     allowWithoutPlatformAccess: true,
     controller: billingDi.makeGetSubscriptionStatusController(),
   },
+  {
+    authenticated: true,
+    allowWithoutPlatformAccess: true,
+    controller: billingDi.makeGetSubscriptionHistoryController(),
+  },
 ];
 
 const controllers = [
