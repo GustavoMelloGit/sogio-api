@@ -28,6 +28,7 @@ export async function resolveGatewaySubscription(
   );
 }
 
+// KNOWN DEBT (security review, B-3/B-4 follow-up): this watermark is global per local Subscription row, not per external_reference — an out-of-order event for a superseded/new gateway subscription can be wrongly discarded if a later-clocked event for a different gateway subscription already advanced it on the same row.
 /** The DA-8 out-of-order guard: an event older than the last one applied is discarded. */
 export function isStaleGatewayEvent(
   subscription: Subscription,

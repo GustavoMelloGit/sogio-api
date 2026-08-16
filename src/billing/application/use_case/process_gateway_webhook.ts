@@ -187,6 +187,24 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
       return;
     }
 
+    // Same fallback hazard as #dispatchSubscriptionEnded (security review
+    // B-4): the customer-reference fallback can land on a local Free
+    // subscription that was never linked to *this* gateway subscription —
+    // an abandoned checkout's invoice failing days later. Marking it
+    // past_due would poison a free account's history and eventually block
+    // its access. Not an error: a stale/irrelevant event for local state.
+    if (subscription.external_reference !== event.external_reference) {
+      this.logger.info(
+        "payment_failed for a gateway subscription the local subscription isn't linked to — discarding as stale/irrelevant",
+        {
+          subscription_id: subscription.id,
+          local_external_reference: subscription.external_reference,
+          event_external_reference: event.external_reference,
+        }
+      );
+      return;
+    }
+
     // Dunning's final payment_failed can be delivered after the
     // subscription was already canceled (delivery order isn't guaranteed).
     // markPastDue rejects `canceled` with a ConflictError, so short-circuit

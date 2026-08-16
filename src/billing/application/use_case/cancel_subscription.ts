@@ -31,6 +31,14 @@ type Output = {
  * this use case doesn't publish a second `SubscriptionCanceledEvent`, so a
  * webhook reentry of `customer.subscription.deleted` never double-writes
  * the history.
+ *
+ * Canceling a perpetual plan is never a legitimate outcome of a gateway
+ * event (DA-3) — both webhook call sites can land here via the
+ * customer-reference fallback in `resolveGatewaySubscription` on a Free
+ * subscription that was never truly linked to the gateway subscription the
+ * event describes (security review B-3). Rejecting via `Subscription.cancel`
+ * would surface as `ConflictError` -> 409 -> a Stripe retry storm, so this
+ * is a silent no-op instead, same shape as the already-canceled case above.
  */
 export class CancelSubscriptionUseCase implements UseCase<Input, Output> {
   constructor(
@@ -50,6 +58,14 @@ export class CancelSubscriptionUseCase implements UseCase<Input, Output> {
     const plan = await this.planRepository.planOfId(subscription.plan_id);
     if (!plan) {
       throw new ResourceNotFoundError("Plan");
+    }
+
+    if (plan.is_perpetual) {
+      return {
+        id: subscription.id,
+        status: subscription.status,
+        canceled_at: subscription.canceled_at,
+      };
     }
 
     const wasAlreadyCanceled = subscription.status === "canceled";
