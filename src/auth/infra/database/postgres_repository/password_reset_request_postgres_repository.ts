@@ -98,10 +98,10 @@ export class PasswordResetRequestPostgresRepository
       );
   }
 
-  async deleteExpired(before: Date): Promise<number> {
+  async deleteOlderThan(before: Date): Promise<number> {
     const result = await db
       .delete(passwordResetRequestsTable)
-      .where(lt(passwordResetRequestsTable.expires_at, before))
+      .where(lt(passwordResetRequestsTable.created_at, before))
       .returning({ id: passwordResetRequestsTable.id });
 
     return result.length;

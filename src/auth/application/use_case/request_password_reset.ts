@@ -48,10 +48,12 @@ export class RequestPasswordResetUseCase implements UseCase<Input, Output> {
       return GENERIC_OUTPUT;
     }
 
+    const quotaWindowStart = passwordResetQuotaWindowStart();
+
     const requestsInWindow =
       await this.passwordResetRequestRepository.countByUserSince(
         user.id,
-        passwordResetQuotaWindowStart()
+        quotaWindowStart
       );
 
     if (isPasswordResetQuotaExceeded(requestsInWindow)) {
@@ -79,15 +81,20 @@ export class RequestPasswordResetUseCase implements UseCase<Input, Output> {
       secret
     );
 
-    try {
-      await this.emailService.send(message);
-    } catch {
+    /**
+     * Fire-and-forget, deliberadamente não aguardado. O caminho de sucesso
+     * não pode ser a única branch cujo tempo de resposta inclui uma chamada
+     * HTTP real ao Resend — isso reabriria, por timing, o mesmo oráculo de
+     * enumeração que a resposta idêntica (D11) fecha por conteúdo. Falha de
+     * envio (R15) só é logada; nunca chega à resposta.
+     */
+    void this.emailService.send(message).catch(() => {
       this.logger.error("Failed to send password reset email", {
         endpoint: "request_password_reset",
       });
-    }
+    });
 
-    await this.#purgeExpiredRequests();
+    await this.#purgeRequestsOutsideQuotaWindow(quotaWindowStart);
 
     return GENERIC_OUTPUT;
   }
@@ -95,10 +102,16 @@ export class RequestPasswordResetUseCase implements UseCase<Input, Output> {
   /**
    * Expurgo best-effort (R14), piggyback na própria rota — o projeto não tem
    * cron, mesmo padrão de `RegisterAppUseCase.#purgeUnusedRegistrations`.
+   * Critério é o início da janela da cota (30 dias), nunca o TTL do token
+   * (1h) — ver o comentário em `PasswordResetRequestRepository.deleteOlderThan`.
    */
-  async #purgeExpiredRequests(): Promise<void> {
+  async #purgeRequestsOutsideQuotaWindow(
+    quotaWindowStart: Date
+  ): Promise<void> {
     try {
-      await this.passwordResetRequestRepository.deleteExpired(new Date());
+      await this.passwordResetRequestRepository.deleteOlderThan(
+        quotaWindowStart
+      );
     } catch {
       this.logger.error("Failed to purge expired password reset requests", {
         endpoint: "request_password_reset",
