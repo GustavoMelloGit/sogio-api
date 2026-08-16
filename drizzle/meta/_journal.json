@@ -64,6 +64,13 @@
       "when": 1786888744251,
       "tag": "0008_wealthy_masked_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786896842802,
+      "tag": "0009_bright_alex_wilder",
+      "breakpoints": true
     }
   ]
 }

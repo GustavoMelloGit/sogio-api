@@ -31,7 +31,13 @@ const outputSchema = z.object({
   data: z.array(
     z.object({
       id: z.string().uuid(),
-      type: z.enum(["started", "plan_changed", "payment_failed", "canceled"]),
+      type: z.enum([
+        "started",
+        "plan_changed",
+        "payment_failed",
+        "canceled",
+        "renewed",
+      ]),
       resulting_status: z.enum(["trialing", "active", "past_due", "canceled"]),
       plan_id: z.string().uuid(),
       plan_code: z.string(),

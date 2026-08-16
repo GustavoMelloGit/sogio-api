@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import {
   Subscription,
   type SubscriptionStatus,
@@ -8,6 +8,7 @@ import type {
   SubscriptionRepository,
   SubscriptionWithPlan,
 } from "../../../domain/repository/subscription_repository";
+import { IllegalStateError } from "../../../../core/application/error/illegal_state_error";
 import { db } from "../../../../core/infra/database/drizzle/database";
 import { subscriptionsTable } from "../../../../core/infra/database/drizzle/schema";
 
@@ -41,6 +42,71 @@ export class SubscriptionPostgresRepository implements SubscriptionRepository {
     };
   }
 
+  async subscriptionOfExternalCustomerReference(
+    reference: string
+  ): Promise<Subscription | null> {
+    const subscription = await db.query.subscriptionsTable.findFirst({
+      where: eq(subscriptionsTable.external_customer_reference, reference),
+    });
+
+    if (!subscription) return null;
+
+    return this.#toEntity(subscription);
+  }
+
+  async subscriptionOfExternalReference(
+    reference: string
+  ): Promise<Subscription | null> {
+    const subscription = await db.query.subscriptionsTable.findFirst({
+      where: eq(subscriptionsTable.external_reference, reference),
+    });
+
+    if (!subscription) return null;
+
+    return this.#toEntity(subscription);
+  }
+
+  async linkCustomerReferenceIfAbsent(
+    subscription_id: string,
+    reference: string
+  ): Promise<string> {
+    const updated = await db
+      .update(subscriptionsTable)
+      .set({
+        external_customer_reference: reference,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(subscriptionsTable.id, subscription_id),
+          isNull(subscriptionsTable.external_customer_reference)
+        )
+      )
+      .returning({
+        external_customer_reference:
+          subscriptionsTable.external_customer_reference,
+      });
+
+    if (updated[0]?.external_customer_reference) {
+      return updated[0].external_customer_reference;
+    }
+
+    // The atomic UPDATE matched 0 rows: another writer already won the
+    // race (DA-6). The winning reference is read back, never our own.
+    const existing = await db.query.subscriptionsTable.findFirst({
+      where: eq(subscriptionsTable.id, subscription_id),
+      columns: { external_customer_reference: true },
+    });
+
+    if (!existing?.external_customer_reference) {
+      throw new IllegalStateError(
+        "linkCustomerReferenceIfAbsent found no customer reference after a no-op atomic update"
+      );
+    }
+
+    return existing.external_customer_reference;
+  }
+
   async save(subscription: Subscription): Promise<void> {
     const existing = await db.query.subscriptionsTable.findFirst({
       where: eq(subscriptionsTable.id, subscription.id),
@@ -58,6 +124,7 @@ export class SubscriptionPostgresRepository implements SubscriptionRepository {
       grace_period_ends_at: subscription.grace_period_ends_at,
       external_reference: subscription.external_reference,
       external_customer_reference: subscription.external_customer_reference,
+      external_event_at: subscription.external_event_at,
       created_at: subscription.created_at,
       updated_at: subscription.updated_at,
       deleted_at: subscription.deleted_at,

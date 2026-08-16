@@ -5,15 +5,16 @@ import { createUserFixture } from "../helpers/fixtures/user";
 import { createAuthToken } from "../helpers/fixtures/auth_token";
 import { SubscriptionPostgresRepository } from "../../src/billing/infra/database/postgres_repository/subscription_postgres_repository";
 import { PlanPostgresRepository } from "../../src/billing/infra/database/postgres_repository/plan_postgres_repository";
-import { SubscribeToPlanUseCase } from "../../src/billing/application/use_case/subscribe_to_plan";
+import { GrantPlanUseCase } from "../../src/billing/application/use_case/grant_plan";
 import { CancelSubscriptionUseCase } from "../../src/billing/application/use_case/cancel_subscription";
 import { inMemoryEventDispatcher } from "../../src/core/infra/event/in_memory_event_dispatcher";
+import { blockUser } from "../helpers/block_user";
 
 const TABLES = ["properties", "addresses", "users"];
 
 const subscriptionRepository = new SubscriptionPostgresRepository();
 const planRepository = new PlanPostgresRepository();
-const subscribeToPlanUseCase = new SubscribeToPlanUseCase(
+const subscribeToPlanUseCase = new GrantPlanUseCase(
   subscriptionRepository,
   planRepository,
   inMemoryEventDispatcher
@@ -48,18 +49,6 @@ type HistoryResponse = {
   };
 };
 
-/** Puts a fixture user's Free subscription into a blocked state (DA-9). */
-async function blockUser(userId: string): Promise<void> {
-  const subscription = await subscriptionRepository.subscriptionOfUser(userId);
-  if (!subscription) {
-    throw new Error("test setup: fixture user has no subscription");
-  }
-
-  const alreadyExpiredGrace = new Date(Date.now() - 60 * 60 * 1000);
-  subscription.markPastDue(alreadyExpiredGrace);
-  await subscriptionRepository.save(subscription);
-}
-
 describe("GET /billing/subscription/history", () => {
   beforeEach(async () => {
     await truncate(TABLES);
@@ -72,7 +61,7 @@ describe("GET /billing/subscription/history", () => {
       password: "password123",
     });
     await subscribeToPlanUseCase.execute({ plan_code: "pro" }, userA);
-    await cancelSubscriptionUseCase.execute({}, userA);
+    await cancelSubscriptionUseCase.execute({ user_id: userA.id });
     const tokenA = await createAuthToken(userA.id);
 
     const { user: userB } = await createUserFixture({
@@ -112,7 +101,7 @@ describe("GET /billing/subscription/history", () => {
       password: "password123",
     });
     await subscribeToPlanUseCase.execute({ plan_code: "pro" }, user);
-    await cancelSubscriptionUseCase.execute({}, user);
+    await cancelSubscriptionUseCase.execute({ user_id: user.id });
     const token = await createAuthToken(user.id);
 
     const firstPage = await api(

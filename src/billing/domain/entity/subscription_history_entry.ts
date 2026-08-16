@@ -10,6 +10,7 @@ export const subscriptionHistoryEntryTypeSchema = z.enum([
   "plan_changed",
   "payment_failed",
   "canceled",
+  "renewed",
 ]);
 
 export type SubscriptionHistoryEntryType = z.infer<
@@ -54,6 +55,13 @@ export const subscriptionHistoryEntrySchema = baseEntitySchema
       ["active", "trialing"].includes(data.resulting_status),
     {
       message: "a started entry must have resulting_status active or trialing",
+      path: ["resulting_status"],
+    }
+  )
+  .refine(
+    data => data.type !== "renewed" || data.resulting_status === "active",
+    {
+      message: "a renewed entry must have resulting_status active",
       path: ["resulting_status"],
     }
   );

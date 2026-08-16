@@ -20,8 +20,19 @@ type Output = {
   trial_ends_at: Date | null;
 };
 
-/** Also covers switching plans (DA-5): the subscription is mutated in place. */
-export class SubscribeToPlanUseCase implements UseCase<Input, Output> {
+/**
+ * Grants a plan without charging anything (DA-10). Internal/administrative
+ * mechanism only — no HTTP route, no MCP tool, today or ever, short of a
+ * future `adminOnly: true` backoffice surface. The user-facing "subscribe"
+ * action is `CreateCheckoutSessionUseCase`; the webhook-driven path doesn't
+ * reuse this either — it calls `Subscription.activate`/`changePlan`
+ * directly with the gateway's own period (§2.3), which this use case's
+ * `Input` has no room for. This exists for the internal path only (seeding
+ * the Free plan, and any future admin-granted plan).
+ *
+ * Also covers switching plans (DA-5): the subscription is mutated in place.
+ */
+export class GrantPlanUseCase implements UseCase<Input, Output> {
   constructor(
     private readonly subscriptionRepository: SubscriptionRepository,
     private readonly planRepository: PlanRepository,

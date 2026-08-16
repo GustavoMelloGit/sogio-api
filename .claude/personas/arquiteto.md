@@ -72,18 +72,27 @@ Plataforma de gestão de alugueis de curta duração. Proprietários cadastram i
 - O plano `Free` é perpétuo (`price_amount = 0`): nunca tem `current_period_end`, senão toda conta gratuita seria bloqueada ~30 dias após o cadastro
 - Cancelar uma assinatura de plano perpétuo (Free) é proibido — não há ciclo a encerrar
 - Uma assinatura que já teve `trial_ends_at` preenchido nunca reentra em `trialing`, mesmo trocando de plano
+- O período (`current_period_end`) e a referência (`external_reference`) de uma assinatura paga são fornecidos pelo gateway de pagamento, não calculados localmente — `BillingCyclePolicy` continua existindo apenas para o caminho interno (Free, `GrantPlanUseCase`, testes). As transições dirigidas por webhook (`activate`, `changePlan`, `startTrialUntil`, `markPastDue`, `cancel`) são idempotentes por construção: nunca lançam `ConflictError` quando o estado já é o alvo, porque isso viraria um loop de retentativa do gateway
+
+### Vocabulário do Gateway de Pagamento
+
+- **Gateway de pagamento** — sistema externo que cobra. O domínio nunca diz "Stripe", só `billing/infra/gateway/` conhece o fornecedor
+- **Checkout** — sessão hospedada em que o proprietário assina pela primeira vez; produz só uma URL
+- **Portal de cobrança** — sessão hospedada para gerenciar uma assinatura existente; produz só uma URL
+- **Evento do gateway** (`GatewayBillingEvent`) — um fato que o gateway afirma, normalizado no vocabulário da Sogio antes de chegar em `application`; pode chegar repetido ou fora de ordem
 
 ### Eventos de Domínio
 
-| Evento                           | Disparado por                                     | Efeito                                                                                          |
-| -------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `StayBookedEvent`                | Confirmação de reserva                            | Criação de senha temporária na fechadura + lançamento de receita no Finance                     |
-| `StayCanceledEvent`              | Cancelamento de estadia                           | Estorno da receita no Finance                                                                   |
-| `UserCreatedEvent`               | Cadastro de usuário (Auth)                        | Criação automática da Subscription no plano Free (Billing)                                      |
-| `SubscriptionStartedEvent`       | Subscription criada pela primeira vez (Billing)   | Registro da entrada `started` no Histórico da Assinatura                                        |
-| `SubscriptionPlanChangedEvent`   | Toda troca de plano bem-sucedida (Billing)        | Registro da entrada `plan_changed`; carrega `opens_paid_cycle` para um futuro gancho do Finance |
-| `SubscriptionPaymentFailedEvent` | `MarkSubscriptionPastDueUseCase` marca `past_due` | Registro da entrada `payment_failed` no Histórico da Assinatura                                 |
-| `SubscriptionCanceledEvent`      | Cancelamento de assinatura (Billing)              | Registro da entrada `canceled` no Histórico da Assinatura                                       |
+| Evento                           | Disparado por                                                                    | Efeito                                                                                          |
+| -------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `StayBookedEvent`                | Confirmação de reserva                                                           | Criação de senha temporária na fechadura + lançamento de receita no Finance                     |
+| `StayCanceledEvent`              | Cancelamento de estadia                                                          | Estorno da receita no Finance                                                                   |
+| `UserCreatedEvent`               | Cadastro de usuário (Auth)                                                       | Criação automática da Subscription no plano Free (Billing)                                      |
+| `SubscriptionStartedEvent`       | Subscription criada pela primeira vez (Billing)                                  | Registro da entrada `started` no Histórico da Assinatura                                        |
+| `SubscriptionPlanChangedEvent`   | Toda troca de plano bem-sucedida (Billing)                                       | Registro da entrada `plan_changed`; carrega `opens_paid_cycle` para um futuro gancho do Finance |
+| `SubscriptionPaymentFailedEvent` | `MarkSubscriptionPastDueUseCase` marca `past_due`                                | Registro da entrada `payment_failed` no Histórico da Assinatura                                 |
+| `SubscriptionCanceledEvent`      | Cancelamento de assinatura (Billing)                                             | Registro da entrada `canceled` no Histórico da Assinatura                                       |
+| `SubscriptionRenewedEvent`       | `SyncSubscriptionFromGatewayUseCase`, quando o período avança sem troca de plano | Registro da entrada `renewed` no Histórico da Assinatura                                        |
 
 ### Observação Arquitetural Importante
 
