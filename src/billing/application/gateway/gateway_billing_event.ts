@@ -52,7 +52,7 @@ export type PaymentFailedEvent = GatewayBillingEventBase & {
 
 /**
  * Union discriminated on `type`, entirely in Sogio vocabulary — the
- * orchestrator's `switch` never sees a Stripe type string (DA-1).
+ * orchestrator's `switch` never sees a gateway-vendor type string (DA-1).
  */
 export type GatewayBillingEvent =
   | CheckoutCompletedEvent

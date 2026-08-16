@@ -27,8 +27,8 @@ type Output = {
 };
 
 /**
- * The real caller `markPastDue` was missing (DA-5) — this is the shape a
- * future Stripe payment-failure webhook will invoke. No HTTP route: marking
+ * The real caller `markPastDue` was missing (DA-5) — this is the shape the
+ * payment gateway's payment-failure webhook invokes. No HTTP route: marking
  * an account past due by hand is an operational lever, not a product surface.
  */
 export class MarkSubscriptionPastDueUseCase implements UseCase<Input, Output> {
