@@ -1,9 +1,13 @@
 import { db } from "../../../core/infra/database/drizzle/database";
 import { plansTable } from "../../../core/infra/database/drizzle/schema";
 
-/** Fixed so `code` conflicts resolve deterministically across environments. */
-export const FREE_PLAN_ID = "00000000-0000-0000-0000-000000000001";
-export const PRO_PLAN_ID = "00000000-0000-0000-0000-000000000002";
+/**
+ * Fixed so `code` conflicts resolve deterministically across environments.
+ * Must be valid v4 UUIDs (version nibble `4`, variant nibble `8`) — every
+ * entity's `id` is validated against `z.uuidv4()` on `reconstitute`.
+ */
+export const FREE_PLAN_ID = "00000000-0000-4000-8000-000000000001";
+export const PRO_PLAN_ID = "00000000-0000-4000-8000-000000000002";
 
 /**
  * Idempotent (DA-12): `free` is a hard pre-condition of user registration,
