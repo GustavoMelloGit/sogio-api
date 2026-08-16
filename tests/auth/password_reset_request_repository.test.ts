@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "bun:test";
+import { eq } from "drizzle-orm";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { PasswordResetRequest } from "../../src/auth/domain/entity/password_reset_request";
@@ -6,12 +7,15 @@ import { PasswordResetRequestPostgresRepository } from "../../src/auth/infra/dat
 import { AuthPostgresRepository } from "../../src/auth/infra/database/postgres_repository/auth_postgres_repository";
 import { PurgeUserDataUseCase } from "../../src/auth/application/use_case/purge_user_data";
 import { CryptoDelegatedSecretService } from "../../src/auth/infra/service/crypto_delegated_secret_service";
+import { db } from "../../src/core/infra/database/drizzle/database";
+import { passwordResetRequestsTable } from "../../src/core/infra/database/drizzle/schema";
 
 const secretService = new CryptoDelegatedSecretService();
 
 async function createPasswordResetRequestFixture(input: {
   userId: string;
   expiresAt?: Date;
+  createdAt?: Date;
 }): Promise<{ passwordResetRequest: PasswordResetRequest; token: string }> {
   const repository = new PasswordResetRequestPostgresRepository();
   const { secret, digest } = secretService.generate();
@@ -23,6 +27,13 @@ async function createPasswordResetRequestFixture(input: {
   });
 
   const passwordResetRequest = await repository.create(entity);
+
+  if (input.createdAt) {
+    await db
+      .update(passwordResetRequestsTable)
+      .set({ created_at: input.createdAt })
+      .where(eq(passwordResetRequestsTable.id, passwordResetRequest.id));
+  }
 
   return { passwordResetRequest, token: secret };
 }
@@ -115,22 +126,50 @@ describe("PasswordResetRequestPostgresRepository", () => {
     ).toBeNull();
   });
 
-  it("removes expired requests and keeps unexpired ones", async () => {
+  it("deleteOlderThan removes requests by created_at, keeping newer ones — even if their token already expired", async () => {
     const { user } = await setup();
 
+    // Created 2 days ago and already token-expired (1h TTL) — must survive
+    // a purge threshold at the 30-day quota window start (the CRITICAL fix:
+    // retention is scoped by created_at, never by expires_at).
     await createPasswordResetRequestFixture({
       userId: user.id,
       expiresAt: new Date(Date.now() - 60 * 1000),
+      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
     });
     const { token: freshToken } = await createPasswordResetRequestFixture({
       userId: user.id,
       expiresAt: new Date(Date.now() + 60 * 1000),
     });
 
-    const removed = await repository.deleteExpired(new Date());
-    expect(removed).toBe(1);
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const removed = await repository.deleteOlderThan(thirtyDaysAgo);
+    expect(removed).toBe(0);
+
+    const remaining = await repository.countByUserSince(user.id, thirtyDaysAgo);
+    expect(remaining).toBe(2);
 
     const claim = await repository.claim(secretService.digest(freshToken));
+    expect(claim).not.toBeNull();
+  });
+
+  it("deleteOlderThan removes a request created before the threshold", async () => {
+    const { user } = await setup();
+
+    await createPasswordResetRequestFixture({
+      userId: user.id,
+      createdAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000),
+    });
+    const { token: recentToken } = await createPasswordResetRequestFixture({
+      userId: user.id,
+      createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    });
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const removed = await repository.deleteOlderThan(thirtyDaysAgo);
+    expect(removed).toBe(1);
+
+    const claim = await repository.claim(secretService.digest(recentToken));
     expect(claim).not.toBeNull();
   });
 

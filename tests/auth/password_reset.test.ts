@@ -6,6 +6,7 @@ import {
   FakeEmailService,
   SilentLogger,
   extractResetTokenFromEmail,
+  createBackdatedPasswordResetRequestFixture,
 } from "../helpers/fixtures/password_reset";
 import { AuthPostgresRepository } from "../../src/auth/infra/database/postgres_repository/auth_postgres_repository";
 import { PasswordResetRequestPostgresRepository } from "../../src/auth/infra/database/postgres_repository/password_reset_request_postgres_repository";
@@ -105,6 +106,42 @@ describe("Password recovery by email", () => {
 
       expect(nonExistingOutput).toEqual(successOutput);
       expect(quotaExceededOutput).toEqual(successOutput);
+    });
+  });
+
+  describe("CRÍTICO — retention purge must not destroy the quota's calculation base", () => {
+    it("a request created ~2 days ago (token already expired) still counts after a new request triggers the purge", async () => {
+      const { user } = await createUserFixture({
+        name: "Ada Lovelace",
+        email: "ada@sogio.dev",
+        password: "correct-horse-battery",
+      });
+
+      // Already outside its 1h token TTL, but well inside the 30-day quota
+      // window — this is exactly the row a `deleteExpired(now())`-style
+      // purge would wrongly destroy.
+      await createBackdatedPasswordResetRequestFixture({
+        userId: user.id,
+        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      });
+
+      const repository = new PasswordResetRequestPostgresRepository();
+      const useCase = makeRequestUseCase(new FakeEmailService());
+
+      // Every successful request piggybacks a best-effort purge (R14) —
+      // this is exactly the trigger the finding describes.
+      await useCase.execute({ email: user.email });
+
+      const requestsInWindow = await repository.countByUserSince(
+        user.id,
+        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      );
+
+      // 2 = the backdated request (still there) + the one just issued.
+      // If the purge had wrongly used the token's expires_at instead of
+      // the quota window, the backdated request would have been deleted
+      // and this would read 1 — silently resetting the victim's quota.
+      expect(requestsInWindow).toBe(2);
     });
   });
 
