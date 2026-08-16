@@ -1,5 +1,6 @@
 import z from "zod";
 import type { RegisterUserUseCase } from "../../../../auth/application/use_case/register_user";
+import { passwordSchema } from "../../../domain/entity/user";
 import {
   HttpControllerMethod,
   type Controller,
@@ -16,10 +17,7 @@ import {
 const inputSchema = z.object({
   name: z.string().min(3).max(100, "Name must be at most 100 characters"),
   email: z.email().max(255, "Email must be at most 255 characters"),
-  password: z
-    .string()
-    .min(8)
-    .max(128, "Password must be at most 128 characters"),
+  password: passwordSchema,
 });
 
 const outputSchema = z.object({
