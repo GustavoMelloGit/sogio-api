@@ -5,6 +5,7 @@ import { usersTable } from "../../../src/core/infra/database/drizzle/schema";
 import { EnsureFreeSubscriptionUseCase } from "../../../src/billing/application/use_case/ensure_free_subscription";
 import { PlanPostgresRepository } from "../../../src/billing/infra/database/postgres_repository/plan_postgres_repository";
 import { SubscriptionPostgresRepository } from "../../../src/billing/infra/database/postgres_repository/subscription_postgres_repository";
+import { inMemoryEventDispatcher } from "../../../src/core/infra/event/in_memory_event_dispatcher";
 
 /**
  * Bypasses `RegisterUserUseCase`, so `UserCreatedEvent` is never dispatched —
@@ -30,7 +31,8 @@ export async function createUserFixture(input: {
 
   const ensureFreeSubscriptionUseCase = new EnsureFreeSubscriptionUseCase(
     new SubscriptionPostgresRepository(),
-    new PlanPostgresRepository()
+    new PlanPostgresRepository(),
+    inMemoryEventDispatcher
   );
   await ensureFreeSubscriptionUseCase.execute({ user_id: user.id });
 

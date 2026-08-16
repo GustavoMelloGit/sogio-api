@@ -57,6 +57,13 @@
       "when": 1786884844745,
       "tag": "0007_robust_cobalt_man",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786888744251,
+      "tag": "0008_wealthy_masked_marvel",
+      "breakpoints": true
     }
   ]
 }

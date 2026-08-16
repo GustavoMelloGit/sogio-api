@@ -58,6 +58,7 @@ Plataforma de gestão de alugueis de curta duração. Proprietários cadastram i
 - **LedgerEntry** (Finance) — registro financeiro; receita (positivo) ou despesa (negativo)
 - **Plan** (Billing) — item do catálogo comercial do Sogio (nome, preço, intervalo de cobrança, limites); nunca um enum em código
 - **Subscription** (Billing) — vínculo 1:1 entre um `User` e um `Plan`; muda de plano in-place (não gera uma nova assinatura por troca)
+- **SubscriptionHistoryEntry** (Billing) — registro append-only de cada transição do ciclo de vida da assinatura; agregado próprio, não faz parte de `Subscription`
 
 ### Invariantes Críticas do Domínio
 
@@ -74,13 +75,15 @@ Plataforma de gestão de alugueis de curta duração. Proprietários cadastram i
 
 ### Eventos de Domínio
 
-| Evento                       | Disparado por                                         | Efeito                                                                      |
-| ---------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------- |
-| `StayBookedEvent`            | Confirmação de reserva                                | Criação de senha temporária na fechadura + lançamento de receita no Finance |
-| `StayCanceledEvent`          | Cancelamento de estadia                               | Estorno da receita no Finance                                               |
-| `UserCreatedEvent`           | Cadastro de usuário (Auth)                            | Criação automática da Subscription no plano Free (Billing)                  |
-| `SubscriptionActivatedEvent` | Assinatura entra em `active` num plano pago (Billing) | Gancho para o Finance lançar receita da plataforma (ainda sem handler)      |
-| `SubscriptionCanceledEvent`  | Cancelamento de assinatura (Billing)                  | Ainda sem handler                                                           |
+| Evento                           | Disparado por                                     | Efeito                                                                                          |
+| -------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `StayBookedEvent`                | Confirmação de reserva                            | Criação de senha temporária na fechadura + lançamento de receita no Finance                     |
+| `StayCanceledEvent`              | Cancelamento de estadia                           | Estorno da receita no Finance                                                                   |
+| `UserCreatedEvent`               | Cadastro de usuário (Auth)                        | Criação automática da Subscription no plano Free (Billing)                                      |
+| `SubscriptionStartedEvent`       | Subscription criada pela primeira vez (Billing)   | Registro da entrada `started` no Histórico da Assinatura                                        |
+| `SubscriptionPlanChangedEvent`   | Toda troca de plano bem-sucedida (Billing)        | Registro da entrada `plan_changed`; carrega `opens_paid_cycle` para um futuro gancho do Finance |
+| `SubscriptionPaymentFailedEvent` | `MarkSubscriptionPastDueUseCase` marca `past_due` | Registro da entrada `payment_failed` no Histórico da Assinatura                                 |
+| `SubscriptionCanceledEvent`      | Cancelamento de assinatura (Billing)              | Registro da entrada `canceled` no Histórico da Assinatura                                       |
 
 ### Observação Arquitetural Importante
 

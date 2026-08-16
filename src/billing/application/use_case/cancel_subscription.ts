@@ -40,7 +40,12 @@ export class CancelSubscriptionUseCase implements UseCase<Input, Output> {
     await this.subscriptionRepository.save(subscription);
 
     await this.eventDispatcher.dispatch(
-      new SubscriptionCanceledEvent(subscription.id, user.id, plan.id)
+      new SubscriptionCanceledEvent(
+        subscription.id,
+        user.id,
+        plan.id,
+        subscription.current_period_end
+      )
     );
 
     return {

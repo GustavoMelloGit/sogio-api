@@ -5,7 +5,7 @@ import type { EventDispatcher } from "../../../core/application/event/event_disp
 import type { PlanRepository } from "../../domain/repository/plan_repository";
 import type { SubscriptionRepository } from "../../domain/repository/subscription_repository";
 import type { SubscriptionStatus } from "../../domain/entity/subscription";
-import { SubscriptionActivatedEvent } from "../../domain/event/subscription_activated_event";
+import { SubscriptionPlanChangedEvent } from "../../domain/event/subscription_plan_changed_event";
 
 type Input = {
   plan_code: string;
@@ -51,11 +51,17 @@ export class SubscribeToPlanUseCase implements UseCase<Input, Output> {
 
     await this.subscriptionRepository.save(subscription);
 
-    if (subscription.status === "active" && plan.price_amount > 0) {
-      await this.eventDispatcher.dispatch(
-        new SubscriptionActivatedEvent(subscription.id, user.id, plan.id)
-      );
-    }
+    await this.eventDispatcher.dispatch(
+      new SubscriptionPlanChangedEvent({
+        subscription_id: subscription.id,
+        user_id: user.id,
+        plan_id: plan.id,
+        status: subscription.status,
+        trial_ends_at: subscription.trial_ends_at,
+        current_period_end: subscription.current_period_end,
+        opens_paid_cycle: subscription.has_paid_cycle,
+      })
+    );
 
     return {
       id: subscription.id,
