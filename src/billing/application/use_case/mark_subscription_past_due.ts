@@ -1,5 +1,7 @@
+import { z } from "zod";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 import { ResourceNotFoundError } from "../../../core/application/error/resource_not_found_error";
+import { ValidationError } from "../../../core/application/error/validation_error";
 import type { EventDispatcher } from "../../../core/application/event/event_dispatcher";
 import type { SubscriptionRepository } from "../../domain/repository/subscription_repository";
 import type { SubscriptionStatus } from "../../domain/entity/subscription";
@@ -8,8 +10,15 @@ import { SubscriptionPaymentFailedEvent } from "../../domain/event/subscription_
 
 type Input = {
   user_id: string;
+  /** Opaque gateway decline code (snake_case) — never free text or an error message. */
   reason?: string | null;
 };
+
+/** Opaque snake_case decline code from the payment gateway, e.g. `card_declined`. */
+const reasonSchema = z
+  .string()
+  .max(120)
+  .regex(/^[a-z0-9_]+$/);
 
 type Output = {
   id: string;
@@ -29,6 +38,12 @@ export class MarkSubscriptionPastDueUseCase implements UseCase<Input, Output> {
   ) {}
 
   async execute(input: Input): Promise<Output> {
+    if (input.reason && !reasonSchema.safeParse(input.reason).success) {
+      throw new ValidationError(
+        "reason must be an opaque snake_case gateway code up to 120 characters"
+      );
+    }
+
     const subscription = await this.subscriptionRepository.subscriptionOfUser(
       input.user_id
     );
