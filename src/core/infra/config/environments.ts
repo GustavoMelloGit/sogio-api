@@ -114,6 +114,24 @@ const envSchema = z
       .int()
       .positive()
       .default(60 * 60 * 24 * 30),
+    /**
+     * Comma-separated CORS allowlist, replacing the single `FRONT_BASE_URL`
+     * origin (E8) now that more than one browser caller needs credentialed
+     * access. Optional: falls back to `[frontBaseUrl]` below so an
+     * unconfigured deploy doesn't break.
+     */
+    CORS_ALLOWED_ORIGINS: z
+      .string()
+      .trim()
+      .optional()
+      .transform(value => {
+        if (!value) return undefined;
+        const origins = value
+          .split(",")
+          .map(origin => origin.trim())
+          .filter(origin => origin.length > 0);
+        return origins.length > 0 ? origins : undefined;
+      }),
   })
   .refine(data => data.NODE_ENV === "development" || !!data.API_BASE_URL, {
     message: "API_BASE_URL is required outside development",
@@ -122,7 +140,26 @@ const envSchema = z
   .refine(data => data.NODE_ENV === "development" || !!data.FRONT_BASE_URL, {
     message: "FRONT_BASE_URL is required outside development",
     path: ["FRONT_BASE_URL"],
-  });
+  })
+  .refine(
+    data =>
+      !data.CORS_ALLOWED_ORIGINS ||
+      data.CORS_ALLOWED_ORIGINS.every(origin => {
+        if (origin.endsWith("/") || origin.includes("*")) return false;
+        try {
+          return new URL(origin).origin === origin;
+        } catch {
+          return false;
+        }
+      }),
+    {
+      // `*` is rejected deliberately: this is an explicit allowlist, and
+      // accepting a wildcard from config would reopen the wildcard E8 closed.
+      message:
+        "CORS_ALLOWED_ORIGINS entries must be exact origins (no trailing slash, no wildcard, no path/query)",
+      path: ["CORS_ALLOWED_ORIGINS"],
+    }
+  );
 
 export const env = envSchema.parse(process.env);
 
@@ -141,6 +178,9 @@ export const apiBaseUrl = env.API_BASE_URL ?? `http://localhost:${env.PORT}`;
  * environment where the schema above still allows it to be absent.
  */
 export const frontBaseUrl = env.FRONT_BASE_URL ?? "http://localhost:5173";
+
+// Falls back to the front's origin so an unconfigured deploy still works.
+export const corsAllowedOrigins = env.CORS_ALLOWED_ORIGINS ?? [frontBaseUrl];
 
 /** Credential lifetimes and rotation grace window, in milliseconds. */
 export const accessTokenTtlMs = env.ACCESS_TOKEN_TTL_SECONDS * 1000;

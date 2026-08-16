@@ -44,7 +44,7 @@ bun run test          # Executa todos os testes
 
 Os testes ficam em `tests/<bounded context>/<test name>.test.ts`.
 
-> **Pré-requisito**: o arquivo `.env.test` na raiz do projeto deve conter a variável `DATABASE_URL` com as credenciais reais do banco local, a variável `API_BASE_URL` (ex: `http://localhost:4000`) — obrigatória fora de `development` desde a introdução dos documentos de descoberta OAuth — e a variável `FRONT_BASE_URL` (ex: `http://localhost:5173`) — obrigatória fora de `development` desde a introdução do `/authorize` (redirect de consentimento e origem de CORS do protocolo OAuth).
+> **Pré-requisito**: o arquivo `.env.test` na raiz do projeto deve conter a variável `DATABASE_URL` com as credenciais reais do banco local, a variável `API_BASE_URL` (ex: `http://localhost:4000`) — obrigatória fora de `development` desde a introdução dos documentos de descoberta OAuth — e a variável `FRONT_BASE_URL` (ex: `http://localhost:5173`) — obrigatória fora de `development` desde a introdução do `/authorize` (redirect de consentimento do protocolo OAuth).
 
 ## Arquitetura
 
@@ -90,6 +90,7 @@ Definidas em `src/core/infra/config/environments.ts`:
 - `DATABASE_URL` — string de conexão PostgreSQL
 - `NODE_ENV` — `development | test | sandbox | production`
 - `JWT_SECRET` — chave de assinatura dos tokens
+- `CORS_ALLOWED_ORIGINS` — lista opcional de origens permitidas para CORS, separadas por vírgula; se ausente, cai para `[FRONT_BASE_URL]`
 
 ### Estilo de Código
 

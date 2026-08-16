@@ -1,4 +1,7 @@
-import { env, frontBaseUrl } from "../../../core/infra/config/environments";
+import {
+  corsAllowedOrigins,
+  env,
+} from "../../../core/infra/config/environments";
 
 export class CorsMiddleware {
   private readonly allowedOrigins: string[];
@@ -8,16 +11,9 @@ export class CorsMiddleware {
   constructor() {
     const isProduction = env.NODE_ENV === "production";
     if (isProduction) {
-      /**
-       * Exactly the front's origin (E8) — not a `https://*` wildcard. The
-       * previous wildcard accepted any HTTPS origin, which combined with
-       * `Access-Control-Allow-Credentials: true` below is effectively `*`
-       * with credentials enabled. `sogio-front` is the API's one
-       * legitimate browser caller (the app itself and the OAuth consent
-       * screen both live there), so this is a like-for-like tightening, not
-       * a behavior change for real traffic.
-       */
-      this.allowedOrigins = [frontBaseUrl];
+      // Explicit allowlist (E8), configurable via CORS_ALLOWED_ORIGINS —
+      // never a wildcard, which combined with credentials below is `*`.
+      this.allowedOrigins = [...corsAllowedOrigins];
     } else {
       this.allowedOrigins = ["http://localhost:*"];
     }
@@ -144,11 +140,10 @@ export class CorsMiddleware {
     return this.allowedOrigins.some(allowedOrigin => {
       /**
        * A trailing `*` (only used for the "any localhost port" dev
-       * allowance) is a genuine prefix match. Anything else — in
-       * particular `frontBaseUrl` in production (E8) — has to match the
-       * origin exactly; a `startsWith` here would let
-       * `https://front.sogio.com.evil.com` through against an allowed
-       * origin of `https://front.sogio.com`.
+       * allowance) is a genuine prefix match. Anything else — i.e. any
+       * configured allowlist entry (E8) — has to match the origin exactly;
+       * a `startsWith` here would let `https://front.sogio.com.evil.com`
+       * through against an allowed origin of `https://front.sogio.com`.
        */
       if (allowedOrigin.endsWith("*")) {
         return origin.startsWith(allowedOrigin.slice(0, -1));
