@@ -282,6 +282,25 @@ const billingControllers: Route[] = [
     allowWithoutPlatformAccess: true,
     controller: billingDi.makeGetSubscriptionHistoryController(),
   },
+  {
+    // DA-5: a blocked account must still be able to pay its way out — the
+    // only exit from the paywall cannot itself sit behind the paywall (R-2).
+    authenticated: true,
+    allowWithoutPlatformAccess: true,
+    controller: billingDi.makeCreateCheckoutSessionController(),
+  },
+  {
+    // DA-5, same justification as the checkout session route above.
+    authenticated: true,
+    allowWithoutPlatformAccess: true,
+    controller: billingDi.makeCreateBillingPortalSessionController(),
+  },
+  {
+    // The caller is the gateway, not a logged-in user — outside the
+    // platform-access gate by construction, not by exception.
+    authenticated: false,
+    controller: billingDi.makeStripeWebhookController(),
+  },
 ];
 
 const controllers = [
