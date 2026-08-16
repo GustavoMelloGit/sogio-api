@@ -11,11 +11,11 @@ export type BillingInterval = z.infer<typeof billingIntervalSchema>;
 export const planSchema = baseEntitySchema.extend({
   code: z.string().min(1).max(50),
   name: z.string().min(1).max(100),
-  price_amount: z.int().min(0),
+  price_amount: z.int().min(0).max(100_000_000),
   billing_interval: billingIntervalSchema,
-  max_properties: z.int().min(1),
-  trial_days: z.int().min(0),
-  external_price_reference: z.string().nullable().optional(),
+  max_properties: z.int().min(1).max(10_000),
+  trial_days: z.int().min(0).max(365),
+  external_price_reference: z.string().max(255).nullable().optional(),
 });
 
 export type PlanData = z.infer<typeof planSchema>;
