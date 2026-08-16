@@ -3,6 +3,10 @@ import { Property } from "../../../domain/entity/property";
 import type { PropertyRepository } from "../../../domain/repository/property_repository";
 import { db } from "../../../../core/infra/database/drizzle/database";
 import {
+  currentExecutor,
+  type DbExecutor,
+} from "../../../../core/infra/database/drizzle/transaction_context";
+import {
   propertiesTable,
   addressesTable,
 } from "../../../../core/infra/database/drizzle/schema";
@@ -11,10 +15,6 @@ import { Address } from "../../../domain/value_object/address";
 /** Arbitrary namespace for `pg_advisory_xact_lock`, scoped to property
  *  creation so it never collides with other advisory lock uses. */
 const PROPERTY_QUOTA_LOCK_NAMESPACE = 728_314;
-
-type DbExecutor =
-  | typeof db
-  | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export class PropertyPostgresRepository implements PropertyRepository {
   /**
@@ -116,8 +116,12 @@ export class PropertyPostgresRepository implements PropertyRepository {
     };
   }
 
-  async #updateAddress(addressId: string, address: Address): Promise<void> {
-    const addressResult = await db
+  async #updateAddress(
+    addressId: string,
+    address: Address,
+    executor: DbExecutor = db
+  ): Promise<void> {
+    const addressResult = await executor
       .update(addressesTable)
       .set(address.data)
       .where(eq(addressesTable.id, addressId))
@@ -144,8 +148,16 @@ export class PropertyPostgresRepository implements PropertyRepository {
     return property;
   }
 
+  /**
+   * Writes through `currentExecutor()` (DA-13) so a soft delete running
+   * inside `DeletePropertyUseCase`'s transaction commits or rolls back
+   * together with the stay cancellations and ledger reversals it triggers.
+   * Outside a `TransactionRunner.run` call this resolves to plain `db`,
+   * unchanged from before.
+   */
   async #updateProperty(property: Property): Promise<void> {
-    const propertyResult = await db
+    const executor = currentExecutor();
+    const propertyResult = await executor
       .update(propertiesTable)
       .set(property.data)
       .where(eq(propertiesTable.id, property.id))
@@ -154,6 +166,6 @@ export class PropertyPostgresRepository implements PropertyRepository {
     const propertyDto = propertyResult[0];
     if (!propertyDto) throw new Error("Failed to update property");
 
-    await this.#updateAddress(propertyDto.address_id, property.address);
+    await this.#updateAddress(propertyDto.address_id, property.address, executor);
   }
 }

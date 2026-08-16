@@ -19,6 +19,7 @@ import type {
   LedgerEntryRepository,
 } from "../../../domain/repository/ledger_entry_repository";
 import { db } from "../../../../core/infra/database/drizzle/database";
+import { currentExecutor } from "../../../../core/infra/database/drizzle/transaction_context";
 import { ledgerEntriesTable } from "../../../../core/infra/database/drizzle/schema";
 import type {
   PaginatedResult,
@@ -27,6 +28,13 @@ import type {
 import { calculatePaginationMetadata } from "../../../../core/application/dto/pagination";
 
 export class LedgerEntryPostgresRepository implements LedgerEntryRepository {
+  /**
+   * Writes through `currentExecutor()` (DA-13): `RevertRevenueOnStayCancel`
+   * calls this once per stay `DeletePropertyUseCase` cancels in cascade, and
+   * every reversal needs to land in the same transaction as the
+   * cancellations and the property's soft delete. Resolves to plain `db`
+   * outside `TransactionRunner.run`, unchanged from before.
+   */
   async save(entry: LedgerEntry): Promise<void> {
     const data: LedgerEntryData = {
       id: entry.id,
@@ -39,7 +47,10 @@ export class LedgerEntryPostgresRepository implements LedgerEntryRepository {
       deleted_at: entry.deleted_at,
     };
 
-    const result = await db.insert(ledgerEntriesTable).values(data).returning();
+    const result = await currentExecutor()
+      .insert(ledgerEntriesTable)
+      .values(data)
+      .returning();
 
     if (!result[0]) {
       throw new Error("Failed to save ledger entry");
