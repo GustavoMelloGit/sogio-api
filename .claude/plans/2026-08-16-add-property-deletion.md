@@ -47,19 +47,19 @@ Controle sobre o próprio inventário, com uma promessa estreita e honesta: **ex
 
 ### 2.1 Linguagem Ubíqua
 
-| Termo                       | Significado                                                                                                                              |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **Excluir propriedade**     | Marcar `Property.deleted_at`. O verbo do produto é **excluir/delete**, não "arquivar" nem "desativar" — o código já fala essa língua (`deleted_at`, `PropertyOwnershipPolicy`, `DeletePropertySettingController`). Não inventar sinônimo. |
-| **Propriedade excluída**    | `deleted_at IS NOT NULL`. Invisível em toda superfície de leitura e escrita do usuário; a linha permanece no banco.                      |
-| **Propriedade ativa**       | `deleted_at IS NULL`. Já é a semântica de `countFromUser`.                                                                               |
-| **Estadia pendente**        | Estadia da propriedade com `check_out >= agora` e `deleted_at IS NULL` — cobre a **futura** e a **em andamento** de uma vez. É exatamente a semântica que `StayRepository.allFutureFromProperty` já implementa. É o que **impede** a exclusão. |
-| **Histórico contábil**      | As `LedgerEntry` da propriedade. Preservadas no banco, deixam de ser servidas. Ver DA-6 e R-4.                                           |
+| Termo                    | Significado                                                                                                                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Excluir propriedade**  | Marcar `Property.deleted_at`. O verbo do produto é **excluir/delete**, não "arquivar" nem "desativar" — o código já fala essa língua (`deleted_at`, `PropertyOwnershipPolicy`, `DeletePropertySettingController`). Não inventar sinônimo.      |
+| **Propriedade excluída** | `deleted_at IS NOT NULL`. Invisível em toda superfície de leitura e escrita do usuário; a linha permanece no banco.                                                                                                                            |
+| **Propriedade ativa**    | `deleted_at IS NULL`. Já é a semântica de `countFromUser`.                                                                                                                                                                                     |
+| **Estadia pendente**     | Estadia da propriedade com `check_out >= agora` e `deleted_at IS NULL` — cobre a **futura** e a **em andamento** de uma vez. É exatamente a semântica que `StayRepository.allFutureFromProperty` já implementa. É o que **impede** a exclusão. |
+| **Histórico contábil**   | As `LedgerEntry` da propriedade. Preservadas no banco, deixam de ser servidas. Ver DA-6 e R-4.                                                                                                                                                 |
 
 ### 2.2 A que contexto pertence a exclusão
 
 `Property` (o catálogo do imóvel) é agregado de **`property_management`**, e é `PropertyRepository` que escreve nessa linha. A exclusão pertence, sem ambiguidade, a `property_management`. `BookingProperty` é o outro agregado sobre a **mesma linha** (`propertiesTable`), mas `booking` é conformista de leitura: nunca escreveu em `properties` e não deve começar agora.
 
-A "Observação Arquitetural Importante" da persona não é ferida: `DeletePropertyUseCase` não lê capacidade, não reserva nada, não conhece `Stay`. Ele faz uma única pergunta ao mundo de fora — *"esta propriedade tem estadia pendente?"* — e essa pergunta é feita por uma **porta declarada em `property_management`**, não importando `booking`. Ver DA-3, que é a decisão mais delicada do plano.
+A "Observação Arquitetural Importante" da persona não é ferida: `DeletePropertyUseCase` não lê capacidade, não reserva nada, não conhece `Stay`. Ele faz uma única pergunta ao mundo de fora — _"esta propriedade tem estadia pendente?"_ — e essa pergunta é feita por uma **porta declarada em `property_management`**, não importando `booking`. Ver DA-3, que é a decisão mais delicada do plano.
 
 ### 2.3 Levantamento: tudo que referencia uma `Property` hoje
 
@@ -67,53 +67,53 @@ Este é o cerne do trabalho. Levantado no código, não presumido. **Nenhum dest
 
 #### `property_management`
 
-| Ponto                                                       | Situação hoje                                       | O que precisa acontecer                                        |
-| ----------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------- |
-| `PropertyPostgresRepository.propertyOfId`                   | não filtra                                          | **NÃO filtrar** — carga é load-bearing para `save()`. Ver R-2  |
-| `PropertyPostgresRepository.allFromUser`                    | não filtra                                          | filtrar `deleted_at IS NULL`                                   |
-| `PropertyPostgresRepository.countFromUser`                  | **já filtra**                                       | nada                                                            |
-| `PropertyPostgresRepository.saveNewWithinQuota`             | **já filtra** (conta dentro da transação)           | nada                                                            |
-| `FindPropertyUseCase` (`GET /property/:id`)                 | checagem inline sem `deleted_at`                    | passar pela `PropertyOwnershipPolicy`                          |
-| `UpdatePropertyUseCase` (`PATCH /property/:id`)             | checagem inline sem `deleted_at`                    | passar pela `PropertyOwnershipPolicy`                          |
-| `FindUserPropertiesUseCase` (`GET /property/user/all` **e** tool MCP `list_properties`) | usa `allFromUser`   | corrigido pelo filtro no repositório                            |
-| `CreatePropertyUseCase`                                     | correto                                             | nada                                                            |
-| 5 use cases de `PropertySetting` (HTTP + 5 tools MCP)       | **já corretos** — usam `PropertyOwnershipPolicy`, que já trata `deleted_at` | **nada** — é o retorno de investimento da policy já existente |
+| Ponto                                                                                   | Situação hoje                                                               | O que precisa acontecer                                       |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `PropertyPostgresRepository.propertyOfId`                                               | não filtra                                                                  | **NÃO filtrar** — carga é load-bearing para `save()`. Ver R-2 |
+| `PropertyPostgresRepository.allFromUser`                                                | não filtra                                                                  | filtrar `deleted_at IS NULL`                                  |
+| `PropertyPostgresRepository.countFromUser`                                              | **já filtra**                                                               | nada                                                          |
+| `PropertyPostgresRepository.saveNewWithinQuota`                                         | **já filtra** (conta dentro da transação)                                   | nada                                                          |
+| `FindPropertyUseCase` (`GET /property/:id`)                                             | checagem inline sem `deleted_at`                                            | passar pela `PropertyOwnershipPolicy`                         |
+| `UpdatePropertyUseCase` (`PATCH /property/:id`)                                         | checagem inline sem `deleted_at`                                            | passar pela `PropertyOwnershipPolicy`                         |
+| `FindUserPropertiesUseCase` (`GET /property/user/all` **e** tool MCP `list_properties`) | usa `allFromUser`                                                           | corrigido pelo filtro no repositório                          |
+| `CreatePropertyUseCase`                                                                 | correto                                                                     | nada                                                          |
+| 5 use cases de `PropertySetting` (HTTP + 5 tools MCP)                                   | **já corretos** — usam `PropertyOwnershipPolicy`, que já trata `deleted_at` | **nada** — é o retorno de investimento da policy já existente |
 
 #### `booking`
 
-| Ponto                                                | Situação hoje                            | O que precisa acontecer                          |
-| ----------------------------------------------------- | ----------------------------------------- | -------------------------------------------------- |
-| `BookingPropertyPostgresRepository.propertyOfId`     | não filtra                               | filtrar `deleted_at IS NULL`                     |
-| `BookingPropertyPostgresRepository.allFromUser`      | não filtra                               | filtrar `deleted_at IS NULL`                     |
-| `BookStayUseCase` (HTTP + tool MCP `book_stay`)      | inline, sem `deleted_at`                 | corrigido pelo filtro no repositório de `booking` |
-| `CreateExternalBookingSourceUseCase`                 | inline, sem `deleted_at`                 | idem                                             |
-| `ReconcileExternalBookingsUseCase` (sync iCal)       | itera `allFromUser`                      | idem — a sync para sozinha. Ver DA-7             |
-| `GetStayUseCase`, `UpdateStayUseCase`, `CancelStayUseCase`, `FindPropertyStaysUseCase` | resolvem a `Property` de `property_management` para posse, sem `deleted_at` | passar pela policy com rótulo `"Stay"` (DA-2) |
-| `GetDashboardOverviewUseCase` (`GET /dashboard/overview`) | `PropertyRepository.allFromUser`     | corrigido pelo filtro em `property_management`   |
-| `TenantPostgresRepository.findByOwnerProperties` (`GET /tenants`) | join em `properties` sem `deleted_at` | filtrar. Ver R-5 (menor convicção do plano)   |
-| `StayPostgresRepository.dashboardStats`              | recebe `propertyIds` já filtrados        | nada                                             |
-| `GetPublicStayUseCase` (`/public/booking/stay/:id`, sem auth) | não resolve `Property`          | **nada** — e é deliberado. Ver DA-4              |
-| `PostgresBookingPolicy.isBookingAllowed`             | só olha `stays`                          | nada (nenhuma estadia nova alcança propriedade excluída) |
+| Ponto                                                                                  | Situação hoje                                                               | O que precisa acontecer                                  |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `BookingPropertyPostgresRepository.propertyOfId`                                       | não filtra                                                                  | filtrar `deleted_at IS NULL`                             |
+| `BookingPropertyPostgresRepository.allFromUser`                                        | não filtra                                                                  | filtrar `deleted_at IS NULL`                             |
+| `BookStayUseCase` (HTTP + tool MCP `book_stay`)                                        | inline, sem `deleted_at`                                                    | corrigido pelo filtro no repositório de `booking`        |
+| `CreateExternalBookingSourceUseCase`                                                   | inline, sem `deleted_at`                                                    | idem                                                     |
+| `ReconcileExternalBookingsUseCase` (sync iCal)                                         | itera `allFromUser`                                                         | idem — a sync para sozinha. Ver DA-7                     |
+| `GetStayUseCase`, `UpdateStayUseCase`, `CancelStayUseCase`, `FindPropertyStaysUseCase` | resolvem a `Property` de `property_management` para posse, sem `deleted_at` | passar pela policy com rótulo `"Stay"` (DA-2)            |
+| `GetDashboardOverviewUseCase` (`GET /dashboard/overview`)                              | `PropertyRepository.allFromUser`                                            | corrigido pelo filtro em `property_management`           |
+| `TenantPostgresRepository.findByOwnerProperties` (`GET /tenants`)                      | join em `properties` sem `deleted_at`                                       | filtrar. Ver R-5 (menor convicção do plano)              |
+| `StayPostgresRepository.dashboardStats`                                                | recebe `propertyIds` já filtrados                                           | nada                                                     |
+| `GetPublicStayUseCase` (`/public/booking/stay/:id`, sem auth)                          | não resolve `Property`                                                      | **nada** — e é deliberado. Ver DA-4                      |
+| `PostgresBookingPolicy.isBookingAllowed`                                               | só olha `stays`                                                             | nada (nenhuma estadia nova alcança propriedade excluída) |
 
 #### `finance`
 
-| Ponto                                          | Situação hoje                                   | O que precisa acontecer                          |
-| ----------------------------------------------- | ------------------------------------------------ | -------------------------------------------------- |
-| `RecordExpenseUseCase`                          | inline, sem `deleted_at`                        | passar pela policy                               |
-| `RecordRevenueUseCase`                          | inline, sem `deleted_at` (posse já corrigida em `ff2a667`) | passar pela policy                    |
-| `FindPropertyFinancialMovementsUseCase`         | 🔴 **nenhuma verificação de posse**             | posse + `deleted_at`. **R-1**                    |
-| `LedgerEntryPostgresRepository.monthlyRevenueForProperties` | recebe `propertyIds` já filtrados   | nada                                             |
-| Handlers `RecordRevenueOnStayPaymentConfirmed` / `RevertRevenueOnStayCancel` | escrevem direto no repositório | **nada** — e é deliberado. Ver DA-5             |
+| Ponto                                                                        | Situação hoje                                              | O que precisa acontecer             |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------- |
+| `RecordExpenseUseCase`                                                       | inline, sem `deleted_at`                                   | passar pela policy                  |
+| `RecordRevenueUseCase`                                                       | inline, sem `deleted_at` (posse já corrigida em `ff2a667`) | passar pela policy                  |
+| `FindPropertyFinancialMovementsUseCase`                                      | 🔴 **nenhuma verificação de posse**                        | posse + `deleted_at`. **R-1**       |
+| `LedgerEntryPostgresRepository.monthlyRevenueForProperties`                  | recebe `propertyIds` já filtrados                          | nada                                |
+| Handlers `RecordRevenueOnStayPaymentConfirmed` / `RevertRevenueOnStayCancel` | escrevem direto no repositório                             | **nada** — e é deliberado. Ver DA-5 |
 
 #### Banco — topologia de chaves estrangeiras (decide soft vs hard delete)
 
-| FK                                       | `ON DELETE` |
-| ----------------------------------------- | ------------- |
-| `stays.property_id → properties`         | **cascade**  |
-| `ledger_entries.property_id → properties`| **cascade**  |
-| `external_booking_sources.property_id`   | **no action**|
-| `property_settings.property_id`          | **no action**|
-| `properties.address_id → addresses`      | cascade (direção inversa — o endereço **não** é apagado junto; fica órfão) |
+| FK                                        | `ON DELETE`                                                                |
+| ----------------------------------------- | -------------------------------------------------------------------------- |
+| `stays.property_id → properties`          | **cascade**                                                                |
+| `ledger_entries.property_id → properties` | **cascade**                                                                |
+| `external_booking_sources.property_id`    | **no action**                                                              |
+| `property_settings.property_id`           | **no action**                                                              |
+| `properties.address_id → addresses`       | cascade (direção inversa — o endereço **não** é apagado junto; fica órfão) |
 
 ### 2.4 Eventos de domínio: nenhum é necessário
 
@@ -130,7 +130,7 @@ Não existe hoje evento com `property_id` cujo handler precise reagir a uma excl
 1. **Hard delete destruiria o histórico financeiro em silêncio.** `ledger_entries.property_id` e `stays.property_id` são `ON DELETE cascade`. Um `DELETE FROM properties` apagaria, sem aviso e sem recuperação, todo o ledger e todas as estadias daquele imóvel. Um clique de UI não pode ter esse alcance.
 2. **Hard delete simplesmente falharia.** `external_booking_sources` e `property_settings` referenciam `properties` com `ON DELETE no action`. É exatamente o problema documentado no comentário de `purgeUserData`, que precisou apagar essas duas tabelas explicitamente e em ordem. Replicar isso aqui significaria escrever uma orquestração de exclusão em cascata de quatro tabelas em três bounded contexts — muito código destrutivo para um requisito que não pede destruição.
 3. **Não há exigência legal.** `purgeUserData` é hard delete porque a LGPD manda apagar dado pessoal quando o titular pede a exclusão da **conta**. Excluir uma propriedade não é um pedido de exclusão de dado pessoal: é uma decisão de inventário do próprio proprietário sobre um bem dele. A justificativa que força o hard delete lá não existe aqui.
-4. **É o padrão da casa.** Toda entidade estende `BaseEntity` com `deleted_at`; `Stay.cancel()`, `PropertySetting.softDelete()` e `countFromUser` já operam nessa semântica. E `PropertyOwnershipPolicy` **já** foi escrita antecipando propriedade excluída — o comentário dela diz literalmente *"or keep operating on settings scoped to a property the owner already deleted"*. Esta entrega é a metade que faltava de uma decisão já tomada.
+4. **É o padrão da casa.** Toda entidade estende `BaseEntity` com `deleted_at`; `Stay.cancel()`, `PropertySetting.softDelete()` e `countFromUser` já operam nessa semântica. E `PropertyOwnershipPolicy` **já** foi escrita antecipando propriedade excluída — o comentário dela diz literalmente _"or keep operating on settings scoped to a property the owner already deleted"_. Esta entrega é a metade que faltava de uma decisão já tomada.
 
 ### DA-2 — `PropertyOwnershipPolicy` vira o portão único, com rótulo de recurso opcional
 
@@ -178,10 +178,12 @@ Decisões dentro desta:
 **Decisão: recusar.** As duas alternativas — excluir mesmo assim, ou cancelar as estadias em cascata — são ambas piores, e por motivos concretos:
 
 **Por que não excluir mesmo assim:**
+
 - A estadia carrega um `entrance_code` que foi **fisicamente programado numa fechadura** (`StayBookedEvent` → `CreateTempPasswordOnBook` → `TuyaDeviceManagement.setTempPassword`). Não existe, em lugar nenhum do código, um caminho que **remova** essa senha. O hóspede continuaria entrando no imóvel, e o proprietário não teria mais nenhuma tela onde ver aquela estadia. É consequência física, não de dado.
 - `GET /public/booking/stay/:stay_id` é **não autenticado** — o link do próprio hóspede. Continuaria funcionando (corretamente, ver DA-4 abaixo), produzindo o pior estado possível: uma estadia visível para o hóspede e invisível para o dono.
 
 **Por que não cancelar em cascata:**
+
 - Cada cancelamento dispara `StayCanceledEvent` → `RevertRevenueOnStayCancel`, que grava um estorno no ledger. Um `DELETE` que emite N lançamentos financeiros de estorno é um efeito colateral desproporcional e surpreendente.
 - A invariante existente **"estadias iniciadas não podem ser canceladas"** (`Stay.cancel()` lança `IllegalStateError`) tornaria a cascata **parcialmente impossível** justamente no caso que mais importa: a estadia em andamento. O `DELETE` falharia no meio, com parte das estadias já cancelada e o ledger já estornado.
 
@@ -221,6 +223,7 @@ This property has upcoming or in-progress stays. Cancel them before deleting it.
 O único caminho que lê fontes externas é `ReconcileExternalBookingsUseCase.#reconcileForProperty`, invocado exclusivamente a partir de `propertyRepository.allFromUser(user.id)`. Com o filtro de `deleted_at` nesse repositório (task 5), a propriedade excluída deixa de ser iterada e **a sincronização iCal para, sem nenhuma escrita**.
 
 Não soft-deletar as fontes:
+
 - `ExternalBookingSource` não tem `softDelete()` e `ExternalBookingSourcePostgresRepository.save()` só faz `INSERT` — não há caminho de update. Criar um é trabalho real por zero ganho comportamental.
 - Manter as linhas torna a reversão operacional (DA-9) **completa**: restaurar a propriedade restaura a sync.
 - `CreateExternalBookingSourceUseCase` passa a rejeitar propriedade excluída pelo filtro em `BookingPropertyPostgresRepository.propertyOfId`.
@@ -444,7 +447,9 @@ Depois desta entrega, o plano de cota fica desbloqueado (seu R-6 era exatamente 
 
 ## 7. Pendências de decisão do usuário
 
-1. **R-1 — o IDOR de `FindPropertyFinancialMovements` entra nesta entrega ou vira PR próprio e priorizado?** Recomendação do Arquiteto: **entra aqui** (task 6), porque sem ele a exclusão não esconde o histórico financeiro de ninguém e a promessa da entrega é falsa. Se o usuário quiser o fix em produção antes, esta entrega fica bloqueada até o merge dele.
-2. **R-3 — aceitar o TOCTOU entre "não tem estadia pendente" e "marca excluída", ou pagar a guarda transacional?** Recomendação: **aceitar**, e registrar. A guarda (`softDeleteIfUnoccupied` com `pg_advisory_xact_lock`, espelhando `saveNewWithinQuota`) é barata e o padrão já existe no projeto — se o usuário preferir fechar a janela agora, custa uma transação e um método de repositório.
-3. **R-5 — hóspedes que só se hospedaram na propriedade excluída devem sumir de `GET /tenants`?** Recomendação: **sim**, por consistência ("tudo escopado pela propriedade some"). É a decisão de menor convicção do plano — o contra-argumento (o proprietário perde contatos que ainda quer) é legítimo.
-4. **DA-7 / segurança — a `sync_url` de Airbnb/Booking permanece no banco após a exclusão.** Recomendação: **aceitar** (mesma postura do ledger e do endereço). Se o Analista de Segurança considerar inaceitável, a alternativa é redigir a `sync_url` no soft delete, ao custo da reversão operacional da DA-9.
+1. **R-1 — ✅ Resolvido: entra nesta entrega** (task 6). O IDOR de `FindPropertyFinancialMovements` é corrigido junto.
+2. **R-3 — ✅ Resolvido: aceitar o TOCTOU**, registrado como dívida técnica conhecida. Sem guarda transacional nesta entrega.
+3. **R-5 — ✅ Resolvido: hóspedes exclusivos da propriedade excluída somem de `GET /tenants`.** Consistência com o resto do sistema — tudo escopado pela propriedade some.
+4. **DA-7 / segurança — a `sync_url` de Airbnb/Booking permanece no banco após a exclusão** (posição do usuário: nada é fisicamente apagado a não ser por purge de LGPD; soft delete vale pra todas as tabelas, sem exceção). Confirma a recomendação original do Arquiteto — a menos que o Analista de Segurança levante objeção na revisão obrigatória.
+
+**Princípio geral confirmado pelo usuário, vale para toda a entrega**: nenhum dado é fisicamente excluído do banco em nenhuma tabela, exceto pelo fluxo de purge de dados por LGPD (`PurgeUserDataUseCase`). Toda exclusão nesta feature é soft delete — reforça DA-1 (soft delete da `Property`) e a decisão do item 4 acima.
