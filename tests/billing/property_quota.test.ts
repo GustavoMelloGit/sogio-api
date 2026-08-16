@@ -98,4 +98,29 @@ describe("max_properties quota on property creation (DA-10)", () => {
 
     expect(res.status).toBe(200);
   });
+
+  it("allows exactly one of two concurrent creations to succeed at the limit (TOCTOU regression)", async () => {
+    const { user } = await createUserFixture({
+      name: "Dono de Imóvel",
+      email: "quota.concurrent@sogio.dev",
+      password: "password123",
+    });
+    const token = await createAuthToken(user.id);
+
+    const [firstRes, secondRes] = await Promise.all([
+      api("/property", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token },
+        body: JSON.stringify(validBody("Casa Concorrente A")),
+      }),
+      api("/property", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token },
+        body: JSON.stringify(validBody("Casa Concorrente B")),
+      }),
+    ]);
+
+    const statuses = [firstRes.status, secondRes.status].sort();
+    expect(statuses).toEqual([200, 403]);
+  });
 });
