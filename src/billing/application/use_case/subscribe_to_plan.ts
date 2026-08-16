@@ -30,7 +30,8 @@ export class SubscribeToPlanUseCase implements UseCase<Input, Output> {
 
   async execute(input: Input, user: User): Promise<Output> {
     const plan = await this.planRepository.planOfCode(input.plan_code);
-    if (!plan) {
+    // A soft-deleted plan must look nonexistent to whoever tries to subscribe to it.
+    if (!plan || plan.deleted_at) {
       throw new ResourceNotFoundError("Plan");
     }
 
