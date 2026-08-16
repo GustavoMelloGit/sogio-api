@@ -52,7 +52,7 @@ Os testes ficam em `tests/<bounded context>/<test name>.test.ts`.
 
 ### Estrutura de Camadas
 
-Cada módulo de negócio (`auth`, `booking`, `property_management`, `finance`) possui quatro camadas:
+Cada módulo de negócio (`auth`, `booking`, `property_management`, `finance`, `billing`) possui quatro camadas:
 
 ```
 src/[modulo]/
@@ -77,6 +77,12 @@ O módulo `src/core/` provê infraestrutura compartilhada: tipo base de entidade
 **Tratamento de Erros** — use cases lançam erros tipados; o adaptador HTTP mapeia os nomes de erro para status codes: `ValidationError` → 422, `ConflictError` → 409, `ResourceNotFoundError` → 404, `UnauthorizedError` → 401, `IllegalStateError` → 500.
 
 **Autenticação** — JWT Bearer tokens. `SessionManager` cria/valida tokens. O middleware de auth extrai o usuário e o repassa ao controller. Rotas declaram `authenticated: boolean` em `routes.ts`.
+
+### Bounded Context `billing`
+
+Modelo de monetização SaaS: cada `User` tem exatamente uma `Subscription`, vinculada a um `Plan` do catálogo (`free` ou `pro`, semeados via `bun run db:seed`). O **entitlement** (acesso à plataforma + `max_properties`) é sempre **derivado** de `Subscription` + `Plan` no momento da leitura (`SubscriptionAccessPolicy`), nunca uma coluna persistida — não há scheduler no projeto para expirar períodos automaticamente. `EntitlementService` (`billing/application/service/`) é o Open Host Service que `core/infra/http`, `core/infra/mcp` e `property_management` consomem via interface, nunca a infraestrutura de `billing` diretamente.
+
+O acesso é bloqueado (fail-closed) em toda rota `authenticated: true` e em `/mcp`, exceto as rotas marcadas com `allowWithoutPlatformAccess: true` em `routes.ts` (conta própria, exclusão LGPD, higiene de apps conectados, decisão OAuth) — uma conta sem `Subscription` fica bloqueada até intervenção manual. `billing` **não** conhece Stripe ou qualquer gateway de pagamento nesta entrega: referências externas são strings opacas anuláveis (`external_reference`, `external_customer_reference`, `external_price_reference`).
 
 ### Banco de Dados
 
