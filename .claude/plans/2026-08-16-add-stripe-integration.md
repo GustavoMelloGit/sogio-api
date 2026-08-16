@@ -336,13 +336,13 @@ Catálogo manual (DA-11). Se o operador mudar o preço no dashboard e não no ba
 
 `opens_paid_cycle` continua sem consumidor, agora com dados de verdade passando por ele. Segue sendo escopo do `finance`, fora daqui. Registrado para o Revisor não ler como lacuna desta entrega.
 
-### Q-1 — ⚠️ Precisa de decisão do usuário: o `pro` continua com 14 dias de trial?
+### Q-1 — ✅ Resolvido: o `pro` mantém 14 dias de trial, administrado pelo Stripe
 
-O plano recomenda **sim** (§2.5, opção B), com o trial administrado pelo Stripe. É a única decisão deste plano com efeito de produto, e é a que dá para cortar se a entrega precisar encolher: cortá-la significa `trial_days: 0` no seed e remover a forma `startTrialUntil` + o ramo `trialing` do mapeamento da DA-9. **Se o usuário não se manifestar, seguir com a recomendação.**
+Confirmado com o usuário. Segue a recomendação (§2.5, opção B) sem alteração estrutural.
 
-### Q-2 — ⚠️ Precisa de confirmação: os paths de retorno no front
+### Q-2 — ✅ Resolvido: paths de retorno no front
 
-`success_url`, `cancel_url` e `return_url` são constantes derivadas de `frontBaseUrl` (DA-4). Proposta: `/billing/checkout/success`, `/billing/checkout/canceled`, `/billing`. Se o `sogio-front` usa outros, é troca de três strings — mas precisa ser combinado, senão o cliente termina o pagamento e cai num 404.
+Confirmado com o usuário: `/billing/checkout/success`, `/billing/checkout/canceled`, `/billing`, derivados de `frontBaseUrl` (DA-4), como propostas.
 
 ---
 
