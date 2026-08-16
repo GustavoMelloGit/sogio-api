@@ -17,6 +17,14 @@ type DbExecutor =
   | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export class PropertyPostgresRepository implements PropertyRepository {
+  /**
+   * Deliberately does NOT filter `deleted_at` (R-2): `save()` calls this
+   * first to decide INSERT vs UPDATE, and the soft delete write itself goes
+   * through `save()`. Filtering here would make the exclusion write take the
+   * INSERT path on a row that already exists — primary key violation, 500.
+   * Authorization for a soft-deleted property is `PropertyOwnershipPolicy`'s
+   * job, not this method's.
+   */
   async propertyOfId(id: string): Promise<Property | null> {
     const property = await db.query.propertiesTable.findFirst({
       where: eq(propertiesTable.id, id),
@@ -41,7 +49,10 @@ export class PropertyPostgresRepository implements PropertyRepository {
 
   async allFromUser(userId: string): Promise<Array<Property>> {
     const properties = await db.query.propertiesTable.findMany({
-      where: eq(propertiesTable.user_id, userId),
+      where: and(
+        eq(propertiesTable.user_id, userId),
+        isNull(propertiesTable.deleted_at)
+      ),
       with: {
         address: true,
       },
