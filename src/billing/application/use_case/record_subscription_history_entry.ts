@@ -49,9 +49,16 @@ export class RecordSubscriptionHistoryEntryUseCase
     } catch (error) {
       this.logger.error("Failed to record subscription history entry", {
         subscription_id: input.subscription_id,
+        user_id: input.user_id,
+        plan_id: input.plan_id,
         type: input.type,
+        resulting_status: input.resulting_status,
         occurred_at: input.occurred_at,
-        error,
+        access_until: input.access_until,
+        error:
+          error instanceof Error
+            ? { name: error.name, message: error.message }
+            : String(error),
       });
     }
   }
