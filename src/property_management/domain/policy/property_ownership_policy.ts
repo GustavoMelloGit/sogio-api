@@ -11,9 +11,13 @@ import type { Property } from "../entity/property";
  * to a property the owner already deleted.
  */
 export class PropertyOwnershipPolicy {
-  static ensureOwnership(property: Property | null, user: User): Property {
+  static ensureOwnership(
+    property: Property | null,
+    user: User,
+    resourceLabel = "Property"
+  ): Property {
     if (!property || property.user_id !== user.id || property.deleted_at) {
-      throw new ResourceNotFoundError("Property");
+      throw new ResourceNotFoundError(resourceLabel);
     }
     return property;
   }

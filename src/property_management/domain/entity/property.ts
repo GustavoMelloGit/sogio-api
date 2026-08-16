@@ -85,6 +85,16 @@ export class Property {
     this.#updated_at = new Date();
   }
 
+  /**
+   * Marks the property as deleted. Deliberately does not throw on repeated
+   * calls, unlike `Stay.cancel()` — `PropertyOwnershipPolicy` already turns a
+   * deleted property into 404 before this can run twice.
+   */
+  public softDelete(): void {
+    this.#deleted_at = new Date();
+    this.#updated_at = new Date();
+  }
+
   get name() {
     return this.#name;
   }
