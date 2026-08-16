@@ -42,16 +42,14 @@ const envSchema = z
       })
       .optional(),
     /**
-     * Public base URL of the sogio-front, with no trailing slash. It plays
-     * two roles: the destination of the 302 redirect a successful
-     * `/authorize` call issues (the front's consent page, identified only by
-     * the opaque pending-request id — never any OAuth parameter, per the
-     * plan's contract), and, from now on, the one allowed CORS origin for
-     * the protocol and consent routes in production (E8) — replacing the
-     * previous "any https:// origin" wildcard, which was effectively `*`
-     * with credentials enabled. Required outside development, mirroring
-     * `API_BASE_URL`, since there is no trustworthy default once this API is
-     * deployed publicly.
+     * Public base URL of the sogio-front, with no trailing slash. Destination
+     * of the 302 redirect a successful `/authorize` call issues (the front's
+     * consent page, identified only by the opaque pending-request id — never
+     * any OAuth parameter, per the plan's contract). Required outside
+     * development, mirroring `API_BASE_URL`, since there is no trustworthy
+     * default once this API is deployed publicly. Also the default CORS
+     * allowlist entry when `CORS_ALLOWED_ORIGINS` is unset — see
+     * `corsAllowedOrigins` below.
      */
     FRONT_BASE_URL: z.string().trim().optional(),
     /**
@@ -65,6 +63,12 @@ const envSchema = z
       .string()
       .optional()
       .transform(value => value === "true"),
+    /** Not `HOSTNAME`: Docker auto-exports that name as the container id. */
+    SERVER_HOSTNAME: z
+      .string()
+      .trim()
+      .optional()
+      .transform(value => value || "0.0.0.0"),
     /**
      * Lifetime of an opaque MCP access token, in seconds ("ordem de uma
      * hora" — Decisão Resolvida #8). Defaulted rather than required: the
