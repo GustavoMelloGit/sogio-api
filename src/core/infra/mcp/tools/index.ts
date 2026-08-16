@@ -2,6 +2,7 @@ export { makeBookStayTool } from "./book_stay";
 export { makeCancelStayTool } from "./cancel_stay";
 export { makeCreatePropertySettingTool } from "./create_property_setting";
 export { makeDeletePropertySettingTool } from "./delete_property_setting";
+export { makeDeletePropertyTool } from "./delete_property";
 export { makeGetPropertySettingTool } from "./get_property_setting";
 export { makeListPropertiesTool } from "./list_properties";
 export { makeListPropertySettingsTool } from "./list_property_settings";

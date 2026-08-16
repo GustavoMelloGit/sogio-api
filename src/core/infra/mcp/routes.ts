@@ -22,6 +22,7 @@ import {
   makeCancelStayTool,
   makeCreatePropertySettingTool,
   makeDeletePropertySettingTool,
+  makeDeletePropertyTool,
   makeGetPropertySettingTool,
   makeListPropertiesTool,
   makeListPropertySettingsTool,
@@ -123,6 +124,7 @@ export function makeMcpRequestHandler(
     makeCreatePropertySettingTool(dependencies.propertyManagementDi),
     makeUpdatePropertySettingTool(dependencies.propertyManagementDi),
     makeDeletePropertySettingTool(dependencies.propertyManagementDi),
+    makeDeletePropertyTool(dependencies.propertyManagementDi),
   ];
 
   return async function handleMcpRequest(request: Request): Promise<Response> {
