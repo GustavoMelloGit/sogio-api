@@ -43,6 +43,13 @@
       "when": 1786813275621,
       "tag": "0005_absent_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786847216331,
+      "tag": "0006_glorious_toxin",
+      "breakpoints": true
     }
   ]
 }
