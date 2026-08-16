@@ -76,6 +76,8 @@ O módulo `src/core/` provê infraestrutura compartilhada: tipo base de entidade
 
 **Tratamento de Erros** — use cases lançam erros tipados; o adaptador HTTP mapeia os nomes de erro para status codes: `ValidationError` → 422, `ConflictError` → 409, `ResourceNotFoundError` → 404, `UnauthorizedError` → 401, `IllegalStateError` → 500.
 
+**Exclusão de propriedade** (`DELETE /property/:property_id`) é soft delete — só marca `Property.deleted_at`, sem cascata sobre estadias, `LedgerEntry`, `PropertySetting` ou `ExternalBookingSource`, que continuam no banco e só deixam de ser servidos. `PropertyOwnershipPolicy` é o portão único de posse+`deleted_at` para todo use case property-scoped nos BCs `property_management`, `booking` e `finance` — nunca duplicar essa checagem inline. `PropertyPostgresRepository.propertyOfId` deliberadamente **não** filtra `deleted_at`: ele sustenta a decisão INSERT-vs-UPDATE de `save()`, e filtrar ali faria a própria escrita do soft delete falhar com 500. Uma propriedade com estadia futura ou em andamento não pode ser excluída (409) — a checagem atravessa para `booking` por uma porta (`PropertyOccupancy`) declarada em `property_management` e implementada em `booking`, preservando a direção de dependência `booking → property_management`.
+
 **Autenticação** — JWT Bearer tokens. `SessionManager` cria/valida tokens. O middleware de auth extrai o usuário e o repassa ao controller. Rotas declaram `authenticated: boolean` em `routes.ts`.
 
 ### Bounded Context `billing`
