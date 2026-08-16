@@ -10,7 +10,7 @@ import type { OpenApiOperation } from "../../../core/presentation/open_api/open_
 import type { RateLimitPolicy } from "../../../core/application/rate_limit/rate_limit_policy";
 import {
   errorResponse,
-  noContentResponse,
+  responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
 
 /** Mirrors DeletePropertySettingController's rate limit — same destructive,
@@ -27,6 +27,10 @@ const inputSchema = z
   })
   .strict();
 
+const outputSchema = z.object({
+  canceled_stays: z.number().int().nonnegative(),
+});
+
 type Input = z.infer<typeof inputSchema>;
 
 export class DeletePropertyController implements Controller {
@@ -38,11 +42,12 @@ export class DeletePropertyController implements Controller {
   openApiSpec: OpenApiOperation = {
     summary: "Delete property",
     description:
-      "Soft-deletes a property owned by the authenticated user. This is " +
+      "Soft-deletes a property owned by the authenticated user and cancels " +
+      "every one of its future stays in cascade, reversing their revenue " +
+      "in the ledger. Refused with 409 only when a guest is checked in " +
+      "right now — wait for that stay to end, then retry. This is " +
       "permanent from the product's point of view: there is no restore " +
-      "endpoint, trash, or `?include_deleted` flag. Refused with 409 when " +
-      "the property has an upcoming or in-progress stay — cancel those " +
-      "first.",
+      "endpoint, trash, or `?include_deleted` flag.",
     tags: ["Properties"],
     parameters: [
       {
@@ -53,10 +58,13 @@ export class DeletePropertyController implements Controller {
       },
     ],
     responses: {
-      "204": noContentResponse("Property deleted"),
+      "200": responseFromZod(
+        "Property deleted; future stays canceled",
+        outputSchema
+      ),
       "401": errorResponse("Unauthorized"),
       "404": errorResponse("Property not found"),
-      "409": errorResponse("Property has upcoming or in-progress stays"),
+      "409": errorResponse("Property has a guest checked in right now"),
     },
   };
 
@@ -65,7 +73,6 @@ export class DeletePropertyController implements Controller {
   async handle(request: ControllerRequest, user: User): Promise<unknown> {
     const input = request.body as Input;
 
-    await this.useCase.execute({ property_id: input.property_id }, user);
-    return undefined;
+    return this.useCase.execute({ property_id: input.property_id }, user);
   }
 }
