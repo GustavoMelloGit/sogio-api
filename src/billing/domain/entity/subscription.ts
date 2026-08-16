@@ -181,6 +181,13 @@ export class Subscription {
 
     const now = input.now ?? new Date();
 
+    // A past_due subscription already lost payment; its current_period_end
+    // still points at the original paid cycle, which would let the policy
+    // read cancellation as "still active" instead of reverting to Free.
+    if (this.#data.status === "past_due") {
+      this.#data.current_period_end = this.#data.grace_period_ends_at ?? now;
+    }
+
     this.#data.status = "canceled";
     this.#data.canceled_at = now;
     // Never leave current_period_end null — the policy can't revert to Free without it.

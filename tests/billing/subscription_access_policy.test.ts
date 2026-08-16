@@ -344,5 +344,28 @@ describe("SubscriptionAccessPolicy", () => {
         freePlan.max_properties
       );
     });
+
+    it("reverts to Free immediately when canceling a past_due subscription whose grace period already expired, instead of restoring paid access until the original current_period_end", () => {
+      const subscription = makeSubscription({
+        status: "past_due",
+        current_period_start: PAST,
+        current_period_end: FUTURE,
+        grace_period_ends_at: PAST,
+      });
+
+      subscription.cancel({ is_perpetual: proPlan.is_perpetual, now: NOW });
+
+      expect(subscription.current_period_end).toEqual(PAST);
+
+      const entitlement = SubscriptionAccessPolicy.resolve(
+        subscription,
+        proPlan,
+        freePlan,
+        NOW
+      );
+
+      expect(entitlement.has_platform_access).toBe(true);
+      expect(entitlement.max_properties).toBe(freePlan.max_properties);
+    });
   });
 });
