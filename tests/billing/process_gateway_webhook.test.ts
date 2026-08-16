@@ -665,3 +665,62 @@ describe("ProcessGatewayWebhookUseCase — payment_failed after cancellation (se
     expect(reloaded?.status).toBe("canceled");
   });
 });
+
+describe("ProcessGatewayWebhookUseCase — payment_failed reference mismatch (security review B-4)", () => {
+  it("does not mark a Free subscription past_due when payment_failed belongs to an abandoned checkout's gateway subscription", async () => {
+    await truncate(TABLES);
+    const { user } = await createUserFixture({
+      name: "Conta Falha Checkout Abandonado",
+      email: "webhook.payment-failed-abandoned@sogio.dev",
+      password: "password123",
+    });
+
+    // Checkout started (customer created and linked) but payment never
+    // completed — the local subscription stays Free, never linked to any
+    // gateway subscription.
+    const subscription = await subscriptionRepository.subscriptionOfUser(
+      user.id
+    );
+    if (!subscription) throw new Error("no subscription");
+    subscription.linkCustomer("cus_abandoned_checkout_failed");
+    await subscriptionRepository.save(subscription);
+
+    expect(subscription.status).toBe("active");
+    expect(subscription.external_reference).toBeNull();
+
+    // The abandoned checkout's invoice fails days later. The
+    // customer-reference fallback resolves this to the Free subscription
+    // above, which was never linked to this gateway subscription.
+    const event: GatewayBillingEvent = {
+      type: "payment_failed",
+      event_id: `evt_${crypto.randomUUID()}`,
+      occurred_at: new Date(),
+      external_reference: "sub_never_linked_payment_failed",
+      external_customer_reference: "cus_abandoned_checkout_failed",
+      reason: "card_declined",
+    };
+
+    await expect(
+      makeRealUseCase(new StubVerifier(event)).execute({
+        raw_payload: "{}",
+        signature: "sig",
+      })
+    ).resolves.toBeUndefined();
+
+    const reloaded = await subscriptionRepository.subscriptionOfUser(user.id);
+    // Must still be the untouched, perpetual Free subscription — marking it
+    // past_due would poison a free account's history with a payment it
+    // never made, eventually blocking a legitimate free account.
+    expect(reloaded?.status).toBe("active");
+    expect(reloaded?.external_reference).toBeNull();
+
+    const history = await subscriptionHistoryRepository.historyOfUser(user.id, {
+      page: 1,
+      limit: 20,
+    });
+    const paymentFailedEntries = history.data.filter(
+      row => row.entry.type === "payment_failed"
+    );
+    expect(paymentFailedEntries).toHaveLength(0);
+  });
+});

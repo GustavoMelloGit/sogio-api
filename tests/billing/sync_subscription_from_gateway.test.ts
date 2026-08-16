@@ -499,4 +499,45 @@ describe("SyncSubscriptionFromGatewayUseCase (DA-9)", () => {
     );
     expect(logger.calls.info.length).toBeGreaterThan(0);
   });
+
+  it("does not cancel a Free subscription when incomplete_expired resolves to it via the customer fallback (security review B-3)", async () => {
+    const { user } = await createUserFixture({
+      name: "Conta Checkout Incompleto",
+      email: "sync.incomplete-expired@sogio.dev",
+      password: "password123",
+    });
+
+    // Checkout started (customer created and linked) but the Stripe
+    // subscription never left `incomplete` — sync ignores that status, so
+    // the local row stays Free, never linked to any gateway subscription.
+    const subscription = await subscriptionRepository.subscriptionOfUser(
+      user.id
+    );
+    if (!subscription) throw new Error("no subscription");
+    subscription.linkCustomer("cus_incomplete_expired");
+    await subscriptionRepository.save(subscription);
+
+    expect(subscription.status).toBe("active");
+    expect(subscription.external_reference).toBeNull();
+
+    const logger = makeLogger();
+    const useCase = makeUseCase(logger);
+
+    // ~23h later Stripe reports the abandoned checkout's subscription as
+    // incomplete_expired. The customer-reference fallback resolves this to
+    // the Free subscription above, which must not be canceled.
+    await expect(
+      useCase.execute(
+        baseEvent({
+          external_reference: "sub_never_linked_incomplete",
+          external_customer_reference: "cus_incomplete_expired",
+          status: "incomplete_expired",
+        })
+      )
+    ).resolves.toBeUndefined();
+
+    const reloaded = await subscriptionRepository.subscriptionOfUser(user.id);
+    expect(reloaded?.status).toBe("active");
+    expect(reloaded?.external_reference).toBeNull();
+  });
 });

@@ -54,3 +54,37 @@ describe("CancelSubscriptionUseCase — idempotent (§2.4 rule 2, DA-10)", () =>
     expect(eventsForUser).toHaveLength(1);
   });
 });
+
+describe("CancelSubscriptionUseCase — perpetual plan guard (security review B-3)", () => {
+  it("is a silent no-op instead of throwing when the resolved subscription is on a perpetual plan", async () => {
+    const { user } = await createUserFixture({
+      name: "Conta Free Cancelamento Guardado",
+      email: "cancel.perpetual-guard@sogio.dev",
+      password: "password123",
+    });
+
+    const captured: SubscriptionCanceledEvent[] = [];
+    inMemoryEventDispatcher.register(SubscriptionCanceledEvent.NAME, {
+      async handle(event) {
+        captured.push(event as SubscriptionCanceledEvent);
+      },
+    } satisfies EventHandler<SubscriptionCanceledEvent>);
+
+    const useCase = new CancelSubscriptionUseCase(
+      subscriptionRepository,
+      planRepository,
+      inMemoryEventDispatcher
+    );
+
+    // User never subscribed to anything paid — stays on the perpetual Free
+    // plan. A webhook-driven cancel must not throw ConflictError here.
+    const result = await useCase.execute({ user_id: user.id });
+    expect(result.status).toBe("active");
+
+    const reloaded = await subscriptionRepository.subscriptionOfUser(user.id);
+    expect(reloaded?.status).toBe("active");
+
+    const eventsForUser = captured.filter(e => e.user_id === user.id);
+    expect(eventsForUser).toHaveLength(0);
+  });
+});
