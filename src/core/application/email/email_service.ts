@@ -1,7 +1,10 @@
 export type EmailMessage = {
   to: string;
   subject: string;
-  body: string;
+  /** Plain-text body — always required as the fallback for clients that don't render HTML. */
+  text: string;
+  /** Optional rich rendering; the composer decides whether a message needs one. */
+  html?: string;
 };
 
 /**

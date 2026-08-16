@@ -18,7 +18,8 @@ export class ResendEmailService implements EmailService {
       from: this.#from,
       to: message.to,
       subject: message.subject,
-      text: message.body,
+      text: message.text,
+      ...(message.html ? { html: message.html } : {}),
     });
 
     if (result.error) {
