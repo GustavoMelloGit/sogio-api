@@ -16,6 +16,7 @@ import { CancelSubscriptionUseCase } from "../../application/use_case/cancel_sub
 import { GetSubscriptionStatusUseCase } from "../../application/use_case/get_subscription_status";
 import { EnsureFreeSubscriptionUseCase } from "../../application/use_case/ensure_free_subscription";
 import { StartFreeSubscriptionOnUserCreated } from "../../application/handler/start_free_subscription_on_user_created";
+import { GetSubscriptionStatusController } from "../../presentation/controller/get_subscription_status.controller";
 
 /**
  * Registers `StartFreeSubscriptionOnUserCreated` on the shared in-memory
@@ -90,6 +91,13 @@ export class BillingDi {
     return new EnsureFreeSubscriptionUseCase(
       this.#subscriptionRepository,
       this.#planRepository
+    );
+  }
+
+  // Controllers
+  makeGetSubscriptionStatusController() {
+    return new GetSubscriptionStatusController(
+      this.makeGetSubscriptionStatusUseCase()
     );
   }
 }

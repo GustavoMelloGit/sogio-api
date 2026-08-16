@@ -271,6 +271,14 @@ const backofficeControllers: Route[] = [
   },
 ];
 
+const billingControllers: Route[] = [
+  {
+    authenticated: true,
+    allowWithoutPlatformAccess: true,
+    controller: billingDi.makeGetSubscriptionStatusController(),
+  },
+];
+
 const controllers = [
   ...tenantControllers,
   ...propertyControllers,
@@ -281,6 +289,7 @@ const controllers = [
   ...financeControllers,
   ...propertyManagementControllers,
   ...backofficeControllers,
+  ...billingControllers,
   healthController,
 ];
 
