@@ -20,6 +20,7 @@
     "db:push:test": "bun --env-file=.env.test x drizzle-kit push",
     "db:migration": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:seed": "bun run scripts/seed_plans.ts",
     "db:baseline-migrations": "bun run scripts/baseline_drizzle_migrations.ts"
   },
   "devDependencies": {
