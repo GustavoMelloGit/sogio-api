@@ -59,6 +59,12 @@ const envSchema = z
       .string()
       .optional()
       .transform(value => value === "true"),
+    /** Not `HOSTNAME`: Docker auto-exports that name as the container id. */
+    SERVER_HOSTNAME: z
+      .string()
+      .trim()
+      .optional()
+      .transform(value => value || "0.0.0.0"),
     /**
      * Lifetime of an opaque MCP access token, in seconds ("ordem de uma
      * hora" — Decisão Resolvida #8). Defaulted rather than required: the

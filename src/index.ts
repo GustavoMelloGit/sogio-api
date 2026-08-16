@@ -26,7 +26,7 @@ async function main() {
   const server = Bun.serve({
     port: env.PORT,
     routes: bunRoutes,
-    hostname: "0.0.0.0",
+    hostname: env.SERVER_HOSTNAME,
   });
 
   const isProduction = env.NODE_ENV === "production";
@@ -35,7 +35,11 @@ async function main() {
     isProduction
       ? `🚀 API running in production mode`
       : `🚀 Listening on ${baseUrl}`,
-    { port: server.port, environment: env.NODE_ENV }
+    {
+      port: server.port,
+      environment: env.NODE_ENV,
+      hostname: env.SERVER_HOSTNAME,
+    }
   );
   logger.info(`📖 API docs: ${baseUrl}/docs`);
   logger.info(`📄 OpenAPI JSON: ${baseUrl}/docs/spec`);

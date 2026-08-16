@@ -90,6 +90,7 @@ Definidas em `src/core/infra/config/environments.ts`:
 - `DATABASE_URL` — string de conexão PostgreSQL
 - `NODE_ENV` — `development | test | sandbox | production`
 - `JWT_SECRET` — chave de assinatura dos tokens
+- `SERVER_HOSTNAME` — endereço em que o `Bun.serve()` faz bind; default `0.0.0.0`. Em produção deve ser `127.0.0.1` (o processo fica atrás de um reverse proxy nginx). Não se chama `HOSTNAME` porque essa variável é auto-exportada pelo Docker (contém o container id) e o Bun dá precedência ao ambiente do processo sobre o `.env`
 
 ### Estilo de Código
 
