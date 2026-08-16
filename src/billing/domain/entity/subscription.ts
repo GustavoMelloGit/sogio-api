@@ -29,6 +29,8 @@ export const subscriptionSchema = baseEntitySchema
     grace_period_ends_at: z.date().nullable().optional(),
     external_reference: z.string().nullable().optional(),
     external_customer_reference: z.string().nullable().optional(),
+    /** Instant, in the gateway's clock, of the last gateway event applied — the DA-8 out-of-order guard. */
+    external_event_at: z.date().nullable().optional(),
   })
   .refine(data => data.status !== "trialing" || !!data.trial_ends_at, {
     message: "trial_ends_at is required while status is trialing",
@@ -49,6 +51,10 @@ type ActivateInput = {
   is_perpetual: boolean;
   billing_interval?: BillingInterval;
   now?: Date;
+  /** Supplied by the gateway (§2.3): when set, used literally and `BillingCyclePolicy` is never consulted. */
+  period_end?: Date;
+  external_reference?: string | null;
+  external_event_at?: Date;
 };
 
 type ChangePlanInput = {
@@ -57,6 +63,9 @@ type ChangePlanInput = {
   is_perpetual: boolean;
   billing_interval: BillingInterval;
   now?: Date;
+  period_end?: Date;
+  external_reference?: string | null;
+  external_event_at?: Date;
 };
 
 /**
@@ -93,6 +102,7 @@ export class Subscription {
       grace_period_ends_at: null,
       external_reference: null,
       external_customer_reference: null,
+      external_event_at: null,
       created_at: now,
       updated_at: now,
     });
@@ -135,12 +145,44 @@ export class Subscription {
     this.#touch();
   }
 
+  /**
+   * The gateway-driven counterpart of `startTrial` (§2.3, §2.5): the trial
+   * end is the gateway's, not computed locally. Same write-once guard —
+   * a subscription that already used a trial cannot start another.
+   */
+  startTrialUntil(
+    trial_ends_at: Date,
+    input?: { external_reference?: string | null; external_event_at?: Date }
+  ): void {
+    if (this.#data.trial_ends_at) {
+      throw new ConflictError("Subscription has already used its trial period");
+    }
+
+    this.#data.status = "trialing";
+    this.#data.trial_ends_at = trial_ends_at;
+    this.#data.current_period_start = null;
+    this.#data.current_period_end = null;
+
+    if (input?.external_reference !== undefined) {
+      this.#data.external_reference = input.external_reference;
+    }
+    if (input?.external_event_at !== undefined) {
+      this.#data.external_event_at = input.external_event_at;
+    }
+    this.#touch();
+  }
+
   activate(input: ActivateInput): void {
     const now = input.now ?? new Date();
 
     if (input.is_perpetual) {
       this.#data.current_period_start = null;
       this.#data.current_period_end = null;
+    } else if (input.period_end !== undefined) {
+      // The gateway's period, taken literally (§2.3) — BillingCyclePolicy is
+      // only consulted on the internal path, never here.
+      this.#data.current_period_start = now;
+      this.#data.current_period_end = input.period_end;
     } else {
       if (!input.billing_interval) {
         throw new ValidationError(
@@ -154,29 +196,63 @@ export class Subscription {
       );
     }
 
+    if (input.external_reference !== undefined) {
+      this.#data.external_reference = input.external_reference;
+    }
+    if (input.external_event_at !== undefined) {
+      this.#data.external_event_at = input.external_event_at;
+    }
+
     this.#data.status = "active";
     this.#data.grace_period_ends_at = null;
     this.#touch();
   }
 
-  markPastDue(grace_period_ends_at: Date): void {
-    if (this.#data.status !== "active") {
+  /**
+   * Accepts `active`, `trialing` and `past_due`; only `canceled` is
+   * rejected (§2.4 rule 1) — a webhook reentry can find the subscription in
+   * any of the first three. Reentry while already `past_due` keeps the
+   * original `grace_period_ends_at`: the tolerance is anchored to the first
+   * failure, not extended by every gateway retry.
+   */
+  markPastDue(
+    grace_period_ends_at: Date,
+    input?: { external_event_at?: Date }
+  ): void {
+    if (this.#data.status === "canceled") {
       throw new ConflictError(
-        "Only an active subscription can be marked past due"
+        "A canceled subscription cannot be marked past due"
       );
     }
 
-    this.#data.status = "past_due";
-    this.#data.grace_period_ends_at = grace_period_ends_at;
+    if (this.#data.status !== "past_due") {
+      this.#data.status = "past_due";
+      this.#data.grace_period_ends_at = grace_period_ends_at;
+    }
+
+    if (input?.external_event_at !== undefined) {
+      this.#data.external_event_at = input.external_event_at;
+    }
     this.#touch();
   }
 
-  cancel(input: { is_perpetual: boolean; now?: Date }): void {
+  /**
+   * Idempotent (§2.4 rule 2): already canceled is a silent no-op, not a
+   * `ConflictError` — a webhook reentry of `customer.subscription.deleted`
+   * must resolve to 200 without publishing a second cancellation. Callers
+   * that need to know whether this call actually changed anything should
+   * read `status` before calling.
+   */
+  cancel(input: {
+    is_perpetual: boolean;
+    now?: Date;
+    external_event_at?: Date;
+  }): void {
     if (input.is_perpetual) {
       throw new ConflictError("Cannot cancel a perpetual plan subscription");
     }
     if (this.#data.status === "canceled") {
-      throw new ConflictError("Subscription is already canceled");
+      return;
     }
 
     const now = input.now ?? new Date();
@@ -194,12 +270,42 @@ export class Subscription {
     if (!this.#data.current_period_end) {
       this.#data.current_period_end = this.#data.trial_ends_at ?? now;
     }
+    if (input.external_event_at !== undefined) {
+      this.#data.external_event_at = input.external_event_at;
+    }
+    this.#touch();
+  }
+
+  /**
+   * Write-once (§2.4 rule 3): pointing the subscription at a different
+   * gateway customer is silently accepted only the first time. Once set,
+   * changing it to a *different* reference is a `ConflictError` — routing
+   * the invoice to another customer must never happen quietly. Setting the
+   * same reference again is a no-op, not an error.
+   */
+  linkCustomer(reference: string): void {
+    if (
+      this.#data.external_customer_reference &&
+      this.#data.external_customer_reference !== reference
+    ) {
+      throw new ConflictError(
+        "Subscription is already linked to a different gateway customer"
+      );
+    }
+    if (this.#data.external_customer_reference === reference) {
+      return;
+    }
+
+    this.#data.external_customer_reference = reference;
     this.#touch();
   }
 
   /**
    * Assigns a new plan in place (DA-5) and re-derives status from its terms:
    * a trial if the subscription never had one, otherwise straight to active.
+   * When `period_end` is supplied (gateway-driven, DA-9), it always goes
+   * straight to `active` with that literal period — trial eligibility is
+   * decided by the caller via `startTrialUntil`, not here.
    */
   changePlan(input: ChangePlanInput): void {
     const now = input.now ?? new Date();
@@ -207,6 +313,18 @@ export class Subscription {
     this.#data.plan_id = input.plan_id;
     this.#data.canceled_at = null;
     this.#data.grace_period_ends_at = null;
+
+    if (input.period_end !== undefined) {
+      this.activate({
+        is_perpetual: input.is_perpetual,
+        billing_interval: input.billing_interval,
+        now,
+        period_end: input.period_end,
+        external_reference: input.external_reference,
+        external_event_at: input.external_event_at,
+      });
+      return;
+    }
 
     const eligibleForTrial = input.trial_days > 0 && !this.#data.trial_ends_at;
 
@@ -269,6 +387,10 @@ export class Subscription {
 
   get external_customer_reference() {
     return this.#data.external_customer_reference ?? null;
+  }
+
+  get external_event_at() {
+    return this.#data.external_event_at ?? null;
   }
 
   /** True once the subscription entered a real billing cycle — not a trial, not a perpetual plan. */
