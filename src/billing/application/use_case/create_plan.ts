@@ -1,5 +1,7 @@
 import type { UseCase } from "../../../core/application/use_case/use_case";
+import type { User } from "../../../auth/domain/entity/user";
 import { ConflictError } from "../../../core/application/error/conflict_error";
+import { ForbiddenError } from "../../../core/application/error/forbidden_error";
 import type { PlanRepository } from "../../domain/repository/plan_repository";
 import { Plan, type BillingInterval } from "../../domain/entity/plan";
 
@@ -29,7 +31,11 @@ type Output = {
 export class CreatePlanUseCase implements UseCase<Input, Output> {
   constructor(private readonly planRepository: PlanRepository) {}
 
-  async execute(input: Input): Promise<Output> {
+  async execute(input: Input, user: User): Promise<Output> {
+    if (user.role !== "admin") {
+      throw new ForbiddenError();
+    }
+
     const existing = await this.planRepository.planOfCode(input.code);
     if (existing) {
       throw new ConflictError(`Plan with code "${input.code}" already exists`);
