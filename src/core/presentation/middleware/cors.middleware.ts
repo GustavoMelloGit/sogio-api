@@ -39,7 +39,10 @@ export class CorsMiddleware {
     const origin = request.headers.get("Origin");
 
     if (!this.isOriginAllowed(origin)) {
-      return new Response("CORS: Origin not allowed", { status: 403 });
+      return new Response("CORS: Origin not allowed", {
+        status: 403,
+        headers: { Vary: "Origin" },
+      });
     }
 
     return new Response(null, {
@@ -96,6 +99,9 @@ export class CorsMiddleware {
     headers.set("Access-Control-Allow-Headers", this.allowedHeaders.join(", "));
     headers.set("Access-Control-Allow-Credentials", "true");
     headers.set("Access-Control-Max-Age", "86400"); // 24 hours
+    // Multiple origins are allowed now, so a shared cache in front of the
+    // API must not serve one origin's response to another.
+    headers.set("Vary", "Origin");
 
     return headers;
   }

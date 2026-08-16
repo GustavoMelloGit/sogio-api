@@ -1,5 +1,17 @@
 import { z } from "zod";
 
+// Exactly what a browser sends as `Origin`: no trailing slash, no path/query,
+// no wildcard — used to validate both FRONT_BASE_URL and CORS_ALLOWED_ORIGINS
+// so neither can reopen the wildcard E8 closed.
+function isExactOrigin(value: string): boolean {
+  if (value.endsWith("/") || value.includes("*")) return false;
+  try {
+    return new URL(value).origin === value;
+  } catch {
+    return false;
+  }
+}
+
 const envSchema = z
   .object({
     PORT: z.coerce.number(),
@@ -41,13 +53,7 @@ const envSchema = z
      * `API_BASE_URL`, since there is no trustworthy default once this API is
      * deployed publicly.
      */
-    FRONT_BASE_URL: z
-      .string()
-      .trim()
-      .refine(value => !value.endsWith("/"), {
-        message: "FRONT_BASE_URL must not have a trailing slash",
-      })
-      .optional(),
+    FRONT_BASE_URL: z.string().trim().optional(),
     /**
      * Whether the process sits behind a trusted reverse proxy. Absent (or any
      * value other than the literal string "true") means untrusted: caller
@@ -141,17 +147,14 @@ const envSchema = z
     message: "FRONT_BASE_URL is required outside development",
     path: ["FRONT_BASE_URL"],
   })
+  .refine(data => !data.FRONT_BASE_URL || isExactOrigin(data.FRONT_BASE_URL), {
+    message: "FRONT_BASE_URL must be an exact origin",
+    path: ["FRONT_BASE_URL"],
+  })
   .refine(
     data =>
       !data.CORS_ALLOWED_ORIGINS ||
-      data.CORS_ALLOWED_ORIGINS.every(origin => {
-        if (origin.endsWith("/") || origin.includes("*")) return false;
-        try {
-          return new URL(origin).origin === origin;
-        } catch {
-          return false;
-        }
-      }),
+      data.CORS_ALLOWED_ORIGINS.every(isExactOrigin),
     {
       // `*` is rejected deliberately: this is an explicit allowlist, and
       // accepting a wildcard from config would reopen the wildcard E8 closed.
