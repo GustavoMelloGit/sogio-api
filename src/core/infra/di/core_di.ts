@@ -1,7 +1,10 @@
 import type { Logger } from "../../application/logger/logger";
 import type { RateLimiter } from "../../application/rate_limit/rate_limiter";
+import type { EmailService } from "../../application/email/email_service";
 import { ConsoleLogger } from "../logger/console_logger";
 import { InMemoryRateLimiter } from "../rate_limit/in_memory_rate_limiter";
+import { ResendEmailService } from "../email/resend_email_service";
+import { env, resendEmailFrom } from "../config/environments";
 
 /**
  * Module-level singletons, not per-`CoreDi`-instance fields (correção
@@ -18,6 +21,12 @@ import { InMemoryRateLimiter } from "../rate_limit/in_memory_rate_limiter";
  */
 const sharedLogger: Logger = new ConsoleLogger();
 const sharedRateLimiter: RateLimiter = new InMemoryRateLimiter();
+// `env.RESEND_API_KEY` is only required outside development (see environments.ts);
+// in development, sending is expected to fail loudly if ever exercised.
+const sharedEmailService: EmailService = new ResendEmailService(
+  env.RESEND_API_KEY ?? "",
+  resendEmailFrom
+);
 
 export class CoreDi {
   makeLogger(): Logger {
@@ -33,5 +42,9 @@ export class CoreDi {
    */
   makeRateLimiter(): RateLimiter {
     return sharedRateLimiter;
+  }
+
+  makeEmailService(): EmailService {
+    return sharedEmailService;
   }
 }

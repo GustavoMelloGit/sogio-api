@@ -70,6 +70,13 @@ export class AuthPostgresRepository implements AuthRepository {
     return user ? User.reconstitute(rowToUserData(user)) : null;
   }
 
+  async updatePassword(userId: string, passwordHash: string): Promise<void> {
+    await db
+      .update(usersTable)
+      .set({ password: passwordHash, updated_at: new Date() })
+      .where(eq(usersTable.id, userId));
+  }
+
   async purgeUserData(userId: string): Promise<void> {
     await db.transaction(async tx => {
       const properties = await tx.query.propertiesTable.findMany({

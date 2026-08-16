@@ -158,6 +158,18 @@ const authControllers: Route[] = [
   },
   {
     authenticated: true,
+    controller: authDi.makeChangePasswordController(),
+  },
+  {
+    authenticated: false,
+    controller: authDi.makeRequestPasswordResetController(),
+  },
+  {
+    authenticated: false,
+    controller: authDi.makeResetPasswordController(),
+  },
+  {
+    authenticated: true,
     controller: authDi.makeListConnectedAppsController(),
   },
   {

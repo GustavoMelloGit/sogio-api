@@ -6,6 +6,9 @@ import {
 import { RegisterUserUseCase } from "../../application/use_case/register_user";
 import { SignInUseCase } from "../../application/use_case/sign_in";
 import { PurgeUserDataUseCase } from "../../application/use_case/purge_user_data";
+import { ChangePasswordUseCase } from "../../application/use_case/change_password";
+import { RequestPasswordResetUseCase } from "../../application/use_case/request_password_reset";
+import { ResetPasswordUseCase } from "../../application/use_case/reset_password";
 import { RegisterAppUseCase } from "../../application/use_case/register_app";
 import { InitiateAuthorizationUseCase } from "../../application/use_case/initiate_authorization";
 import { GetPendingAuthorizationRequestUseCase } from "../../application/use_case/get_pending_authorization_request";
@@ -14,6 +17,9 @@ import { GetUserController } from "../../presentation/controller/auth/get_user.c
 import { RegisterUserController } from "../../presentation/controller/auth/register_user.controller";
 import { SignInController } from "../../presentation/controller/auth/sign_in.controller";
 import { PurgeUserDataController } from "../../presentation/controller/auth/purge_user_data.controller";
+import { ChangePasswordController } from "../../presentation/controller/auth/change_password.controller";
+import { RequestPasswordResetController } from "../../presentation/controller/auth/request_password_reset.controller";
+import { ResetPasswordController } from "../../presentation/controller/auth/reset_password.controller";
 import { BunHasher } from "../service/bun_hasher";
 import type { AuthRepository } from "../../domain/repository/auth_repository";
 import { AuthPostgresRepository } from "../database/postgres_repository/auth_postgres_repository";
@@ -29,6 +35,8 @@ import type { IssuedCredentialRepository } from "../../domain/repository/delegat
 import { IssuedCredentialPostgresRepository } from "../database/postgres_repository/delegated_access/issued_credential_postgres_repository";
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 import { CryptoDelegatedSecretService } from "../service/crypto_delegated_secret_service";
+import type { PasswordResetRequestRepository } from "../../domain/repository/password_reset_request_repository";
+import { PasswordResetRequestPostgresRepository } from "../database/postgres_repository/password_reset_request_postgres_repository";
 import type { RefreshRotationGraceCache } from "../../domain/service/refresh_rotation_grace_cache";
 import { InMemoryRefreshRotationGraceCache } from "../service/in_memory_refresh_rotation_grace_cache";
 import { ExchangeAuthorizationCodeUseCase } from "../../application/use_case/exchange_authorization_code";
@@ -53,6 +61,7 @@ import { DisconnectAppController } from "../../presentation/controller/delegated
 import { AuthMiddleware } from "../../presentation/middleware/auth.middleware";
 import type { Logger } from "../../../core/application/logger/logger";
 import type { RateLimiter } from "../../../core/application/rate_limit/rate_limiter";
+import type { EmailService } from "../../../core/application/email/email_service";
 import { CoreDi } from "../../../core/infra/di/core_di";
 import {
   accessTokenTtlMs,
@@ -60,6 +69,8 @@ import {
   refreshRotationGraceWindowMs,
   consentAbsoluteLifetimeMs,
   consentInactivityTtlMs,
+  passwordResetRequestTtlMs,
+  frontBaseUrl,
 } from "../../../core/infra/config/environments";
 
 export class AuthDi {
@@ -75,6 +86,8 @@ export class AuthDi {
   #refreshRotationGraceCache: RefreshRotationGraceCache;
   #logger: Logger;
   #rateLimiter: RateLimiter;
+  #emailService: EmailService;
+  #passwordResetRequestRepository: PasswordResetRequestRepository;
 
   constructor() {
     this.#authRepository = new AuthPostgresRepository();
@@ -89,9 +102,12 @@ export class AuthDi {
     this.#issuedCredentialRepository = new IssuedCredentialPostgresRepository();
     this.#delegatedSecretService = new CryptoDelegatedSecretService();
     this.#refreshRotationGraceCache = new InMemoryRefreshRotationGraceCache();
+    this.#passwordResetRequestRepository =
+      new PasswordResetRequestPostgresRepository();
     const coreDi = new CoreDi();
     this.#logger = coreDi.makeLogger();
     this.#rateLimiter = coreDi.makeRateLimiter();
+    this.#emailService = coreDi.makeEmailService();
   }
 
   // Use Cases
@@ -128,6 +144,46 @@ export class AuthDi {
 
   makePurgeUserDataController() {
     return new PurgeUserDataController(this.makePurgeUserDataUseCase());
+  }
+
+  // Password management (change + email-based recovery)
+  makeChangePasswordUseCase() {
+    return new ChangePasswordUseCase(this.#authRepository, this.#hasher);
+  }
+
+  makeChangePasswordController() {
+    return new ChangePasswordController(this.makeChangePasswordUseCase());
+  }
+
+  makeRequestPasswordResetUseCase() {
+    return new RequestPasswordResetUseCase(
+      this.#authRepository,
+      this.#passwordResetRequestRepository,
+      this.#delegatedSecretService,
+      this.#emailService,
+      this.#logger,
+      passwordResetRequestTtlMs,
+      frontBaseUrl
+    );
+  }
+
+  makeRequestPasswordResetController() {
+    return new RequestPasswordResetController(
+      this.makeRequestPasswordResetUseCase()
+    );
+  }
+
+  makeResetPasswordUseCase() {
+    return new ResetPasswordUseCase(
+      this.#authRepository,
+      this.#passwordResetRequestRepository,
+      this.#delegatedSecretService,
+      this.#hasher
+    );
+  }
+
+  makeResetPasswordController() {
+    return new ResetPasswordController(this.makeResetPasswordUseCase());
   }
 
   // Discovery (RFC 9728 / RFC 8414)

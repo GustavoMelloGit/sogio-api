@@ -6,10 +6,13 @@ import { z } from "zod";
 
 export type UserRole = "user" | "admin";
 
+/** Single source of truth for "what a valid password looks like" (R13) — reused by registration, change, and reset. */
+export const passwordSchema = z.string().min(8).max(128);
+
 export const userSchema = baseEntitySchema.extend({
   name: z.string().min(1).max(100),
   email: z.string().email().max(255),
-  password: z.string().min(8).max(128),
+  password: passwordSchema,
   role: z.enum(["user", "admin"]).optional().default("user"),
 });
 
@@ -41,6 +44,12 @@ export class User {
 
   public static reconstitute(data: UserData): User {
     return new User(data);
+  }
+
+  /** Troca de senha (R10/R12) — recebe o hash já calculado; hashing é responsabilidade de `Hasher`, em `application`. */
+  public changePassword(newPasswordHash: string): void {
+    this.#data.password = newPasswordHash;
+    this.#data.updated_at = new Date();
   }
 
   get id() {
