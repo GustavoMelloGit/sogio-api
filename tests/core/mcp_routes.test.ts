@@ -113,7 +113,7 @@ describe("POST /mcp", () => {
   it("rejects a request whose access token was issued for a different resource", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao.wrong-audience@stayhub.dev",
+      email: "joao.wrong-audience@sogio.dev",
       password: "password123",
     });
     const { accessToken } = await createMcpAccessTokenFixture({
@@ -143,7 +143,7 @@ describe("POST /mcp", () => {
   it("lists the 10 registered tools", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao.tools-list@stayhub.dev",
+      email: "joao.tools-list@sogio.dev",
       password: "password123",
     });
     const { accessToken: token } = await createMcpAccessTokenFixture({
@@ -183,12 +183,12 @@ describe("POST /mcp", () => {
   it("resolves the caller identity once at the transport gate and returns only their data", async () => {
     const { user: owner } = await createUserFixture({
       name: "João Silva",
-      email: "joao.mcp@stayhub.dev",
+      email: "joao.mcp@sogio.dev",
       password: "password123",
     });
     const { user: otherUser } = await createUserFixture({
       name: "Maria Souza",
-      email: "maria.mcp@stayhub.dev",
+      email: "maria.mcp@sogio.dev",
       password: "password123",
     });
     const ownedProperty = await createPropertyFixture({

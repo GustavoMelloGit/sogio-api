@@ -11,7 +11,7 @@ describe("POST /auth/sign-in", () => {
   it("200 — returns token and user on valid credentials", async () => {
     const { user, plainPassword } = await createUserFixture({
       name: "Ada Lovelace",
-      email: "ada@stayhub.dev",
+      email: "ada@sogio.dev",
       password: "correct-horse-battery",
     });
 
@@ -40,7 +40,7 @@ describe("POST /auth/sign-in", () => {
   it("401 — rejects wrong password", async () => {
     const { user } = await createUserFixture({
       name: "Ada Lovelace",
-      email: "ada@stayhub.dev",
+      email: "ada@sogio.dev",
       password: "correct-horse-battery",
     });
 
@@ -57,14 +57,14 @@ describe("POST /auth/sign-in", () => {
   it("401 — rejects unknown email with same message as wrong password", async () => {
     await createUserFixture({
       name: "Ada Lovelace",
-      email: "ada@stayhub.dev",
+      email: "ada@sogio.dev",
       password: "correct-horse-battery",
     });
 
     const resWrongPassword = await api("/auth/sign-in", {
       method: "POST",
       body: JSON.stringify({
-        email: "ada@stayhub.dev",
+        email: "ada@sogio.dev",
         password: "wrong-password",
       }),
     });
@@ -76,7 +76,7 @@ describe("POST /auth/sign-in", () => {
     const resUnknownEmail = await api("/auth/sign-in", {
       method: "POST",
       body: JSON.stringify({
-        email: "ghost@stayhub.dev",
+        email: "ghost@sogio.dev",
         password: "any-password",
       }),
     });

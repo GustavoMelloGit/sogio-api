@@ -23,7 +23,7 @@ describe("POST /finance/:property_id/expense", () => {
   it("204 — records expense for a property owned by the user", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -41,7 +41,7 @@ describe("POST /finance/:property_id/expense", () => {
   it("401 — rejects request without auth token", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -57,7 +57,7 @@ describe("POST /finance/:property_id/expense", () => {
   it("404 — rejects non-existent property_id", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const token = await createAuthToken(user.id);
@@ -75,12 +75,12 @@ describe("POST /finance/:property_id/expense", () => {
   it("404 — rejects property belonging to another user", async () => {
     const { user: user1 } = await createUserFixture({
       name: "Usuário Um",
-      email: "user1@stayhub.dev",
+      email: "user1@sogio.dev",
       password: "password123",
     });
     const { user: user2 } = await createUserFixture({
       name: "Usuário Dois",
-      email: "user2@stayhub.dev",
+      email: "user2@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user1.id });
@@ -98,7 +98,7 @@ describe("POST /finance/:property_id/expense", () => {
   it("422 — rejects empty body", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -116,7 +116,7 @@ describe("POST /finance/:property_id/expense", () => {
   it("422 — rejects category outside the closed vocabulary", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -134,7 +134,7 @@ describe("POST /finance/:property_id/expense", () => {
   it("200 — reads a historical movement with a category outside the closed vocabulary", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });

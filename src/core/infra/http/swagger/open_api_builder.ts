@@ -46,7 +46,7 @@ export class OpenApiBuilder {
     return {
       openapi: "3.0.0",
       info: {
-        title: "StayHub API",
+        title: "Sogio API",
         version: "1.0.0",
         description: "Property rental management API",
       },

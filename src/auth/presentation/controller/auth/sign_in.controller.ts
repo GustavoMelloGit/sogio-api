@@ -44,7 +44,7 @@ export class SignInController implements Controller {
     tags: ["Auth"],
     requestBody: bodyFromZod(inputSchema, {
       example: {
-        email: "gustavo@stayhub.com",
+        email: "gustavo@sogio.com",
         password: "SenhaForte123",
       },
     }),

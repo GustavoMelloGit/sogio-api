@@ -22,7 +22,7 @@ type AppSettingDto = {
 async function createAuthTokenForNewUser(): Promise<string> {
   const { user } = await createUserFixture({
     name: "Settings User",
-    email: `settings-user-${crypto.randomUUID()}@stayhub.dev`,
+    email: `settings-user-${crypto.randomUUID()}@sogio.dev`,
     password: "password123",
   });
   return createAuthToken(user.id, "user");
@@ -31,7 +31,7 @@ async function createAuthTokenForNewUser(): Promise<string> {
 async function createAuthTokenForAdmin(): Promise<string> {
   const { user } = await createAdminFixture({
     name: "Settings Admin",
-    email: `settings-admin-${crypto.randomUUID()}@stayhub.dev`,
+    email: `settings-admin-${crypto.randomUUID()}@sogio.dev`,
     password: "password123",
   });
   return createAuthToken(user.id, "admin");
@@ -58,7 +58,7 @@ describe("POST /settings", () => {
 
     const res = await createSetting(token, {
       key: "app.name",
-      value: "StayHub",
+      value: "Sogio",
       type: "string",
     });
     const body = (await res.json()) as AppSettingDto;
@@ -66,7 +66,7 @@ describe("POST /settings", () => {
     expect(res.status).toBe(200);
     expect(typeof body.id).toBe("string");
     expect(body.key).toBe("app.name");
-    expect(body.value).toBe("StayHub");
+    expect(body.value).toBe("Sogio");
     expect(body.type).toBe("string");
     expect(body.description).toBeNull();
     expect(typeof body.created_at).toBe("string");
@@ -127,7 +127,7 @@ describe("POST /settings", () => {
 
     const res = await createSetting(token, {
       key: "app.name",
-      value: "StayHub",
+      value: "Sogio",
       type: "string",
     });
 
@@ -137,14 +137,14 @@ describe("POST /settings", () => {
   it("403 — token with forged admin role is rejected when user is 'user' in db", async () => {
     const { user } = await createUserFixture({
       name: "Forged Role User",
-      email: `forged-role-${crypto.randomUUID()}@stayhub.dev`,
+      email: `forged-role-${crypto.randomUUID()}@sogio.dev`,
       password: "password123",
     });
     const forgedToken = await createAuthToken(user.id, "admin");
 
     const res = await createSetting(forgedToken, {
       key: "app.name",
-      value: "StayHub",
+      value: "Sogio",
       type: "string",
     });
 
@@ -156,7 +156,7 @@ describe("POST /settings", () => {
 
     const firstRes = await createSetting(token, {
       key: "app.name",
-      value: "StayHub",
+      value: "Sogio",
       type: "string",
     });
     expect(firstRes.status).toBe(200);
@@ -175,7 +175,7 @@ describe("POST /settings", () => {
       method: "POST",
       body: JSON.stringify({
         key: "app.name",
-        value: "StayHub",
+        value: "Sogio",
         type: "string",
       }),
     });
@@ -200,7 +200,7 @@ describe("POST /settings", () => {
 
     const res = await createSetting(token, {
       key: "app.name",
-      value: "StayHub",
+      value: "Sogio",
       type: "invalid_type",
     });
 
@@ -224,7 +224,7 @@ describe("POST /settings", () => {
 
     const res = await createSetting(token, {
       key: "app.name",
-      value: "StayHub",
+      value: "Sogio",
       type: "string",
       unknown_field: true,
     });
@@ -257,7 +257,7 @@ describe("GET /settings/:id", () => {
 
     const createRes = await createSetting(adminToken, {
       key: "app.name",
-      value: "StayHub",
+      value: "Sogio",
       type: "string",
     });
     const created = (await createRes.json()) as AppSettingDto;
@@ -271,7 +271,7 @@ describe("GET /settings/:id", () => {
     expect(res.status).toBe(200);
     expect(body.id).toBe(created.id);
     expect(body.key).toBe("app.name");
-    expect(body.value).toBe("StayHub");
+    expect(body.value).toBe("Sogio");
     expect(body.type).toBe("string");
   });
 
@@ -347,7 +347,7 @@ describe("GET /settings", () => {
 
     await createSetting(adminToken, {
       key: "app.name",
-      value: "StayHub",
+      value: "Sogio",
       type: "string",
     });
     await createSetting(adminToken, {
@@ -445,7 +445,7 @@ describe("PUT /settings/:id", () => {
 
     const createRes = await createSetting(token, {
       key: "app.name",
-      value: "StayHub",
+      value: "Sogio",
       type: "string",
     });
     const created = (await createRes.json()) as AppSettingDto;
@@ -454,7 +454,7 @@ describe("PUT /settings/:id", () => {
     const res = await api(`/settings/${created.id}`, {
       method: "PUT",
       headers: { Authorization: "Bearer " + token },
-      body: JSON.stringify({ key: "new.key", value: "StayHub" }),
+      body: JSON.stringify({ key: "new.key", value: "Sogio" }),
     });
 
     expect(res.status).toBe(422);
@@ -492,7 +492,7 @@ describe("DELETE /settings/:id", () => {
 
     const createRes = await createSetting(token, {
       key: "app.name",
-      value: "StayHub",
+      value: "Sogio",
       type: "string",
     });
     const created = (await createRes.json()) as AppSettingDto;
@@ -512,7 +512,7 @@ describe("DELETE /settings/:id", () => {
 
     const createRes = await createSetting(adminToken, {
       key: "app.name",
-      value: "StayHub",
+      value: "Sogio",
       type: "string",
     });
     const created = (await createRes.json()) as AppSettingDto;
@@ -551,7 +551,7 @@ describe("DELETE /settings/:id", () => {
 
     const createRes = await createSetting(adminToken, {
       key: "app.name",
-      value: "StayHub",
+      value: "Sogio",
       type: "string",
     });
     const created = (await createRes.json()) as AppSettingDto;

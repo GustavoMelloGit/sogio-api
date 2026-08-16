@@ -51,7 +51,7 @@ describe("AppRegistrationPostgresRepository", () => {
   it("does not purge a registration with a consent, even if old", async () => {
     const { user } = await createUserFixture({
       name: "Ada Lovelace",
-      email: "ada@stayhub.dev",
+      email: "ada@sogio.dev",
       password: "correct-horse-battery",
     });
     const old = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);

@@ -17,7 +17,7 @@ describe("ConsentPostgresRepository", () => {
   it("creates a consent and finds it by id", async () => {
     const { user } = await createUserFixture({
       name: "Ada Lovelace",
-      email: "ada@stayhub.dev",
+      email: "ada@sogio.dev",
       password: "correct-horse-battery",
     });
     const app = await createAppRegistrationFixture();
@@ -38,12 +38,12 @@ describe("ConsentPostgresRepository", () => {
   it("finds a consent by (user, app) and returns null for other combinations", async () => {
     const { user } = await createUserFixture({
       name: "Ada Lovelace",
-      email: "ada@stayhub.dev",
+      email: "ada@sogio.dev",
       password: "correct-horse-battery",
     });
     const { user: otherUser } = await createUserFixture({
       name: "Grace Hopper",
-      email: "grace@stayhub.dev",
+      email: "grace@sogio.dev",
       password: "correct-horse-battery",
     });
     const app = await createAppRegistrationFixture();
@@ -64,7 +64,7 @@ describe("ConsentPostgresRepository", () => {
   it("revokes a consent, setting revoked_at", async () => {
     const { user } = await createUserFixture({
       name: "Ada Lovelace",
-      email: "ada@stayhub.dev",
+      email: "ada@sogio.dev",
       password: "correct-horse-battery",
     });
     const app = await createAppRegistrationFixture();

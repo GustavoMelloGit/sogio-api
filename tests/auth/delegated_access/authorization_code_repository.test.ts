@@ -24,7 +24,7 @@ describe("AuthorizationCodePostgresRepository", () => {
   async function setup() {
     const { user } = await createUserFixture({
       name: "Ada Lovelace",
-      email: "ada@stayhub.dev",
+      email: "ada@sogio.dev",
       password: "correct-horse-battery",
     });
     const app = await createAppRegistrationFixture();

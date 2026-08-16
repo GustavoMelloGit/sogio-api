@@ -25,7 +25,7 @@ const outputSchema = z.array(
 
 /**
  * `GET /auth/connected-apps` — tela de "aplicativos conectados" (task 14,
- * contrato com o stayhub-front). Autenticado pela sessão normal do app
+ * contrato com o sogio-front). Autenticado pela sessão normal do app
  * (`authenticated: true` na rota, JWT Bearer), nunca pela credencial OAuth
  * (Decisão Arquitetural 12) — um aplicativo conectado não pode se
  * auto-gerenciar nem enxergar os demais, o que fecharia o ciclo de

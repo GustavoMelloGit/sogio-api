@@ -1,6 +1,6 @@
-# StayHub API
+# Sogio API
 
-This is the backend API for StayHub, a platform for managing property rentals. This project is currently under development.
+This is the backend API for Sogio, a platform for managing property rentals. This project is currently under development.
 
 ## Getting Started
 
@@ -15,11 +15,11 @@ These instructions will get you a copy of the project up and running on your loc
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/GustavoMelloGit/stayhub-api
+   git clone https://github.com/GustavoMelloGit/sogio-api
    ```
 2. Navigate to the project directory:
    ```bash
-   cd stayhub-api
+   cd sogio-api
    ```
 
 ### Running the application

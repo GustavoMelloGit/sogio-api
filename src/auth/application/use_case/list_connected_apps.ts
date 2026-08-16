@@ -21,7 +21,7 @@ export type ConnectedApp = {
 };
 
 /**
- * "Aplicativos conectados" (task 14, contrato com o stayhub-front #1 e #3).
+ * "Aplicativos conectados" (task 14, contrato com o sogio-front #1 e #3).
  *
  * **Escopo por usuário.** `user.id` vem exclusivamente do middleware de
  * autenticação da sessão do app — nunca de um parâmetro que o cliente

@@ -39,7 +39,7 @@ const ACCESS_DENIED_DESCRIPTION = "The user denied the authorization request.";
  * Approve or deny a Pending Authorization Request (task 10, contract step
  * 6) — and, unchanged, the endpoint the reconnection shortcut calls
  * silently: same path, same atomic claim, no separate endpoint (see the
- * plan's "Contrato com o stayhub-front").
+ * plan's "Contrato com o sogio-front").
  *
  * The request's one-shot claim (E4) is a single atomic
  * `UPDATE ... WHERE consumed_at IS NULL AND expires_at > now() RETURNING`

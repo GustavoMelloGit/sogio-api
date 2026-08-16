@@ -36,7 +36,7 @@ async function callTool(
   return handler(input, extra);
 }
 
-const fakeUser = { id: "user-1", email: "ada@stayhub.dev" } as User;
+const fakeUser = { id: "user-1", email: "ada@sogio.dev" } as User;
 
 /**
  * Identity resolution no longer happens inside `registerMcpTool` — it

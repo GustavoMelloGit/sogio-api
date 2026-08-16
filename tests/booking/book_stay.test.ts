@@ -29,7 +29,7 @@ describe("POST /booking/property/:property_id/book", () => {
   it("200 — creates stay with new tenant", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -59,7 +59,7 @@ describe("POST /booking/property/:property_id/book", () => {
   it("200 — generates entrance_code when not provided", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -89,7 +89,7 @@ describe("POST /booking/property/:property_id/book", () => {
   it("200 — reuses existing tenant", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -126,7 +126,7 @@ describe("POST /booking/property/:property_id/book", () => {
   it("401 — rejects request without auth token", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -142,7 +142,7 @@ describe("POST /booking/property/:property_id/book", () => {
   it("401 — rejects request with invalid token", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -159,7 +159,7 @@ describe("POST /booking/property/:property_id/book", () => {
   it("404 — rejects non-existent property_id", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const token = await createAuthToken(user.id);
@@ -177,12 +177,12 @@ describe("POST /booking/property/:property_id/book", () => {
   it("404 — rejects property belonging to another user", async () => {
     const { user: user1 } = await createUserFixture({
       name: "Usuário Um",
-      email: "user1@stayhub.dev",
+      email: "user1@sogio.dev",
       password: "password123",
     });
     const { user: user2 } = await createUserFixture({
       name: "Usuário Dois",
-      email: "user2@stayhub.dev",
+      email: "user2@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user1.id });
@@ -200,7 +200,7 @@ describe("POST /booking/property/:property_id/book", () => {
   it("422 — rejects empty body", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -218,7 +218,7 @@ describe("POST /booking/property/:property_id/book", () => {
   it("422 — rejects guests exceeding property capacity", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({
@@ -239,7 +239,7 @@ describe("POST /booking/property/:property_id/book", () => {
   it("422 — rejects check_in equal to check_out", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -261,7 +261,7 @@ describe("POST /booking/property/:property_id/book", () => {
   it("409 — rejects overlapping dates for the same property", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });

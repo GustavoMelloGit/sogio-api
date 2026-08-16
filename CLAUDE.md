@@ -48,7 +48,7 @@ Os testes ficam em `tests/<bounded context>/<test name>.test.ts`.
 
 ## Arquitetura
 
-**StayHub API** é um backend de gestão de aluguel de imóveis construído com Bun + TypeScript + PostgreSQL (Drizzle ORM). Segue **Clean Architecture** com separação estrita de camadas.
+**Sogio API** é um backend de gestão de aluguel de imóveis construído com Bun + TypeScript + PostgreSQL (Drizzle ORM). Segue **Clean Architecture** com separação estrita de camadas.
 
 ### Estrutura de Camadas
 

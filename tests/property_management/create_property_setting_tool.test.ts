@@ -63,7 +63,7 @@ describe("create_property_setting tool", () => {
   it("creates a setting scoped to a property administered by the authenticated user", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const property = await createPropertyFixture({ userId: user.id });
@@ -99,12 +99,12 @@ describe("create_property_setting tool", () => {
   it("does not distinguish another owner's property from a nonexistent one", async () => {
     const { user: owner } = await createUserFixture({
       name: "João Silva",
-      email: "joao@stayhub.dev",
+      email: "joao@sogio.dev",
       password: "password123",
     });
     const { user: intruder } = await createUserFixture({
       name: "Maria Souza",
-      email: "maria@stayhub.dev",
+      email: "maria@sogio.dev",
       password: "password123",
     });
     const ownerProperty = await createPropertyFixture({ userId: owner.id });

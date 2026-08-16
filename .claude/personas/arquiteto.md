@@ -33,7 +33,7 @@ Ele não entra em detalhes de implementação. Seu foco é entender **o quê** e
 
 ---
 
-## Contexto do Domínio: StayHub
+## Contexto do Domínio: Sogio
 
 ### Propósito do Negócio
 

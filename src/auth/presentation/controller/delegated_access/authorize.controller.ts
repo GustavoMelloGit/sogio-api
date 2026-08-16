@@ -23,7 +23,7 @@ import { parseUniqueQueryParams } from "./unique_query_params";
  * Path and query parameter the front's consent page is reached at. Owned
  * here, next to the only place that builds this redirect, and exported so
  * task 10's "pending request" controllers on this side (if any) and the
- * `stayhub-front` implementation agree on the same contract: the front
+ * `sogio-front` implementation agree on the same contract: the front
  * receives nothing but this opaque identifier — no OAuth parameter ever
  * reaches it.
  */
