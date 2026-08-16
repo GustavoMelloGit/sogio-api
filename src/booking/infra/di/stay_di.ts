@@ -1,4 +1,6 @@
 import { GetPublicStayUseCase } from "../../application/use_case/stay/get_public_stay";
+import { StayPropertyOccupancy } from "../../application/service/stay_property_occupancy";
+import type { PropertyOccupancy } from "../../../property_management/domain/service/property_occupancy";
 import { GetStayUseCase } from "../../application/use_case/stay/get_stay";
 import { FindPropertyStaysUseCase } from "../../application/use_case/stay/find_property_stays";
 import { CancelStayUseCase } from "../../application/use_case/stay/cancel_stay";
@@ -99,6 +101,12 @@ export class StayDi {
       this.#stayRepository,
       this.#ledgerEntryRepository
     );
+  }
+
+  // Services
+  /** Consumed by `PropertyManagementDi` in the composition root (DA-3). */
+  makeStayPropertyOccupancy(): PropertyOccupancy {
+    return new StayPropertyOccupancy(this.#stayRepository);
   }
 
   // Controllers
