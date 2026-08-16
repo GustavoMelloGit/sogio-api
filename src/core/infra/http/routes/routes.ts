@@ -273,6 +273,12 @@ const backofficeControllers: Route[] = [
 
 const billingControllers: Route[] = [
   {
+    // Public pricing page — no login required, analogous to
+    // GET /public/booking/stay/:stay_id.
+    authenticated: false,
+    controller: billingDi.makeListPlansController(),
+  },
+  {
     authenticated: true,
     allowWithoutPlatformAccess: true,
     controller: billingDi.makeGetSubscriptionStatusController(),
