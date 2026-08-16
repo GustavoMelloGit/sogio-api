@@ -1,11 +1,4 @@
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+import { escapeHtml } from "../../../../core/infra/http/utils/escape_html";
 
 /**
  * Mode A error page (E2): rendered whenever there is no verified redirect

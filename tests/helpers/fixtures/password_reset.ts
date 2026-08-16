@@ -33,7 +33,7 @@ export class SilentLogger implements Logger {
 }
 
 export function extractResetTokenFromEmail(message: EmailMessage): string {
-  const match = message.body.match(/token=(\S+)/);
+  const match = message.text.match(/token=(\S+)/);
 
   if (!match?.[1]) {
     throw new Error("No reset token found in the composed email body");

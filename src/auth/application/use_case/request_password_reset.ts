@@ -77,8 +77,10 @@ export class RequestPasswordResetUseCase implements UseCase<Input, Output> {
 
     const message = composePasswordResetEmail(
       this.frontBaseUrl,
+      user.name,
       user.email,
-      secret
+      secret,
+      this.requestTtlMs
     );
 
     /**
