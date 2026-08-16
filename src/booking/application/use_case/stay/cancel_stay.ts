@@ -4,8 +4,7 @@ import type { User } from "../../../../auth/domain/entity/user";
 import type { StayRepository } from "../../../domain/repository/stay_repository";
 import type { PropertyRepository } from "../../../../property_management/domain/repository/property_repository";
 import { PropertyOwnershipPolicy } from "../../../../property_management/domain/policy/property_ownership_policy";
-import { StayCanceledEvent } from "../../../domain/event/stay_canceled_event";
-import type { EventDispatcher } from "../../../../core/application/event/event_dispatcher";
+import type { CancelStayService } from "../../service/cancel_stay_service";
 
 type Input = {
   stay_id: string;
@@ -20,7 +19,7 @@ export class CancelStayUseCase implements UseCase<Input, Output> {
   constructor(
     private readonly stayRepository: StayRepository,
     private readonly propertyRepository: PropertyRepository,
-    private readonly eventDispatcher: EventDispatcher
+    private readonly cancelStayService: CancelStayService
   ) {}
 
   async execute(input: Input, user: User): Promise<Output> {
@@ -39,11 +38,7 @@ export class CancelStayUseCase implements UseCase<Input, Output> {
       "Stay"
     );
 
-    stay.cancel();
-    await this.stayRepository.saveStay(stay);
-
-    const event = new StayCanceledEvent(stay.id, ownedProperty.id, stay.price);
-    await this.eventDispatcher.dispatch(event);
+    await this.cancelStayService.cancel(stay, ownedProperty.id);
 
     return {
       id: stay.id,

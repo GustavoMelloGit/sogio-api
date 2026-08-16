@@ -1,5 +1,6 @@
 import { GetPublicStayUseCase } from "../../application/use_case/stay/get_public_stay";
 import { StayPropertyOccupancy } from "../../application/service/stay_property_occupancy";
+import { CancelStayService } from "../../application/service/cancel_stay_service";
 import type { PropertyOccupancy } from "../../../property_management/domain/service/property_occupancy";
 import { GetStayUseCase } from "../../application/use_case/stay/get_stay";
 import { FindPropertyStaysUseCase } from "../../application/use_case/stay/find_property_stays";
@@ -85,7 +86,7 @@ export class StayDi {
     return new CancelStayUseCase(
       this.#stayRepository,
       this.#propertyRepository,
-      this.#eventDispatcher
+      this.makeCancelStayService()
     );
   }
   makeUpdateStayUseCase() {
@@ -104,9 +105,15 @@ export class StayDi {
   }
 
   // Services
+  makeCancelStayService(): CancelStayService {
+    return new CancelStayService(this.#stayRepository, this.#eventDispatcher);
+  }
   /** Consumed by `PropertyManagementDi` in the composition root (DA-3). */
   makeStayPropertyOccupancy(): PropertyOccupancy {
-    return new StayPropertyOccupancy(this.#stayRepository);
+    return new StayPropertyOccupancy(
+      this.#stayRepository,
+      this.makeCancelStayService()
+    );
   }
 
   // Controllers
