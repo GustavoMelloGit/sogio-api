@@ -5,6 +5,7 @@ import { SyncSubscriptionFromGatewayUseCase } from "../../src/billing/applicatio
 import { CancelSubscriptionUseCase } from "../../src/billing/application/use_case/cancel_subscription";
 import { SubscriptionPostgresRepository } from "../../src/billing/infra/database/postgres_repository/subscription_postgres_repository";
 import { PlanPostgresRepository } from "../../src/billing/infra/database/postgres_repository/plan_postgres_repository";
+import { SubscriptionHistoryPostgresRepository } from "../../src/billing/infra/database/postgres_repository/subscription_history_postgres_repository";
 import { Plan } from "../../src/billing/domain/entity/plan";
 import { inMemoryEventDispatcher } from "../../src/core/infra/event/in_memory_event_dispatcher";
 import { SubscriptionPlanChangedEvent } from "../../src/billing/domain/event/subscription_plan_changed_event";
@@ -21,6 +22,8 @@ const TABLES = ["properties", "addresses", "users"];
 
 const subscriptionRepository = new SubscriptionPostgresRepository();
 const planRepository = new PlanPostgresRepository();
+const subscriptionHistoryRepository =
+  new SubscriptionHistoryPostgresRepository();
 
 type LoggerCalls = {
   debug: unknown[][];
@@ -539,5 +542,79 @@ describe("SyncSubscriptionFromGatewayUseCase (DA-9)", () => {
     const reloaded = await subscriptionRepository.subscriptionOfUser(user.id);
     expect(reloaded?.status).toBe("active");
     expect(reloaded?.external_reference).toBeNull();
+  });
+
+  it("does not cancel a valid Pro subscription when canceled/incomplete_expired for a different gateway subscription resolves to it via the customer fallback (security review B-5)", async () => {
+    const priceRef = await setProPriceReference();
+    const { user } = await createUserFixture({
+      name: "Conta Resubscribe Pro",
+      email: "sync.resubscribe-pro@sogio.dev",
+      password: "password123",
+    });
+    const pro = await planRepository.planOfCode("pro");
+    if (!pro) throw new Error("no pro plan");
+
+    // First checkout attempt (sub_A) failed and was never linked locally.
+    // The retry (sub_B) succeeded and is the real, paying subscription.
+    const subscription = await subscriptionRepository.subscriptionOfUser(
+      user.id
+    );
+    if (!subscription) throw new Error("no subscription");
+    subscription.linkCustomer("cus_resubscribe_pro");
+    subscription.changePlan({
+      plan_id: pro.id,
+      trial_days: 0,
+      is_perpetual: false,
+      billing_interval: "monthly",
+      period_end: new Date("2026-09-01T00:00:00.000Z"),
+      external_reference: "sub_B",
+      external_event_at: new Date("2026-08-01T00:00:00.000Z"),
+    });
+    await subscriptionRepository.save(subscription);
+
+    const captured: SubscriptionCanceledEvent[] = [];
+    inMemoryEventDispatcher.register(SubscriptionCanceledEvent.NAME, {
+      async handle(event) {
+        captured.push(event as SubscriptionCanceledEvent);
+      },
+    } satisfies EventHandler<SubscriptionCanceledEvent>);
+
+    const logger = makeLogger();
+    const useCase = makeUseCase(logger);
+
+    // ~23h after the successful retry, the abandoned sub_A finally expires.
+    // The customer-reference fallback would resolve this to sub_B's local
+    // row — the event is clocked after sub_B's watermark, so it isn't
+    // discarded as stale either. It must still not cancel sub_B.
+    await expect(
+      useCase.execute(
+        baseEvent({
+          external_reference: "sub_A",
+          external_customer_reference: "cus_resubscribe_pro",
+          external_price_reference: priceRef,
+          status: "incomplete_expired",
+          occurred_at: new Date("2026-08-02T00:00:00.000Z"),
+        })
+      )
+    ).resolves.toBeUndefined();
+
+    const reloaded = await subscriptionRepository.subscriptionOfUser(user.id);
+    expect(reloaded?.plan_id).toBe(pro.id);
+    expect(reloaded?.status).toBe("active");
+    expect(reloaded?.external_reference).toBe("sub_B");
+
+    const eventsForSub = captured.filter(
+      e => e.subscription_id === subscription.id
+    );
+    expect(eventsForSub).toHaveLength(0);
+
+    const history = await subscriptionHistoryRepository.historyOfUser(user.id, {
+      page: 1,
+      limit: 20,
+    });
+    const canceledEntries = history.data.filter(
+      row => row.entry.type === "canceled"
+    );
+    expect(canceledEntries).toHaveLength(0);
   });
 });
