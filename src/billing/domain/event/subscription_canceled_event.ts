@@ -8,7 +8,8 @@ export class SubscriptionCanceledEvent implements DomainEvent {
   constructor(
     public readonly subscription_id: string,
     public readonly user_id: string,
-    public readonly plan_id: string
+    public readonly plan_id: string,
+    public readonly current_period_end: Date | null
   ) {
     this.name = SubscriptionCanceledEvent.NAME;
     this.occurred_at = new Date();

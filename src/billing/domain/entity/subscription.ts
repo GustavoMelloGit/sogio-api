@@ -271,6 +271,11 @@ export class Subscription {
     return this.#data.external_customer_reference ?? null;
   }
 
+  /** True once the subscription entered a real billing cycle — not a trial, not a perpetual plan. */
+  get has_paid_cycle() {
+    return this.#data.status === "active" && !!this.#data.current_period_end;
+  }
+
   get created_at() {
     return this.#data.created_at;
   }
