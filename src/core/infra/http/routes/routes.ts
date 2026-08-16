@@ -327,6 +327,7 @@ const handleMcpRequest = makeMcpRequestHandler({
   propertyDi,
   stayDi,
   financeDi,
+  billingDi,
   propertyManagementDi,
 });
 

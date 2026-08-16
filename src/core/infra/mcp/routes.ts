@@ -7,7 +7,10 @@ import type { PropertyDi } from "../../../booking/infra/di/property_di";
 import type { StayDi } from "../../../booking/infra/di/stay_di";
 import type { FinanceDi } from "../../../finance/infra/di/finance_di";
 import type { PropertyManagementDi } from "../../../property_management/infra/di/property_management_di";
+import type { BillingDi } from "../../../billing/infra/di/billing_di";
+import { ForbiddenError } from "../../application/error/forbidden_error";
 import { UnauthorizedError } from "../../application/error/unauthorized_error";
+import { mapErrorToToolResult } from "./mcp_error_mapper";
 import type { Logger } from "../../application/logger/logger";
 import { CoreDi } from "../di/core_di";
 import { CorsMiddleware } from "../../presentation/middleware/cors.middleware";
@@ -46,6 +49,7 @@ export type McpRouteDependencies = {
   stayDi: StayDi;
   financeDi: FinanceDi;
   propertyManagementDi: PropertyManagementDi;
+  billingDi: BillingDi;
 };
 
 /**
@@ -106,6 +110,7 @@ export function makeMcpRequestHandler(
   );
   const logger: Logger = new CoreDi().makeLogger();
   const corsMiddleware = new CorsMiddleware();
+  const entitlementService = dependencies.billingDi.makeEntitlementService();
 
   const tools: McpToolDefinition<z.ZodRawShape>[] = [
     makeListPropertiesTool(dependencies.propertyManagementDi),
@@ -147,6 +152,34 @@ export function makeMcpRequestHandler(
       result: "authenticated",
       client_id: requester.appRegistrationId,
     });
+
+    /**
+     * Platform-access gate (DA-9). `/mcp` has no account-recovery tool, so
+     * unlike the HTTP adapter there is no exception list — a blocked
+     * account is blocked outright. Admins still pass: staff can't be locked
+     * out of tooling by a billing problem.
+     */
+    if (requester.user.role !== "admin") {
+      const entitlement = await entitlementService.entitlementOf(
+        requester.user.id
+      );
+      if (!entitlement.has_platform_access) {
+        logger.warn("mcp", {
+          endpoint: "mcp",
+          result: "forbidden",
+          blocked_reason: entitlement.blocked_reason,
+        });
+        return corsMiddleware.addCorsHeaders(
+          withNoStore(
+            forbiddenResponse(
+              entitlement.blocked_reason ?? "no_platform_access"
+            )
+          ),
+          origin,
+          "public"
+        );
+      }
+    }
 
     const server = createMcpServer({
       name: MCP_SERVER_NAME,
@@ -247,6 +280,12 @@ function unauthorizedResponse(
       },
     }
   );
+}
+
+/** Reuses the existing tool-error shape (`mcp_error_mapper`) for the 403. */
+function forbiddenResponse(reason: string): Response {
+  const result = mapErrorToToolResult(new ForbiddenError(reason));
+  return Response.json(result, { status: 403 });
 }
 
 /**
