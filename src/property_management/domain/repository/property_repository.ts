@@ -4,7 +4,7 @@ export interface PropertyRepository {
   propertyOfId(id: string): Promise<Property | null>;
   save(property: Property): Promise<void>;
   allFromUser(userId: string): Promise<Array<Property>>;
-  /** Unlike `allFromUser`, excludes soft-deleted properties (DA-10). */
+  /** Conta apenas propriedades ativas — mesma semântica de allFromUser. */
   countFromUser(userId: string): Promise<number>;
   /** Serializes concurrent creations from the same owner: counting and
    *  inserting happen in the same transaction. Throwing from

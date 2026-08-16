@@ -715,6 +715,54 @@ describe("DELETE /property/:property_id", () => {
       expect(afterBody).toHaveLength(0);
     });
 
+    it("GET /tenants still lists a guest staying at an active property after another property from the same owner is deleted", async () => {
+      const { user } = await createUserFixture({
+        name: "João Silva",
+        email: "joao@sogio.dev",
+        password: "password123",
+      });
+      const deletedProperty = await createPropertyFixture({
+        userId: user.id,
+      });
+      const activeProperty = await createPropertyFixture({
+        userId: user.id,
+      });
+      const token = await createAuthToken(user.id);
+
+      const deletedPropertyBookRes = await bookStay(
+        token,
+        deletedProperty.id,
+        {
+          check_in: "2020-06-01T12:00:00.000Z",
+          check_out: "2020-06-03T12:00:00.000Z",
+        },
+        "5511999990001"
+      );
+      expect(deletedPropertyBookRes.status).toBe(200);
+
+      const activePropertyBookRes = await bookStay(
+        token,
+        activeProperty.id,
+        {
+          check_in: "2020-07-01T12:00:00.000Z",
+          check_out: "2020-07-03T12:00:00.000Z",
+        },
+        "5511999990002"
+      );
+      expect(activePropertyBookRes.status).toBe(200);
+
+      await api(`/property/${deletedProperty.id}`, {
+        method: "DELETE",
+        headers: { Authorization: "Bearer " + token },
+      });
+
+      const afterRes = await api("/tenants", {
+        headers: { Authorization: "Bearer " + token },
+      });
+      const afterBody = (await afterRes.json()) as Array<{ id: string }>;
+      expect(afterBody).toHaveLength(1);
+    });
+
     it("GET /booking/reconcile-external-booking stops reconciling the deleted property (DA-7)", async () => {
       const { user } = await createUserFixture({
         name: "João Silva",
