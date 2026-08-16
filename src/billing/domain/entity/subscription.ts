@@ -64,6 +64,8 @@ type ChangePlanInput = {
   billing_interval: BillingInterval;
   now?: Date;
   period_end?: Date;
+  /** Gateway-driven trial start (DA-9's `trialing, never used` row) — routes to `startTrialUntil` instead of the locally-computed `startTrial`. */
+  trial_ends_at?: Date;
   external_reference?: string | null;
   external_event_at?: Date;
 };
@@ -320,6 +322,14 @@ export class Subscription {
         billing_interval: input.billing_interval,
         now,
         period_end: input.period_end,
+        external_reference: input.external_reference,
+        external_event_at: input.external_event_at,
+      });
+      return;
+    }
+
+    if (input.trial_ends_at !== undefined) {
+      this.startTrialUntil(input.trial_ends_at, {
         external_reference: input.external_reference,
         external_event_at: input.external_event_at,
       });
