@@ -122,12 +122,14 @@ export class FindPropertyStaysController implements Controller {
   async handle(request: ControllerRequest, user: User) {
     const input = request.body as Input;
 
-    const output = await this.useCase.execute({
-      property_id: input.property_id,
-      user_id: user.id,
-      pagination: { page: input.page, limit: input.limit },
-      filters: { from: input.from, to: input.to },
-    });
+    const output = await this.useCase.execute(
+      {
+        property_id: input.property_id,
+        pagination: { page: input.page, limit: input.limit },
+        filters: { from: input.from, to: input.to },
+      },
+      user
+    );
 
     return output;
   }

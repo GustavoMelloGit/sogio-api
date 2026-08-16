@@ -3,6 +3,7 @@ import type { UseCase } from "../../../../core/application/use_case/use_case";
 import type { User } from "../../../../auth/domain/entity/user";
 import type { StayRepository } from "../../../domain/repository/stay_repository";
 import type { PropertyRepository } from "../../../../property_management/domain/repository/property_repository";
+import { PropertyOwnershipPolicy } from "../../../../property_management/domain/policy/property_ownership_policy";
 import type { BookingPolicy } from "../../../domain/policy/booking_policy";
 
 type Input = {
@@ -40,20 +41,16 @@ export class UpdateStayUseCase implements UseCase<Input, Output> {
     const property = await this.propertyRepository.propertyOfId(
       stay.property_id
     );
-
-    if (!property) {
-      throw new ResourceNotFoundError("Property");
-    }
-
-    const userOwnsProperty = property.user_id === user.id;
-    if (!userOwnsProperty) {
-      throw new ResourceNotFoundError("Stay");
-    }
+    const ownedProperty = PropertyOwnershipPolicy.ensureOwnership(
+      property,
+      user,
+      "Stay"
+    );
 
     stay.update(input);
 
     await this.bookingPolicy.isBookingAllowed(
-      property.id,
+      ownedProperty.id,
       stay.check_in,
       stay.check_out,
       stay.id

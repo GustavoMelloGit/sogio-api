@@ -1,4 +1,7 @@
 import type { UseCase } from "../../../core/application/use_case/use_case";
+import type { User } from "../../../auth/domain/entity/user";
+import type { PropertyRepository } from "../../../property_management/domain/repository/property_repository";
+import { PropertyOwnershipPolicy } from "../../../property_management/domain/policy/property_ownership_policy";
 import type {
   DateFilter,
   LedgerEntryRepository,
@@ -26,13 +29,26 @@ type Output = PaginatedResult<{
 
 /**
  * Use case para buscar movimentações financeiras de uma propriedade específica
+ *
+ * R-1: previously read the ledger straight from `propertyId` without ever
+ * checking ownership — any authenticated user could read any property's
+ * full financial history by guessing/knowing its UUID. Now gated by
+ * `PropertyOwnershipPolicy`, same as `RecordRevenueUseCase`/`RecordExpenseUseCase`.
  */
 export class FindPropertyFinancialMovementsUseCase
   implements UseCase<Input, Output>
 {
-  constructor(private readonly ledgerEntryRepository: LedgerEntryRepository) {}
+  constructor(
+    private readonly ledgerEntryRepository: LedgerEntryRepository,
+    private readonly propertyRepository: PropertyRepository
+  ) {}
 
-  async execute(input: Input): Promise<Output> {
+  async execute(input: Input, user: User): Promise<Output> {
+    const property = await this.propertyRepository.propertyOfId(
+      input.propertyId
+    );
+    PropertyOwnershipPolicy.ensureOwnership(property, user);
+
     const movements = await this.ledgerEntryRepository.findByPropertyId(
       input.propertyId,
       input.pagination,

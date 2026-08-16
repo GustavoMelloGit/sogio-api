@@ -4,6 +4,7 @@ import type { User } from "../../../../auth/domain/entity/user";
 import type { StayRepository } from "../../../domain/repository/stay_repository";
 import type { TenantRepository } from "../../../domain/repository/tenant_repository";
 import type { PropertyRepository } from "../../../../property_management/domain/repository/property_repository";
+import { PropertyOwnershipPolicy } from "../../../../property_management/domain/policy/property_ownership_policy";
 import type { TenantSex } from "../../../domain/entity/tenant";
 
 type Input = {
@@ -47,15 +48,7 @@ export class GetStayUseCase implements UseCase<Input, Output> {
     const property = await this.propertyRepository.propertyOfId(
       stay.property_id
     );
-
-    if (!property) {
-      throw new ResourceNotFoundError("Stay");
-    }
-
-    const userOwnsProperty = property.user_id === user.id;
-    if (!userOwnsProperty) {
-      throw new ResourceNotFoundError("Stay");
-    }
+    PropertyOwnershipPolicy.ensureOwnership(property, user, "Stay");
 
     const tenant = await this.tenantRepository.tenantOfId(stay.tenant_id);
 

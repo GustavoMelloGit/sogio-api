@@ -4,6 +4,7 @@ import {
   type Controller,
   type ControllerRequest,
 } from "../../../core/presentation/controller/controller";
+import type { User } from "../../../auth/domain/entity/user";
 import type { FindPropertyFinancialMovementsUseCase } from "../../application/use_case/find_property_financial_movements";
 import {
   DEFAULT_LIMIT,
@@ -108,16 +109,19 @@ export class FindPropertyFinancialMovementsController implements Controller {
     private readonly useCase: FindPropertyFinancialMovementsUseCase
   ) {}
 
-  async handle(request: ControllerRequest): Promise<unknown> {
+  async handle(request: ControllerRequest, user: User): Promise<unknown> {
     const input = request.body as Input;
 
-    return this.useCase.execute({
-      propertyId: input.property_id,
-      pagination: { page: input.page, limit: input.limit },
-      dateFilter: {
-        start_date: input.start_date,
-        end_date: input.end_date,
+    return this.useCase.execute(
+      {
+        propertyId: input.property_id,
+        pagination: { page: input.page, limit: input.limit },
+        dateFilter: {
+          start_date: input.start_date,
+          end_date: input.end_date,
+        },
       },
-    });
+      user
+    );
   }
 }

@@ -2,10 +2,11 @@ import type {
   StayRepository,
   StayWithTenant,
 } from "../../../domain/repository/stay_repository";
-import { ResourceNotFoundError } from "../../../../core/application/error/resource_not_found_error";
 import type { UseCase } from "../../../../core/application/use_case/use_case";
+import type { User } from "../../../../auth/domain/entity/user";
 import type { TenantSex } from "../../../domain/entity/tenant";
 import type { PropertyRepository } from "../../../../property_management/domain/repository/property_repository";
+import { PropertyOwnershipPolicy } from "../../../../property_management/domain/policy/property_ownership_policy";
 import {
   type PaginatedResult,
   type PaginationInput,
@@ -17,14 +18,11 @@ export class FindPropertyStaysUseCase implements UseCase<Input, Output> {
     private readonly stayRepository: StayRepository
   ) {}
 
-  async execute(input: Input): Promise<Output> {
+  async execute(input: Input, user: User): Promise<Output> {
     const property = await this.propertyRepository.propertyOfId(
       input.property_id
     );
-
-    if (!property || property.user_id !== input.user_id) {
-      throw new ResourceNotFoundError("Property");
-    }
+    PropertyOwnershipPolicy.ensureOwnership(property, user, "Stay");
 
     const { data, pagination } = await this.stayRepository.allFromProperty(
       input.property_id,
@@ -71,7 +69,6 @@ type InputFilters = {
 
 type Input = {
   property_id: string;
-  user_id: string;
   pagination: PaginationInput;
   filters: InputFilters;
 };

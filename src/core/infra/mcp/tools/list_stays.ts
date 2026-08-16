@@ -67,12 +67,14 @@ export function makeListStaysTool(
       readOnlyHint: true,
     },
     handler: async (input, user) => {
-      const { data, pagination } = await useCase.execute({
-        property_id: input.property_id,
-        user_id: user.id,
-        pagination: { page: input.page, limit: input.limit },
-        filters: { from: input.from, to: input.to },
-      });
+      const { data, pagination } = await useCase.execute(
+        {
+          property_id: input.property_id,
+          pagination: { page: input.page, limit: input.limit },
+          filters: { from: input.from, to: input.to },
+        },
+        user
+      );
 
       return {
         data: data.map(({ entrance_code, ...rest }) => rest),

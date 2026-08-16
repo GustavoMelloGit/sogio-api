@@ -70,7 +70,8 @@ export class FinanceDi {
 
   makeFindPropertyFinancialMovementsUseCase() {
     return new FindPropertyFinancialMovementsUseCase(
-      this.#ledgerEntryRepository
+      this.#ledgerEntryRepository,
+      this.#propertyRepository
     );
   }
 

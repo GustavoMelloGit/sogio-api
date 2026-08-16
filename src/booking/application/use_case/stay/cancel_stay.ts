@@ -3,6 +3,7 @@ import type { UseCase } from "../../../../core/application/use_case/use_case";
 import type { User } from "../../../../auth/domain/entity/user";
 import type { StayRepository } from "../../../domain/repository/stay_repository";
 import type { PropertyRepository } from "../../../../property_management/domain/repository/property_repository";
+import { PropertyOwnershipPolicy } from "../../../../property_management/domain/policy/property_ownership_policy";
 import { StayCanceledEvent } from "../../../domain/event/stay_canceled_event";
 import type { EventDispatcher } from "../../../../core/application/event/event_dispatcher";
 
@@ -29,22 +30,19 @@ export class CancelStayUseCase implements UseCase<Input, Output> {
       throw new ResourceNotFoundError("Stay");
     }
 
-    // Verificar se o usuário é o proprietário da propriedade
     const property = await this.propertyRepository.propertyOfId(
       stay.property_id
     );
-    if (!property) {
-      throw new ResourceNotFoundError("Property");
-    }
-
-    if (property.user_id !== user.id) {
-      throw new ResourceNotFoundError("Stay");
-    }
+    const ownedProperty = PropertyOwnershipPolicy.ensureOwnership(
+      property,
+      user,
+      "Stay"
+    );
 
     stay.cancel();
     await this.stayRepository.saveStay(stay);
 
-    const event = new StayCanceledEvent(stay.id, property.id, stay.price);
+    const event = new StayCanceledEvent(stay.id, ownedProperty.id, stay.price);
     await this.eventDispatcher.dispatch(event);
 
     return {
