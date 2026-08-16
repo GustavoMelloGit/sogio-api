@@ -72,6 +72,7 @@ export class SyncSubscriptionFromGatewayUseCase
       case "incomplete_expired":
         await this.cancelSubscriptionUseCase.execute({
           user_id: subscription.user_id,
+          external_event_at: event.occurred_at,
         });
         return;
       case "past_due":

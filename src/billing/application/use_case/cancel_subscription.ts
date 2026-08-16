@@ -8,6 +8,8 @@ import { SubscriptionCanceledEvent } from "../../domain/event/subscription_cance
 
 type Input = {
   user_id: string;
+  /** The gateway event's own timestamp (DA-8), when this is webhook-driven — recorded as external_event_at so the DA-8 staleness guard advances on cancellation too, not just on activation/past_due transitions. */
+  external_event_at?: Date;
 };
 
 type Output = {
@@ -52,7 +54,10 @@ export class CancelSubscriptionUseCase implements UseCase<Input, Output> {
 
     const wasAlreadyCanceled = subscription.status === "canceled";
 
-    subscription.cancel({ is_perpetual: plan.is_perpetual });
+    subscription.cancel({
+      is_perpetual: plan.is_perpetual,
+      external_event_at: input.external_event_at,
+    });
     await this.subscriptionRepository.save(subscription);
 
     if (!wasAlreadyCanceled) {

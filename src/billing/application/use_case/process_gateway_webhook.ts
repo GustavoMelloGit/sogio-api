@@ -136,8 +136,30 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
       return;
     }
 
+    // The customer-reference fallback in resolveGatewaySubscription can
+    // land on a local subscription that was never linked to *this* gateway
+    // subscription — an abandoned checkout still sitting on Free, or a
+    // subscription that has since been superseded by a resubscription. In
+    // both cases the local row's external_reference won't match the one
+    // that produced this event. Canceling here would either wrongly cancel
+    // a perpetual Free plan (ConflictError -> 409 -> Stripe retry storm) or
+    // cancel a newer, valid subscription by mistake. Neither is an error:
+    // it's a stale/irrelevant event for the current local state.
+    if (subscription.external_reference !== event.external_reference) {
+      this.logger.info(
+        "subscription_ended for a gateway subscription the local subscription isn't linked to — discarding as stale/irrelevant",
+        {
+          subscription_id: subscription.id,
+          local_external_reference: subscription.external_reference,
+          event_external_reference: event.external_reference,
+        }
+      );
+      return;
+    }
+
     await this.cancelSubscriptionUseCase.execute({
       user_id: subscription.user_id,
+      external_event_at: event.occurred_at,
     });
   }
 
@@ -162,6 +184,18 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
         subscription_id: subscription.id,
         event_occurred_at: event.occurred_at,
       });
+      return;
+    }
+
+    // Dunning's final payment_failed can be delivered after the
+    // subscription was already canceled (delivery order isn't guaranteed).
+    // markPastDue rejects `canceled` with a ConflictError, so short-circuit
+    // here rather than let that escape as a 409 the gateway retries forever.
+    if (subscription.status === "canceled") {
+      this.logger.info(
+        "payment_failed for an already-canceled subscription — nothing to do",
+        { subscription_id: subscription.id }
+      );
       return;
     }
 
