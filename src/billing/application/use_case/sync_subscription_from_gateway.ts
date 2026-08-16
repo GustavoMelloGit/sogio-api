@@ -8,14 +8,23 @@ import type {
   SubscriptionStatus,
 } from "../../domain/entity/subscription";
 import type { Plan } from "../../domain/entity/plan";
-import type { SubscriptionStateChangedEvent } from "../gateway/gateway_billing_event";
+import type {
+  SubscriptionStateChangedEvent,
+  GatewaySubscriptionStatus,
+} from "../gateway/gateway_billing_event";
 import type { CancelSubscriptionUseCase } from "./cancel_subscription";
 import { SubscriptionPlanChangedEvent } from "../../domain/event/subscription_plan_changed_event";
 import { SubscriptionRenewedEvent } from "../../domain/event/subscription_renewed_event";
 import {
   resolveGatewaySubscription,
+  resolveGatewaySubscriptionForTermination,
   isStaleGatewayEvent,
 } from "../gateway/resolve_gateway_subscription";
+
+/** `canceled`/`incomplete_expired` are the only statuses this use case treats as a termination transition (security review B-5). */
+function isTerminationStatus(status: GatewaySubscriptionStatus): boolean {
+  return status === "canceled" || status === "incomplete_expired";
+}
 
 type Output = void;
 
@@ -44,18 +53,36 @@ export class SyncSubscriptionFromGatewayUseCase
   ) {}
 
   async execute(event: SubscriptionStateChangedEvent): Promise<Output> {
-    const subscription = await resolveGatewaySubscription(
-      this.subscriptionRepository,
-      event
-    );
+    // canceled/incomplete_expired are termination transitions (security
+    // review B-5): resolveGatewaySubscriptionForTermination never falls back
+    // to a customer-reference match, so a fallback landing on a different
+    // (possibly still-paying) local subscription can't cancel it by mistake.
+    const isTermination = isTerminationStatus(event.status);
+    const subscription = isTermination
+      ? await resolveGatewaySubscriptionForTermination(
+          this.subscriptionRepository,
+          event
+        )
+      : await resolveGatewaySubscription(this.subscriptionRepository, event);
+
     if (!subscription) {
-      this.logger.error(
-        "subscription_state_changed for an unknown gateway subscription/customer",
-        {
-          external_reference: event.external_reference,
-          external_customer_reference: event.external_customer_reference,
-        }
-      );
+      if (isTermination) {
+        this.logger.info(
+          "subscription_state_changed(canceled/incomplete_expired) with no local match by reference — discarding as unknown or stale/irrelevant",
+          {
+            external_reference: event.external_reference,
+            external_customer_reference: event.external_customer_reference,
+          }
+        );
+      } else {
+        this.logger.error(
+          "subscription_state_changed for an unknown gateway subscription/customer",
+          {
+            external_reference: event.external_reference,
+            external_customer_reference: event.external_customer_reference,
+          }
+        );
+      }
       return;
     }
 

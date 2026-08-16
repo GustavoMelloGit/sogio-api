@@ -13,7 +13,7 @@ import type { SyncSubscriptionFromGatewayUseCase } from "./sync_subscription_fro
 import type { CancelSubscriptionUseCase } from "./cancel_subscription";
 import type { MarkSubscriptionPastDueUseCase } from "./mark_subscription_past_due";
 import {
-  resolveGatewaySubscription,
+  resolveGatewaySubscriptionForTermination,
   isStaleGatewayEvent,
 } from "../gateway/resolve_gateway_subscription";
 
@@ -113,13 +113,17 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
   async #dispatchSubscriptionEnded(
     event: SubscriptionEndedEvent
   ): Promise<void> {
-    const subscription = await resolveGatewaySubscription(
+    // resolveGatewaySubscriptionForTermination (security review B-3/B-5)
+    // never falls back to a customer-reference match, so a null here means
+    // either a truly unknown gateway subscription or one this local row
+    // isn't linked to by reference — either way, nothing to cancel.
+    const subscription = await resolveGatewaySubscriptionForTermination(
       this.subscriptionRepository,
       event
     );
     if (!subscription) {
-      this.logger.error(
-        "subscription_ended for an unknown gateway subscription/customer",
+      this.logger.info(
+        "subscription_ended for a gateway subscription with no local match by reference — discarding as unknown or stale/irrelevant",
         {
           external_reference: event.external_reference,
           external_customer_reference: event.external_customer_reference,
@@ -133,27 +137,6 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
         subscription_id: subscription.id,
         event_occurred_at: event.occurred_at,
       });
-      return;
-    }
-
-    // The customer-reference fallback in resolveGatewaySubscription can
-    // land on a local subscription that was never linked to *this* gateway
-    // subscription — an abandoned checkout still sitting on Free, or a
-    // subscription that has since been superseded by a resubscription. In
-    // both cases the local row's external_reference won't match the one
-    // that produced this event. Canceling here would either wrongly cancel
-    // a perpetual Free plan (ConflictError -> 409 -> Stripe retry storm) or
-    // cancel a newer, valid subscription by mistake. Neither is an error:
-    // it's a stale/irrelevant event for the current local state.
-    if (subscription.external_reference !== event.external_reference) {
-      this.logger.info(
-        "subscription_ended for a gateway subscription the local subscription isn't linked to — discarding as stale/irrelevant",
-        {
-          subscription_id: subscription.id,
-          local_external_reference: subscription.external_reference,
-          event_external_reference: event.external_reference,
-        }
-      );
       return;
     }
 
@@ -164,13 +147,17 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
   }
 
   async #dispatchPaymentFailed(event: PaymentFailedEvent): Promise<void> {
-    const subscription = await resolveGatewaySubscription(
+    // Same fallback hazard as #dispatchSubscriptionEnded (security review
+    // B-4/B-5) — resolveGatewaySubscriptionForTermination never falls back
+    // to a customer-reference match, so marking a wrong/unrelated local
+    // subscription past_due is structurally impossible here.
+    const subscription = await resolveGatewaySubscriptionForTermination(
       this.subscriptionRepository,
       event
     );
     if (!subscription) {
-      this.logger.error(
-        "payment_failed for an unknown gateway subscription/customer",
+      this.logger.info(
+        "payment_failed for a gateway subscription with no local match by reference — discarding as unknown or stale/irrelevant",
         {
           external_reference: event.external_reference,
           external_customer_reference: event.external_customer_reference,
@@ -184,24 +171,6 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
         subscription_id: subscription.id,
         event_occurred_at: event.occurred_at,
       });
-      return;
-    }
-
-    // Same fallback hazard as #dispatchSubscriptionEnded (security review
-    // B-4): the customer-reference fallback can land on a local Free
-    // subscription that was never linked to *this* gateway subscription —
-    // an abandoned checkout's invoice failing days later. Marking it
-    // past_due would poison a free account's history and eventually block
-    // its access. Not an error: a stale/irrelevant event for local state.
-    if (subscription.external_reference !== event.external_reference) {
-      this.logger.info(
-        "payment_failed for a gateway subscription the local subscription isn't linked to — discarding as stale/irrelevant",
-        {
-          subscription_id: subscription.id,
-          local_external_reference: subscription.external_reference,
-          event_external_reference: event.external_reference,
-        }
-      );
       return;
     }
 
