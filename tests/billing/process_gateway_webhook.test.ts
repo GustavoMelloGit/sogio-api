@@ -483,3 +483,185 @@ describe("ProcessGatewayWebhookUseCase — idempotency writes a single history e
     expect(canceledEntries).toHaveLength(1);
   });
 });
+
+describe("ProcessGatewayWebhookUseCase — subscription_ended reference mismatch (security review B-1)", () => {
+  it("does not cancel a Free subscription when subscription_ended belongs to an abandoned checkout's gateway subscription", async () => {
+    await truncate(TABLES);
+    const { user } = await createUserFixture({
+      name: "Conta Checkout Abandonado",
+      email: "webhook.abandoned-checkout@sogio.dev",
+      password: "password123",
+    });
+
+    // Checkout started (customer created and linked) but payment never
+    // completed — the local subscription stays Free, never linked to any
+    // gateway subscription.
+    const subscription = await subscriptionRepository.subscriptionOfUser(
+      user.id
+    );
+    if (!subscription) throw new Error("no subscription");
+    subscription.linkCustomer("cus_abandoned_checkout");
+    await subscriptionRepository.save(subscription);
+
+    expect(subscription.status).toBe("active");
+    expect(subscription.external_reference).toBeNull();
+
+    // ~23h later Stripe reports the abandoned checkout's subscription as
+    // ended. The customer-reference fallback in resolveGatewaySubscription
+    // resolves this event to the Free subscription above, but that
+    // subscription was never linked to this gateway subscription.
+    const event: GatewayBillingEvent = {
+      type: "subscription_ended",
+      event_id: `evt_${crypto.randomUUID()}`,
+      occurred_at: new Date(),
+      external_reference: "sub_never_linked_to_local",
+      external_customer_reference: "cus_abandoned_checkout",
+    };
+
+    await expect(
+      makeRealUseCase(new StubVerifier(event)).execute({
+        raw_payload: "{}",
+        signature: "sig",
+      })
+    ).resolves.toBeUndefined();
+
+    const reloaded = await subscriptionRepository.subscriptionOfUser(user.id);
+    // Must still be the untouched, perpetual Free subscription — canceling
+    // it would have thrown ConflictError("Cannot cancel a perpetual plan
+    // subscription"), surfacing as a 409 the gateway retries forever.
+    expect(reloaded?.status).toBe("active");
+    expect(reloaded?.external_reference).toBeNull();
+  });
+
+  it("does not cancel a valid resubscription when a delayed subscription_ended arrives for the superseded gateway subscription", async () => {
+    await truncate(TABLES);
+    const { user } = await createUserFixture({
+      name: "Conta Reassinatura",
+      email: "webhook.resubscription@sogio.dev",
+      password: "password123",
+    });
+    const pro = await planRepository.planOfCode("pro");
+    if (!pro) throw new Error("no pro plan");
+
+    const subscription = await subscriptionRepository.subscriptionOfUser(
+      user.id
+    );
+    if (!subscription) throw new Error("no subscription");
+    subscription.linkCustomer("cus_resubscribed");
+    // First subscription with the gateway (subscription A).
+    subscription.changePlan({
+      plan_id: pro.id,
+      trial_days: 0,
+      is_perpetual: false,
+      billing_interval: "monthly",
+      period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      external_reference: "sub_old_a",
+    });
+    await subscriptionRepository.save(subscription);
+
+    // User canceled and resubscribed: Stripe created a brand new
+    // subscription (B) and a subsequent subscription_state_changed already
+    // moved the local row's external_reference to it.
+    subscription.changePlan({
+      plan_id: pro.id,
+      trial_days: 0,
+      is_perpetual: false,
+      billing_interval: "monthly",
+      period_end: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+      external_reference: "sub_new_b",
+    });
+    await subscriptionRepository.save(subscription);
+
+    // The old subscription A's deletion event finally arrives, late,
+    // referencing a gateway subscription this local row no longer points to.
+    const event: GatewayBillingEvent = {
+      type: "subscription_ended",
+      event_id: `evt_${crypto.randomUUID()}`,
+      occurred_at: new Date(),
+      external_reference: "sub_old_a",
+      external_customer_reference: "cus_resubscribed",
+    };
+
+    await expect(
+      makeRealUseCase(new StubVerifier(event)).execute({
+        raw_payload: "{}",
+        signature: "sig",
+      })
+    ).resolves.toBeUndefined();
+
+    const reloaded = await subscriptionRepository.subscriptionOfUser(user.id);
+    // The new, valid subscription must remain active — canceling it would
+    // wrongly kill a paying customer's access.
+    expect(reloaded?.status).toBe("active");
+    expect(reloaded?.external_reference).toBe("sub_new_b");
+  });
+});
+
+describe("ProcessGatewayWebhookUseCase — payment_failed after cancellation (security review B-2)", () => {
+  it("does not mark a canceled subscription past_due when a delayed payment_failed arrives after cancellation", async () => {
+    await truncate(TABLES);
+    const { user } = await createUserFixture({
+      name: "Conta Falha Pos Cancelamento",
+      email: "webhook.payment-failed-after-cancel@sogio.dev",
+      password: "password123",
+    });
+    const pro = await planRepository.planOfCode("pro");
+    if (!pro) throw new Error("no pro plan");
+
+    const subscription = await subscriptionRepository.subscriptionOfUser(
+      user.id
+    );
+    if (!subscription) throw new Error("no subscription");
+    subscription.linkCustomer("cus_failed_after_cancel");
+    subscription.changePlan({
+      plan_id: pro.id,
+      trial_days: 0,
+      is_perpetual: false,
+      billing_interval: "monthly",
+      period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      external_reference: "sub_failed_after_cancel",
+    });
+    await subscriptionRepository.save(subscription);
+
+    // Subscription is canceled first, as customer.subscription.deleted would.
+    const endedEvent: GatewayBillingEvent = {
+      type: "subscription_ended",
+      event_id: `evt_${crypto.randomUUID()}`,
+      occurred_at: new Date(),
+      external_reference: "sub_failed_after_cancel",
+      external_customer_reference: "cus_failed_after_cancel",
+    };
+    await makeRealUseCase(new StubVerifier(endedEvent)).execute({
+      raw_payload: "{}",
+      signature: "sig",
+    });
+
+    const afterCancel = await subscriptionRepository.subscriptionOfUser(
+      user.id
+    );
+    expect(afterCancel?.status).toBe("canceled");
+
+    // Dunning's final invoice.payment_failed shows up after cancellation —
+    // delivery order across event types isn't guaranteed by the gateway.
+    const paymentFailedEvent: GatewayBillingEvent = {
+      type: "payment_failed",
+      event_id: `evt_${crypto.randomUUID()}`,
+      occurred_at: new Date(Date.now() + 1000),
+      external_reference: "sub_failed_after_cancel",
+      external_customer_reference: "cus_failed_after_cancel",
+      reason: "card_declined",
+    };
+
+    await expect(
+      makeRealUseCase(new StubVerifier(paymentFailedEvent)).execute({
+        raw_payload: "{}",
+        signature: "sig",
+      })
+    ).resolves.toBeUndefined();
+
+    const reloaded = await subscriptionRepository.subscriptionOfUser(user.id);
+    // markPastDue would have thrown ConflictError("A canceled subscription
+    // cannot be marked past due") without the B-2 guard — must stay canceled.
+    expect(reloaded?.status).toBe("canceled");
+  });
+});
