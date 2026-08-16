@@ -152,6 +152,12 @@ const envSchema = z
           .filter(origin => origin.length > 0);
         return origins.length > 0 ? origins : undefined;
       }),
+    /** Stripe API secret key. Required outside `development` (R-9). */
+    STRIPE_SECRET_KEY: z.string().trim().optional(),
+    /** Signing secret used to verify `Stripe-Signature` on the webhook route. Required outside `development` (R-9, DA-2). */
+    STRIPE_WEBHOOK_SECRET: z.string().trim().optional(),
+    /** External price id of the Pro plan's catalog entry — manual sync channel (DA-11). */
+    STRIPE_PRO_PRICE_ID: z.string().trim().optional(),
   })
   .refine(data => data.NODE_ENV === "development" || !!data.API_BASE_URL, {
     message: "API_BASE_URL is required outside development",
@@ -186,6 +192,17 @@ const envSchema = z
       message:
         "CORS_ALLOWED_ORIGINS entries must be exact origins (no trailing slash, no wildcard, no path/query)",
       path: ["CORS_ALLOWED_ORIGINS"],
+    }
+  )
+  .refine(data => data.NODE_ENV === "development" || !!data.STRIPE_SECRET_KEY, {
+    message: "STRIPE_SECRET_KEY is required outside development",
+    path: ["STRIPE_SECRET_KEY"],
+  })
+  .refine(
+    data => data.NODE_ENV === "development" || !!data.STRIPE_WEBHOOK_SECRET,
+    {
+      message: "STRIPE_WEBHOOK_SECRET is required outside development",
+      path: ["STRIPE_WEBHOOK_SECRET"],
     }
   );
 
