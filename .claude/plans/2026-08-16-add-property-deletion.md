@@ -7,7 +7,7 @@
 >
 > O usuário reverteu duas decisões deste plano **depois** de ele ter sido implementado, revisado pelo Analista de Segurança e virado o PR #37:
 >
-> - **DA-4** (recusar a exclusão com 409 quando há estadia pendente) → **revertida**. A exclusão passa a **cancelar as estadias futuras em cascata**, tudo ou nada. Ver **§8.2**.
+> - **DA-4** (recusar a exclusão com 409 quando há estadia **pendente** — futura **ou** em andamento) → **revertida em parte**. A exclusão passa a **cancelar as estadias futuras em cascata**, tudo ou nada, e o 409 sobrevive **estreitado** para o único caso de estadia **em andamento agora**. Ver **§8.2**.
 > - **DA-12** (sem tool MCP `delete_property`) → **revertida**, e a exigência virou **regra permanente do projeto**. Ver **§8.6**.
 >
 > As §§1–7 abaixo são o registro da decisão **original** e ficam intactas de propósito: uma reversão consciente é informação, e quem ler o plano precisa ver o argumento que foi derrubado, não só o que sobreviveu. Onde uma decisão foi revista há um marcador `⚠️ REVISTO` apontando para a §8.
@@ -161,7 +161,7 @@ Sem o parâmetro, o Desenvolvedor faria checagem inline em `booking` e o plano v
 
 ### DA-3 — A pergunta "tem estadia pendente?" atravessa contextos por uma **porta declarada em `property_management`**
 
-> ⚠️ **PARCIALMENTE REVISTO — ver §8.3 (DA-3-R).** A inversão de dependência (porta em `property_management`, implementação em `booking`) **sobrevive inteira** e é o que torna a cascata possível sem fechar ciclo. O que muda é a natureza da porta: ela deixa de ser uma **consulta** (`hasPendingStays → boolean`) e vira um **comando** (`releaseFutureOccupancy`). O parágrafo "Retorna `boolean`, não lança" abaixo está superado.
+> ⚠️ **PARCIALMENTE REVISTO — ver §8.3 (DA-3-R).** A inversão de dependência (porta em `property_management`, implementação em `booking`) **sobrevive inteira** e é o que torna a cascata possível sem fechar ciclo. O que muda é a natureza da porta: ela deixa de ser uma **consulta** (`hasPendingStays → boolean`) e vira um **comando** (`releaseFutureOccupancy`), com a regra de negócio viajando por um callback, no idioma de `saveNewWithinQuota`. O parágrafo "Retorna `boolean`, não lança" abaixo está superado na forma; o princípio dele — a regra fica em `property_management` — continua honrado.
 
 Esta é a decisão que mais fácil sairia errada.
 
@@ -188,7 +188,7 @@ Decisões dentro desta:
 
 ### DA-4 — Propriedade com estadia pendente **não** pode ser excluída → `ConflictError` (409)
 
-> ⚠️ **REVISTO — ver §8.2 (DA-4-R).** O usuário decidiu o contrário: a exclusão **cancela** as estadias futuras em cascata e não bloqueia. O 409 por ocupação deixa de existir. Os dois argumentos abaixo contra a cascata foram respondidos por duas decisões dele — estadia **em andamento não é cancelada** (resolve o conflito com `Stay.cancel()`) e **tudo ou nada** (resolve o estado parcial). O texto original fica como registro do que foi derrubado.
+> ⚠️ **REVISTO EM PARTE — ver §8.2 (DA-4-R).** A exclusão passa a **cancelar** as estadias futuras em cascata: para elas o 409 deixa de existir. O 409 **sobrevive**, estreitado ao único caso de estadia **em andamento agora**. Os dois argumentos abaixo contra a cascata foram respondidos por duas decisões do usuário — estadia em andamento não é cancelada (resolve o conflito com `Stay.cancel()`) e tudo ou nada (resolve o estado parcial). O texto original fica como registro do que foi derrubado — e da parte que resistiu.
 
 **Decisão: recusar.** As duas alternativas — excluir mesmo assim, ou cancelar as estadias em cascata — são ambas piores, e por motivos concretos:
 
@@ -492,54 +492,87 @@ Duas decisões de produto do usuário derrubam partes do desenho original:
 | `Stay.cancel()` proíbe cancelar estadia iniciada ⇒ a cascata seria parcialmente impossível | **Estadia em andamento não é cancelada.** Só as futuras. A invariante deixa de ser contrariada. |
 | A cascata poderia falhar no meio, deixando estado parcial (N estornos no ledger)       | **Tudo ou nada.** Qualquer falha ⇒ nada é aplicado, o usuário recebe erro e tenta de novo.       |
 
-Ambas as respostas são boas e derrubam as objeções como estavam escritas. O que elas **não** resolvem, e que esta revisão levanta, é a estadia em andamento que sobrevive numa propriedade invisível (**R-10**) e os códigos de fechadura dos cancelamentos em cascata (**R-11**).
+Ambas as respostas são boas e derrubam as objeções como estavam escritas. Restaram duas consequências que esta revisão levantou:
+
+- **R-10 — a estadia em andamento sobrevivendo numa propriedade invisível.** ✅ **Resolvido:** o usuário aceitou a recomendação do Arquiteto de manter o 409 **estreitado** ao caso "há hóspede no imóvel agora". A cascata sobre as estadias futuras é integral; a órfã deixa de ser possível. Ver **§8.2** e o box no **R-10**.
+- **R-11 — os códigos de fechadura dos cancelamentos em cascata.** ⚠️ **Aceito como dívida priorizada**, fora desta entrega. É o único risco 🔴 que ela deixa em aberto.
+
+**Estado das decisões: as 4 pendências da §8.10 estão fechadas.** O plano está pronto para execução.
 
 **Mudança 2 — MCP é requisito permanente.** Todo caso de uso/endpoint novo nasce com a tool MCP correspondente, para que o produto funcione independente de UI. A DA-12 é revertida e a regra é registrada no `CLAUDE.md`.
 
-## 8.2 DA-4-R — Excluir a propriedade **libera a ocupação futura** (substitui a DA-4)
+## 8.2 DA-4-R — Excluir a propriedade **libera a ocupação futura**; só a estadia **em andamento** bloqueia
 
-**Decisão: cancelar em cascata, sem bloquear.**
+> **✅ Decisão do usuário fechada (§8.10, item 1):** o 409 estreito foi aceito. Cancela-se em cascata tudo que é futuro; a exclusão é recusada **exclusivamente** enquanto houver hóspede no imóvel **agora**. A DA-4 original barrava também por estadia futura — que é o caso comum — e era isso que tornava a rota inútil na prática. O portão que sobra custa ao dono a espera até o check-out do hóspede atual: dias, não meses.
 
-**Predicado exato de quem é cancelado:**
+**Predicado exato, por situação da estadia:**
 
-| Situação da estadia                                   | Predicado                                       | O que acontece                                          |
-| ------------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------- |
-| **Futura**                                            | `deleted_at IS NULL AND check_in > agora`      | **Cancelada** — `Stay.cancel()` + `StayCanceledEvent`   |
-| **Em andamento**                                      | `check_in <= agora AND check_out >= agora`     | **Sobrevive intacta.** Termina normalmente. Ver **R-10** |
-| **Passada**                                           | `check_out < agora`                             | Intocada                                                |
-| **Já cancelada**                                      | `deleted_at IS NOT NULL`                        | Intocada (`Stay.cancel()` lançaria `IllegalStateError`) |
+| Situação da estadia | Predicado                                                        | O que acontece                                                    |
+| ------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **Em andamento**    | `deleted_at IS NULL AND check_in <= agora AND check_out >= agora` | **Bloqueia a exclusão** → `ConflictError` (409). Nada é aplicado. |
+| **Futura**          | `deleted_at IS NULL AND check_in > agora`                        | **Cancelada** — `Stay.cancel()` + `StayCanceledEvent`             |
+| **Passada**         | `check_out < agora`                                              | Intocada                                                          |
+| **Já cancelada**    | `deleted_at IS NOT NULL`                                         | Intocada (`Stay.cancel()` lançaria `IllegalStateError`)           |
 
-O `ConflictError` (409) por ocupação **deixa de existir** no `DeletePropertyUseCase`. Nenhum outro 409 toma o lugar dele.
+Mensagem do 409, em inglês e acionável — substitui a da DA-4:
 
-**Nenhum método novo de repositório é necessário.** `StayRepository.allFutureFromProperty` já devolve exatamente `check_out >= agora AND deleted_at IS NULL` — o conjunto "futura **ou** em andamento". A implementação em `booking` particiona esse resultado em memória por `check_in > agora`: o que passa é cancelado, o que não passa sobrevive. Reusar a query existente também evita mexer num método que `ReconcileExternalBookingsUseCase` já consome.
+```
+This property has a guest checked in right now. You can delete it once the current stay ends.
+```
 
-⚠️ **Armadilha obrigatória de implementação:** `Stay.cancel()` compara `check_in` com `new Date()` **no momento da chamada**, não com o instante da query. Entre o `SELECT` e o `cancel()` uma estadia pode começar, e aí `cancel()` lança `IllegalStateError` → 500 → sob "tudo ou nada" a exclusão inteira falha por causa de uma corrida de milissegundos. A implementação **deve** rechecar `check_in > new Date()` imediatamente antes de cancelar e **pular** a estadia caso contrário. Pular não é concessão: uma estadia que acabou de começar é, por definição, "em andamento", e a regra diz que ela sobrevive.
+**Por que essa forma elimina a estadia órfã (R-10):** depois da exclusão, a propriedade não tem estadia futura (foram todas canceladas), não tem estadia em andamento (senão teria bloqueado) e não pode receber estadia nova (toda superfície de escrita 404 nela). Sobram só estadias passadas e canceladas — que não têm hóspede dentro do imóvel nem nada a gerenciar. **A classe inteira do problema desaparece**, e com ela a necessidade de o dono ter visibilidade de uma estadia numa propriedade que ele mesmo excluiu.
 
-**Forma revisada do use case (substitui a da DA-8):**
+### Semântica e query — confirmadas, sem método novo de repositório
+
+`StayRepository.allFutureFromProperty` devolve `check_out >= agora AND deleted_at IS NULL`, que é exatamente a **união** dos dois conjuntos que interessam. A partição é feita **no serviço**, em memória, por `check_in <= agora`:
+
+- `check_in <= agora` → **em andamento** (o `check_out >= agora` já veio da query);
+- `check_in > agora` → **futura**.
+
+**Decisão: não criar método novo de repositório.** Três razões:
+
+1. a partição precisa dos **dois** conjuntos na mesma operação (um para bloquear, outro para cancelar) — dois métodos seriam duas idas ao banco para responder à mesma pergunta;
+2. `allFutureFromProperty` já é consumido por `ReconcileExternalBookingsUseCase`; reusá-lo sem tocar evita regressão colateral;
+3. a invariante `check_in < check_out` (validada em `Stay`) garante que `check_in > agora ⇒ check_out > agora` — ou seja, **nenhuma estadia futura escapa** da query. A cobertura é completa, não aproximada.
+
+### A corrida do `check_in` que vira "agora" — resolvida por 409, não por skip
+
+`Stay.cancel()` compara `check_in` com `new Date()` **no momento da chamada**, não com o instante da query. Entre o `SELECT` e o `cancel()`, uma estadia classificada como futura pode começar.
+
+Na revisão anterior a saída proposta era **pular** essa estadia. Com o 409 estreito isso ficou **errado**: pular produziria exatamente a órfã que a decisão #1 existe para eliminar — propriedade excluída com hóspede dentro. A saída correta agora é a **oposta**: rechecar `check_in > new Date()` imediatamente antes de cada `cancel()` e, se alguma já começou, **abortar a operação inteira com o mesmo `ConflictError`**. A transação faz rollback, o usuário recebe um 409 correto, e na tentativa seguinte a estadia já é classificada como em andamento pelo caminho normal. A corrida vira o comportamento certo em vez de um 500 ou de uma órfã.
+
+### Forma revisada do use case (substitui a da DA-8)
 
 ```
 DeletePropertyUseCase.execute({ property_id }, user):
   1. property = propertyRepository.propertyOfId(property_id)
-  2. PropertyOwnershipPolicy.ensureOwnership(property, user)      → 404
-  3. transactionRunner.run(async () => {                            ← DA-13
-       released = await propertyOccupancy.releaseFutureOccupancy(property.id)
+  2. PropertyOwnershipPolicy.ensureOwnership(property, user)          → 404
+  3. transactionRunner.run(async () => {                                ← DA-13
+       canceled = await propertyOccupancy.releaseFutureOccupancy(
+         property.id,
+         ensureNoStayInProgress                                         → 409
+       )
        property.softDelete()
        await propertyRepository.save(property)
      })
-  4. return released
+  4. return { canceled_stays: canceled }
 ```
 
-- **A ordem `404` primeiro continua obrigatória e continua item de revisão de segurança.** Ela agora protege ainda mais: sem ela, um estranho conseguiria **cancelar reservas alheias** mandando `DELETE` num UUID adivinhado. O passo 2 é a única coisa entre um `property_id` e o cancelamento em massa das reservas de outra pessoa.
-- **Cancelar antes de marcar `deleted_at`**, dentro da mesma transação. Ordem inversa faria qualquer leitura interna à transação enxergar uma propriedade já excluída.
+- **A ordem `404` antes de tudo continua obrigatória e continua item de revisão de segurança.** Ela protege mais do que antes: sem ela, um estranho conseguiria **cancelar reservas alheias** mandando `DELETE` num UUID adivinhado. O passo 2 é a única coisa entre um `property_id` e o cancelamento em massa das reservas de outra pessoa. O 409 continua vindo **depois** do 404, pelo motivo original (não virar oráculo de existência).
+- **A checagem de estadia em andamento acontece dentro da transação**, não antes dela. Fora, haveria uma janela entre "não há hóspede" e o commit. Dentro, o rollback é total e gratuito — nada foi escrito ainda.
+- **Cancelar antes de marcar `deleted_at`**, na mesma transação. A ordem inversa faria qualquer leitura interna enxergar uma propriedade já excluída.
 - **A porta nunca rechecha posse** (DA-3, "interface estreita"). A posse é do passo 2 e só dele.
 
-**Retorno da rota: `200` com corpo, não mais `204`.** Uma cascata destrutiva que não relata o que destruiu é uma ação silenciosa. O corpo declara as duas consequências:
+### Retorno da rota: `200` com `{ "canceled_stays": 3 }`
 
-```
-{ "canceled_stays": 3, "surviving_in_progress_stays": 1 }
-```
+> **✅ Decisão do usuário fechada (§8.10, item 3).**
 
-`surviving_in_progress_stays` existe para que o frontend possa avisar "há um hóspede na propriedade agora; você perderá a visibilidade dessa estadia até o check-out" (**R-10**) e para que a tool MCP consiga relatar o que fez. O contrato `204` só existe no PR ainda não mergeado, então mudá-lo é de graça.
+Uma cascata destrutiva que não relata o que destruiu é uma ação silenciosa; o `204` original não serve mais. Duas sub-decisões, ambas consequência do 409 estreito:
+
+- **`surviving_in_progress_stays` é descartado.** Com a decisão #1 ele seria **sempre `0`** no caminho de sucesso — estadia em andamento agora produz 409, não 200. Um campo constante é ruído que induz o frontend a tratar um caso que não existe.
+- **Contador, não lista de ids.** Devolver os ids das estadias canceladas entregaria referências mortas: no instante do commit a propriedade está soft-deletada e **todo caminho de leitura de estadia dela responde 404** (`GET /booking/stay/:id`, `GET /booking/property/:id/stays`). O frontend não teria o que fazer com os ids; o que ele mostra é "3 reservas canceladas", e é o que a tool MCP precisa para relatar ao usuário.
+
+`openApiSpec` final: **200** (com schema de corpo), **401**, **404**, **409** (só estadia em andamento).
 
 **O aviso prévio ao usuário não exige endpoint novo.** A posição do usuário — "avisar é responsabilidade do frontend" — já é atendível hoje: `GET /booking/property/:property_id/stays` lista as estadias da propriedade e o frontend conta as futuras antes de mostrar o diálogo de confirmação. Nada a construir no backend.
 
@@ -547,22 +580,35 @@ DeletePropertyUseCase.execute({ property_id }, user):
 
 A inversão de dependência da DA-3 continua correta e é justamente o que torna a cascata possível sem fechar ciclo: a regra "excluir uma propriedade libera a ocupação futura dela" é uma regra de **`property_management`**; quem sabe executá-la é **`booking`**. Direção de código continua `booking → property_management`.
 
-O que muda é a natureza da porta:
+O que muda é a natureza da porta — e, com o 409 estreito, ela vira **um método só que faz a checagem e a liberação atomicamente**:
 
 ```
 src/property_management/domain/service/property_occupancy.ts
 -   hasPendingStays(propertyId: string): Promise<boolean>
-+   releaseFutureOccupancy(propertyId: string): Promise<ReleasedOccupancy>
-+
-+   type ReleasedOccupancy = {
-+     canceled: number;
-+     surviving_in_progress: number;
-+   };
++   releaseFutureOccupancy(
++     propertyId: string,
++     ensureNoStayInProgress: (inProgressCount: number) => void
++   ): Promise<number>   // quantas estadias futuras foram canceladas
 ```
 
-- **`hasPendingStays` some** — fica sem nenhum chamador quando o 409 morre. Não manter "por precaução": porta larga é porta abusável.
-- O parágrafo da DA-3 "**Retorna `boolean`, não lança** … a porta é uma **consulta**, não uma regra" está **superado**. A porta agora é um comando. A regra que continua em `property_management` é *quando* liberar (na exclusão) e *o que* significa liberar (só o futuro); `booking` decide *como* (o que é cancelar uma estadia).
-- **Vocabulário:** `releaseFutureOccupancy` continua falando a língua de `property_management` ("ocupação"), não a de `booking` ("estadia"). O tipo de retorno é o limite de vazamento aceito, pelo mesmo critério da DA-3 original.
+**O callback é o ponto todo, e é o idioma já estabelecido da casa.** É exatamente a forma de `PropertyRepository.saveNewWithinQuota(property, ensureWithinQuota)`: quem executa a operação transacional lê o fato e **entrega o fato a um callback do chamador**, que é quem lança o erro de domínio. Assim:
+
+- a **regra** ("não se exclui propriedade com hóspede dentro") continua morando em `property_management`, junto com o `ConflictError` — `booking` não aprende regra nenhuma de exclusão de propriedade;
+- a **execução** e a **atomicidade** ficam em `booking`, que é quem sabe o que é uma estadia;
+- a checagem e o cancelamento acontecem na **mesma passada, dentro da mesma transação**, sem uma segunda ida ao banco e sem janela entre as duas.
+
+Corpo da implementação (`StayPropertyOccupancy`), na ordem:
+
+1. `allFutureFromProperty(propertyId)` — uma query, o conjunto união (§8.2);
+2. particiona por `check_in <= agora` → em andamento / futuras;
+3. `ensureNoStayInProgress(emAndamento.length)` → lança `ConflictError` se houver;
+4. para cada futura: recheca `check_in > new Date()` e, se alguma já começou, chama `ensureNoStayInProgress(1)` — mesmo erro, mesma regra, mesma origem (§8.2, a corrida);
+5. cancela via `CancelStayService`;
+6. devolve a contagem.
+
+- **`hasPendingStays` some.** O predicado dela (`check_out >= agora`, futura **ou** em andamento) é justamente o que a decisão #1 desfez. Não manter "por precaução": porta larga é porta abusável.
+- O parágrafo da DA-3 "**Retorna `boolean`, não lança** … a porta é uma **consulta**, não uma regra" está **parcialmente superado, e parcialmente honrado**: a porta virou comando, mas a regra continua fora de `booking` — ela só mudou de veículo, do retorno para o callback.
+- **Vocabulário:** `releaseFutureOccupancy` continua falando a língua de `property_management` ("ocupação"), não a de `booking` ("estadia"). `inProgressCount` é um número, não uma `Stay` — nenhum agregado de `booking` atravessa a fronteira.
 
 **Para não duplicar o que "cancelar uma estadia" significa**, extrair um `CancelStayService` em `booking/application/service/` com o corpo hoje dentro de `CancelStayUseCase` (`stay.cancel()` → `saveStay` → `dispatch(StayCanceledEvent)`). Passam a usá-lo:
 
@@ -619,13 +665,19 @@ O projeto já tem o vocabulário para isso: o alias `DbExecutor = db | tx` exist
 - **(B) Um método de repositório em SQL cru fazendo tudo**, espelhando `AuthPostgresRepository.purgeUserData` (que já escreve em tabelas de outros BCs dentro de uma `db.transaction`, com comentário justificando). É a alternativa mais barata e tem precedente na casa. **Rejeitada** porque reimplementaria em SQL as invariantes de `Stay.cancel()` e o estorno de `RevertRevenueOnStayCancel`, contornando o domínio e os handlers — divergiria em silêncio no dia em que a regra de cancelamento mudar. Fica registrada como plano B caso o `AsyncLocalStorage` dê problema no Bun.
 - **(C) Sem transação, best-effort com compensações** — rejeitada: o usuário pediu tudo ou nada, e compensar escritas de ledger é pior que uma transação.
 
-## 8.5 DA-14 — O corolário da DA-4 sobre `GetPublicStayUseCase` está **invalidado**
+## 8.5 DA-14 — `GetPublicStayUseCase`: o corolário da DA-4 é **restaurado**, mas por um caminho novo
 
-A DA-4 justificava não tocar em `GET /public/booking/stay/:stay_id` assim: *"como a DA-4 garante que uma propriedade excluída não tem estadia pendente, o único link público que sobreviveria aponta para estadia passada"*. **Isso deixou de ser verdade**: agora uma propriedade excluída pode ter uma estadia **em andamento**, com link público vivo.
+A DA-4 justificava não tocar em `GET /public/booking/stay/:stay_id` assim: *"como a DA-4 garante que uma propriedade excluída não tem estadia pendente, o único link público que sobreviveria aponta para estadia passada"*.
 
-**Decisão: continuar servindo, e agora por um motivo próprio, não herdado.** O hóspede está no imóvel, com contrato válido, e precisa do próprio código de acesso e dos dados da estadia. Devolver 404 nesse link deixaria um hóspede legítimo na porta. A consequência — durante a janela da estadia, ela é visível para o hóspede e invisível para o dono — é a mesma assimetria de **R-10**, e não é criada pelo link público; é criada pela exclusão.
+Com o 409 estreito (decisão #1), **a conclusão volta a valer**: uma propriedade excluída não tem estadia em andamento (teria bloqueado) nem futura (foram canceladas). **Decisão: `GetPublicStayUseCase` continua intocado.** Nenhuma mudança de código.
 
-⚠️ Ponto explícito para o **Analista de Segurança** revalidar: a decisão sobre esse endpoint mudou de fundamento e precisa de aprovação nova, não da anterior.
+⚠️ **Mas o caminho até a conclusão mudou, e revela um fato que a DA-4 não previa.** Antes sobravam só estadias **passadas**. Agora sobram passadas **e canceladas pela cascata** — e, verificado no código, `GetPublicStayUseCase` **não filtra `deleted_at`**: ele faz `stayOfId` e devolve `check_in`, `check_out`, `entrance_code` e o nome do hóspede sem olhar se a estadia foi cancelada.
+
+Consequência: o hóspede de uma reserva cancelada pela cascata **continua vendo a página com o código de entrada dele**, que — por **R-11** — continua válido na fechadura. As duas lacunas se somam: a página confirma o código, e o código funciona.
+
+Isso **não** é criado por esta entrega (cancelar uma estadia manualmente sempre teve esse efeito), mas a cascata o multiplica por N. **Registrado em R-11**, não corrigido aqui: filtrar `deleted_at` nesse endpoint é mudança de contrato de uma rota pública que hóspedes legítimos usam, e merece decisão própria junto com o R-6.
+
+⚠️ Ponto explícito para o **Analista de Segurança**: revalidar a manutenção do endpoint sabendo que ele serve `entrance_code` de estadia cancelada.
 
 ## 8.6 DA-12-R — Tool MCP `delete_property`, e a regra permanente
 
@@ -638,8 +690,8 @@ O argumento original ("uma propriedade inteira não é operação que se entrega
 - arquivo `src/core/infra/mcp/tools/delete_property.ts`, `export function makeDeletePropertyTool(di: PropertyManagementDi)`;
 - `inputSchema` com um campo, `property_id`, `.describe()`ado;
 - `annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }` — igual a `cancel_stay` e `delete_property_setting`;
-- **`description` obrigatoriamente explicitando a cascata** — que reservas futuras serão canceladas, que a estadia em andamento sobrevive, e que a operação é permanente do ponto de vista do produto. É a única forma de "consentimento informado" que o protocolo oferece hoje;
-- retorna o corpo da §8.2 (`canceled_stays`, `surviving_in_progress_stays`) para que o agente consiga relatar ao usuário o que de fato aconteceu — não `{ success: true }`;
+- **`description` obrigatoriamente explicitando a cascata** — que as reservas futuras serão canceladas, que a chamada é recusada enquanto houver hóspede no imóvel, e que a operação é permanente do ponto de vista do produto. É a única forma de "consentimento informado" que o protocolo oferece hoje;
+- retorna o corpo da §8.2 (`canceled_stays`) para que o agente consiga relatar ao usuário quantas reservas foram canceladas — não `{ success: true }`;
 - sem `try/catch`: `registerMcpTool` + `mapErrorToToolResult` já cobrem `ResourceNotFoundError`;
 - registro em três pontos: barrel `tools/index.ts`, bloco de import de `mcp/routes.ts` e o array `tools` do `makeMcpRequestHandler`;
 - **nenhuma mudança de DI** — `makeDeletePropertyUseCase()` já existe em `property_management_di.ts:90` e `propertyManagementDi` já chega ao MCP pelas mesmas instâncias singleton do HTTP.
@@ -652,9 +704,13 @@ Vai para o `CLAUDE.md` (e é candidata a virar também um passo em `.claude/rule
 
 ## 8.7 Riscos novos e reavaliados
 
-### R-10 — 🔴 A estadia em andamento vira órfã numa propriedade que sumiu
+### R-10 — ✅ RESOLVIDO pela decisão #1: a estadia órfã deixa de ser possível
 
-Consequência direta da decisão "estadia em andamento não é cancelada". Depois da exclusão, com um hóspede dentro do imóvel:
+> **Este risco foi eliminado por desenho, não mitigado.** O usuário aceitou o 409 estreito (§8.10, item 1): a exclusão é recusada enquanto houver hóspede no imóvel. Como uma propriedade excluída não pode ter estadia em andamento nem futura nem receber estadia nova, **não existe mais estadia viva numa propriedade invisível**. As duas mitigações que eu havia proposto (devolver `surviving_in_progress_stays`, avisar na descrição da rota) caem junto — não há o que mitigar. O único resíduo é a corrida do **R-3**, que é outra classe de problema (reserva nova concorrente) e continua aceita.
+>
+> O texto abaixo fica como registro do que teria acontecido sem essa decisão — é o argumento que a sustentou.
+
+Consequência direta da decisão "estadia em andamento não é cancelada", **caso a exclusão não bloqueasse**. Depois da exclusão, com um hóspede dentro do imóvel:
 
 | O dono...                            | Hoje, depois da exclusão                                     |
 | ------------------------------------- | ------------------------------------------------------------ |
@@ -668,26 +724,37 @@ Consequência direta da decisão "estadia em andamento não é cancelada". Depoi
 
 Recuperação: **só** `UPDATE properties SET deleted_at = NULL` por suporte. Não há caminho de usuário.
 
-**Recomendação do Arquiteto (decisão de produto já tomada, registro obrigatório do risco):** aceitar, **mas** com duas mitigações baratas:
+Foi este quadro que motivou a recomendação do 409 estreito, aceita pelo usuário — ver o box acima.
 
-1. o corpo da resposta devolve `surviving_in_progress_stays` (§8.2), para o frontend poder avisar antes/depois;
-2. a descrição da rota e da tool dizem explicitamente que a estadia em andamento sobrevive e sai da visão do dono.
+### R-11 — 🔴 O código da fechadura sobrevive ao cancelamento — DÍVIDA PRIORIZADA, fora desta entrega
 
-**Alternativa que eu recomendaria considerar** — e que satisfaz as duas decisões do usuário sem produzir órfão: manter o 409 **exclusivamente** para o caso "há estadia em andamento **agora**", e cancelar em cascata tudo que for futuro. Isso é muito mais estreito que a DA-4 original (que também barrava por estadia futura, o caso comum): na prática só adia a exclusão até o hóspede atual fazer check-out — dias, não meses — e elimina inteiramente a classe de problema. **Registrado como pendência de decisão em §8.10.**
+> **✅ Decisão do usuário fechada (§8.10, item 2): fica como dívida priorizada, fora do escopo desta entrega.** O usuário está ciente de que a cascata amplia a escala do problema. **É o item de maior consequência no mundo real que esta entrega cria, e o único risco 🔴 que sai dela em aberto.**
 
-### R-11 — 🔴 Os códigos de fechadura dos cancelamentos em cascata continuam válidos
+**Isto já é uma lacuna hoje, sem nenhuma cascata.** `CreateTempPasswordOnBook` programa a senha na fechadura via Tuya no `StayBookedEvent`, e **não existe handler nenhum** — em lugar algum do código — que a remova. Cancelar uma estadia futura pela rota que já está em produção (`DELETE /booking/stay/:stay_id`) **já deixa hoje** o código do hóspede válido até a data original de check-in/check-out. Quem cancela hoje já está exposto.
 
-Escalação do **R-6**. `CreateTempPasswordOnBook` programa a senha na Tuya no `StayBookedEvent`; **nada** a remove no cancelamento. Sob a DA-4 original isso era contido — não se excluía propriedade com estadia pendente, e o dono cancelava uma a uma, deliberadamente. Agora o sistema cancela N estadias de uma vez, e ficam **N códigos válidos** numa propriedade que sumiu de toda superfície do dono, até a data de check-out original de cada uma.
+**O que a cascata muda é escala e intenção**, não a natureza:
 
-Consequência física: hóspedes com reserva cancelada continuam conseguindo entrar no imóvel.
+| | Hoje (sem cascata) | Com a cascata |
+| --- | --- | --- |
+| Quantos códigos ficam órfãos por vez | 1, por ato deliberado do dono | **N**, por um único clique |
+| O dono sabe quais hóspedes ficaram com acesso | sim — ele cancelou um a um | **não** — a propriedade sumiu da visão dele junto |
+| Ele consegue conferir depois | sim, pela lista de estadias | **não** — `GET /booking/property/:id/stays` responde 404 |
 
-**Recomendação: `RemoveTempPasswordOnStayCancel` (R-6) deve sair junto com esta entrega ou imediatamente depois**, e deve seguir a parte 3 da DA-13 (pós-commit, idempotente, retentável — nunca dentro da transação). Não é bloqueador formal desta entrega, mas é o item de maior consequência no mundo real que ela cria.
+Some-se o achado da **DA-14**: `GetPublicStayUseCase` não filtra `deleted_at`, então o hóspede da reserva cancelada **continua vendo a página com o próprio código de entrada** — a página confirma o código e o código funciona.
 
-### R-12 — 🟠 Nenhum hóspede é avisado do cancelamento
+**Recomendação do Arquiteto para a entrega que resolver isto:** um `RemoveTempPasswordOnStayCancel` (handler de `StayCanceledEvent`) seguindo a parte 3 da **DA-13** — efeito **pós-commit, idempotente e retentável**, nunca dentro da transação de exclusão, sob pena de a Tuya fora do ar desfazer a exclusão inteira. Avaliar junto o filtro de `deleted_at` em `GetPublicStayUseCase`, que é a outra metade da mesma exposição.
+
+**Mitigação disponível enquanto isso, sem código:** o frontend avisar, no diálogo de confirmação, que os hóspedes com reserva cancelada mantêm o código de acesso até a data original — coerente com a posição do usuário de que avisar é responsabilidade do frontend.
+
+### R-12 — 🟠 Nenhum hóspede é avisado do cancelamento — FORA DE ESCOPO, confirmado
+
+> **✅ Decisão do usuário fechada (§8.10, item 4): fora do escopo desta entrega, registrado como risco conhecido.**
 
 A cascata cancela reservas confirmadas sem nenhum caminho de notificação. Existe infra de email (Resend), usada só para recuperação de senha. Hoje o hóspede descobre na chegada. Fora do escopo, mas é um buraco de produto **criado** por esta entrega — antes, todo cancelamento era um ato deliberado do dono, que presumivelmente avisava.
 
-### R-13 — 🟠 Reserva de origem externa (Airbnb/Booking) não é cancelada na origem
+### R-13 — 🟠 Reserva de origem externa (Airbnb/Booking) não é cancelada na origem — FORA DE ESCOPO, confirmado
+
+> **✅ Decisão do usuário fechada (§8.10, item 4): fora do escopo desta entrega, registrado como risco conhecido.**
 
 Estadias criadas por `ReconcileExternalBookingsUseCase` são canceladas **localmente**; a reserva continua existindo na plataforma de origem, que a Sogio não tem como escrever. Com a sync parando (DA-7), a estadia também não reaparece. O hóspede vai aparecer no imóvel. Sem ação possível no backend; registrar.
 
@@ -703,9 +770,11 @@ Ver DA-13. Nada impede um handler externo de ser registrado em `StayCanceledEven
 
 Um `delete_property` errado por um agente exclui a propriedade **e** cancela N reservas — e nada disso é restaurável por caminho de usuário. O que a infra de MCP oferece hoje: `annotations.destructiveHint`, a `description` e o portão de entitlement por conta (`mcp/routes.ts`). O que **não existe**: confirmação por tool, escopo por tool, gate de admin por tool. Mitigações desta entrega: annotations corretas, descrição explícita da cascata e retorno dos contadores. **Revisão obrigatória do Analista de Segurança.** Lacuna estrutural ("confirmação/escopo por tool destrutiva") registrada para entrega própria — e ela vale para `cancel_stay` e `delete_property_setting`, que já estão expostas.
 
-### R-3 — reavaliado (🟠, consequência pior)
+### R-3 — reavaliado (🟠, consequência pior) — **não é resolvido pela decisão #1**
 
-A janela de TOCTOU passa a ser entre a liberação da ocupação e o commit. Uma reserva que entre nela vira uma **estadia futura viva numa propriedade excluída** — e agora não existe mais o caminho "cancele as estadias e tente de novo", porque `CancelStayUseCase` 404 na propriedade excluída. Probabilidade continua baixíssima (exige o mesmo dono disparando `DELETE` e `POST /book` no mesmo instante). A decisão de aceitar (§7, item 2) continua de pé.
+Vale distinguir das corridas que a decisão #1 fechou. O 409 estreito e a rechecagem da §8.2 resolvem as estadias **que já existem** no momento da exclusão. O R-3 é sobre uma estadia **que ainda não existe**: uma reserva criada concorrentemente, entre a leitura da ocupação e o commit. `BookStayUseCase` não participa da transação, então nada a impede de inserir a linha nessa janela.
+
+Resultado: uma **estadia futura viva numa propriedade excluída** — e não existe mais o caminho "cancele as estadias e tente de novo", porque `CancelStayUseCase` 404 na propriedade excluída. Probabilidade continua baixíssima (exige o mesmo dono disparando `DELETE` e `POST /book` no mesmo instante). A decisão de aceitar (§7, item 2) continua de pé.
 
 Correção conhecida, se um dia importar: `pg_advisory_xact_lock(hashtext(property_id))` no topo da transação de exclusão **e** no caminho de escrita de `BookStayUseCase` — o padrão já existe em `property_setting_postgres_repository.ts:44`, com a mesma chave. Só funciona se **os dois lados** pegarem o lock, e `BookStayUseCase` não é transacional hoje; por isso não entra aqui. **Ponto para o Analista de Segurança confirmar a aceitação.**
 
@@ -726,16 +795,21 @@ Levantamento feito comparando `src/core/infra/mcp/tools/` (10 tools) com as rota
 
 **Fora do escopo por natureza** (a regra da §8.6 já as exclui, listadas para a decisão ficar visível): protocolo OAuth (`/register`, `/authorize`, `/token`, `/revoke`, `/connect/authorize/*`), documentos de descoberta `/.well-known/*`, webhook do gateway, `GET /public/booking/stay/:id`, material de credencial (`/auth/users`, `/auth/sign-in`, `/auth/change-password`, `/auth/password-reset/*`), `DELETE /auth/me` (purge LGPD irreversível), sessões de checkout/portal (devolvem URL para um humano abrir no navegador) e ops (`/health`, `/docs`).
 
-**Dois achados desta varredura que valem entrega própria:**
+### 🔴 Os dois bloqueios estruturais — pautam a próxima entrega nesta frente
 
-- `McpRouteDependencies` só recebe `propertyDi`, `stayDi`, `financeDi`, `propertyManagementDi` e `billingDi`. `tenantDi`, `authDi` e `backofficeDi` **não chegam ao MCP** — qualquer tool nesses BCs exige mexer no composition root primeiro.
-- Não existe **gate de admin por tool**; o MCP só tem o portão de entitlement por conta. Enquanto isso não existir, as 5 tools de `backoffice` não podem ser criadas com segurança.
+> **✅ Confirmado com o usuário:** a tool de exclusão de propriedade sai nesta entrega; os ~22 casos de uso restantes ficam como dívida registrada, sem plano de resolução agora. Mas os dois itens abaixo **não são trabalho de tool** — são pré-requisitos de infraestrutura. Enquanto existirem, a regra permanente da §8.6 **não é cumprível** para os BCs afetados, por mais disciplina que se tenha nas próximas entregas.
+
+**Bloqueio 1 — três containers de DI não chegam ao MCP.** `McpRouteDependencies` recebe só `propertyDi`, `stayDi`, `financeDi`, `propertyManagementDi` e `billingDi`. **`tenantDi`, `authDi` e `backofficeDi` não são passados.** Qualquer tool em `auth` (connected apps, revogar consentimento, `/auth/me`), em tenants (`ListTenants`) ou em `backoffice` exige **primeiro** mexer no composition root. É trabalho pequeno e mecânico, mas é pré-requisito: não dá para "só escrever a tool".
+
+**Bloqueio 2 — não existe gate de admin por tool.** O MCP tem um único portão, de **entitlement por conta**, aplicado à sessão inteira. Não há equivalente ao `adminOnly` das rotas HTTP. Três das cinco rotas de `backoffice` são `adminOnly`; expor as tools correspondentes hoje **entregaria a qualquer usuário com token de MCP** a escrita das configurações da aplicação. **As 5 tools de `backoffice` não podem ser criadas antes disso.** É bloqueio de segurança, não de conveniência.
+
+Os dois se somam a uma terceira lacuna já registrada em **R-16**: não há confirmação nem escopo por tool destrutiva — o que já vale, hoje, para `cancel_stay` e `delete_property_setting`, e passará a valer para `delete_property`. A entrega que atacar a dívida de MCP deve resolver **autorização por tool** (admin + escopo + confirmação de destrutivas) como um item só, antes de sair escrevendo as ~22 tools.
 
 ## 8.9 Tasks incrementais (10 em diante, sobre o que já está na branch)
 
 > As tasks 0–9 estão **concluídas** e continuam válidas, exceto onde uma task abaixo as altera. Nada é refeito do zero.
 
-10. **Porta `PropertyOccupancy` vira comando** — trocar `hasPendingStays` por `releaseFutureOccupancy(propertyId): Promise<ReleasedOccupancy>` em `src/property_management/domain/service/property_occupancy.ts`; reescrever o docblock (a inversão da DA-3 continua, a natureza muda: comando, não consulta — DA-3-R).
+10. **Porta `PropertyOccupancy` vira comando com callback de regra** — trocar `hasPendingStays` por `releaseFutureOccupancy(propertyId, ensureNoStayInProgress): Promise<number>` em `src/property_management/domain/service/property_occupancy.ts`; reescrever o docblock (a inversão da DA-3 continua; a natureza muda para comando, e a regra viaja pelo callback no mesmo idioma de `saveNewWithinQuota` — DA-3-R).
     - Dependências: nenhuma
 
 11. **`TransactionRunner` + executor ambiente** — porta em `core/application/transaction/`, implementação em `core/infra/database/` sobre `db.transaction` + `AsyncLocalStorage`; tornar cientes do executor ambiente **só** `PropertyPostgresRepository.save`, `StayPostgresRepository.saveStay`/`stayOfId` e `LedgerEntryPostgresRepository.save`. Fallback para `db` fora de transação ⇒ todo o resto do sistema fica com comportamento idêntico (DA-13).
@@ -744,27 +818,29 @@ Levantamento feito comparando `src/core/infra/mcp/tools/` (10 tools) com as rota
 12. **`CancelStayService`** — extrair de `CancelStayUseCase` o corpo `cancel → saveStay → dispatch(StayCanceledEvent)` para `booking/application/service/`; `CancelStayUseCase` mantém lookup + posse e delega. **Refactor puro: nenhuma mudança de comportamento externo, os testes de `DELETE /booking/stay/:id` passam sem alteração** (DA-3-R).
     - Dependências: nenhuma
 
-13. **`StayPropertyOccupancy.releaseFutureOccupancy`** — reusar `allFutureFromProperty`, particionar por `check_in > agora`, **rechecar `check_in > new Date()` imediatamente antes de cada `cancel()` e pular quem já começou** (§8.2), delegar ao `CancelStayService`, devolver os contadores. Nunca recheca posse.
+13. **`StayPropertyOccupancy.releaseFutureOccupancy`** — reusar `allFutureFromProperty` (sem método novo de repositório, §8.2), particionar por `check_in <= agora`, chamar `ensureNoStayInProgress(emAndamento.length)`, e para cada futura **rechecar `check_in > new Date()` imediatamente antes de `cancel()` — se alguma já começou, chamar `ensureNoStayInProgress(1)` e abortar, nunca pular** (§8.2, a corrida). Delegar ao `CancelStayService`; devolver a contagem. Nunca recheca posse.
     - Dependências: tasks 10, 12
 
-14. **`DeletePropertyUseCase`** — remover o `ConflictError` e o import; injetar `TransactionRunner`; envolver liberação + `softDelete` + `save` numa transação; devolver `ReleasedOccupancy`. Atualizar o docblock (hoje ele afirma "No cascade"). `PropertyManagementDi.makeDeletePropertyUseCase` ganha o `TransactionRunner`. **Revisão obrigatória do Analista de Segurança** — a ordem `404` antes de qualquer cancelamento é o que impede um estranho cancelar reservas alheias por UUID adivinhado.
+14. **`DeletePropertyUseCase`** — manter o `ConflictError`, **estreitado** para estadia em andamento, com a nova mensagem (§8.2); injetar `TransactionRunner`; envolver checagem + liberação + `softDelete` + `save` na **mesma** transação; devolver `{ canceled_stays }`. Atualizar o docblock (hoje ele afirma "No cascade" e descreve o 409 antigo). `PropertyManagementDi.makeDeletePropertyUseCase` ganha o `TransactionRunner`. **Revisão obrigatória do Analista de Segurança** — a ordem `404` antes de qualquer cancelamento é o que impede um estranho cancelar reservas alheias por UUID adivinhado, e o `404` antes do `409` continua sendo o que impede a resposta virar oráculo de existência.
     - Dependências: tasks 11, 13
 
-15. **`DeletePropertyController`** — remover o `409` do `openApiSpec`; `204` → `200` com schema de resposta (`canceled_stays`, `surviving_in_progress_stays`); reescrever a `description` para declarar a cascata, a sobrevivência da estadia em andamento e a perda de visibilidade dela (R-10).
+15. **`DeletePropertyController`** — `204` → `200` com schema de corpo `{ canceled_stays: number }`; **manter o `409` no `openApiSpec`**, com a descrição estreitada para "há hóspede no imóvel agora"; reescrever a `description` para declarar a cascata sobre as estadias futuras e o bloqueio pela estadia em andamento.
     - Dependências: task 14
 
 16. **Tool MCP `delete_property`** — `src/core/infra/mcp/tools/delete_property.ts` no padrão das 10 existentes; `destructiveHint: true`, `idempotentHint: false`; `description` explicitando a cascata; retorna os contadores; registro no barrel, no bloco de imports e no array `tools` de `mcp/routes.ts`. Sem mudança de DI. **Revisão obrigatória do Analista de Segurança** (R-16 — superfície nova e destrutiva).
     - Dependências: task 14
 
 17. **Testes** —
-    - **converter** os dois testes de `409` (`delete_property.test.ts:184` estadia futura, `:213` estadia em andamento) em testes de cascata: futura ⇒ `200`, estadia com `deleted_at` preenchido, `canceled_stays: 1`; em andamento ⇒ `200`, estadia **intacta**, `surviving_in_progress_stays: 1`;
+    - **converter** o teste de `409` por **estadia futura** (`delete_property.test.ts:184`) em teste de cascata: ⇒ `200`, `canceled_stays: 1`, estadia com `deleted_at` preenchido, propriedade excluída;
+    - **manter** o teste de `409` por **estadia em andamento** (`delete_property.test.ts:213`) — continua `409`, só muda a mensagem esperada. É o teste que guarda a decisão #1;
+    - **`409` é total**: propriedade com uma estadia em andamento **e** duas futuras ⇒ `409` e as **duas futuras continuam ativas**. Prova que o bloqueio não deixa rastro parcial;
     - **tudo ou nada**: forçar falha no meio da cascata (ex.: `LedgerEntryRepository.save` lançando) e asseverar que **a propriedade continua ativa, as estadias intactas e nenhum estorno foi gravado**. É o teste que dá sentido à task 11 e o mais importante desta revisão;
     - **estorno**: N cancelamentos ⇒ N `LedgerEntry` negativas em `ledger_entries` (R-14);
-    - **estadia que começa na corrida**: estadia com `check_in` no passado imediato é pulada e não derruba a exclusão (§8.2);
+    - **corrida do `check_in`**: estadia cujo `check_in` acabou de passar leva a operação inteira a `409` — **nunca é pulada e nunca vira 500** (§8.2);
     - **regressão**: `DELETE /booking/stay/:stay_id` continua idêntico depois da extração do `CancelStayService` (task 12);
-    - **órfã (R-10)**: depois de excluir com estadia em andamento, `GET /booking/stay/:id` e `PATCH /booking/stay/:id` dão 404 para o dono, e `GET /public/booking/stay/:id` **continua 200** (DA-14) — o teste que documenta a assimetria;
-    - **MCP**: `delete_property` exclui e devolve os contadores; 404 em propriedade de terceiro; e a tool entra na varredura de `delete_property_mcp_sweep.test.ts`;
-    - **continuam válidos sem alteração**: `204`/`200` do caminho feliz, `401`, os dois `404` de posse/inexistência, o `404`-não-`500` do R-2, estadia só passada, estadia futura já cancelada, preservação de `LedgerEntry`/`PropertySetting`, cota, e a **varredura de invisibilidade inteira** (R-7) — 17 pontos, nada muda neles.
+    - **não sobra estadia viva (R-10)**: depois de um `200`, a propriedade não tem nenhuma estadia com `deleted_at IS NULL` e `check_out >= agora`. É o teste que documenta a eliminação da órfã;
+    - **MCP**: `delete_property` exclui e devolve `canceled_stays`; `409` com hóspede no imóvel; `404` em propriedade de terceiro; e a tool entra na varredura de `delete_property_mcp_sweep.test.ts`;
+    - **continuam válidos sem alteração**: caminho feliz (só o status muda para `200`), `401`, os dois `404` de posse/inexistência, o `404`-não-`500` do R-2, estadia só passada, estadia futura já cancelada, preservação de `LedgerEntry`/`PropertySetting`, cota, e a **varredura de invisibilidade inteira** (R-7) — 17 pontos, nada muda neles.
     - Dependências: tasks 15, 16
 
 18. **Documentação** — reescrever o parágrafo de exclusão de propriedade no `CLAUDE.md` (hoje ele afirma "sem cascata sobre estadias" e "não pode ser excluída (409)", ambos falsos depois da task 14); registrar a invariante do R-15 (nenhum handler de `StayCanceledEvent` com efeito fora do Postgres). A **regra permanente de MCP já foi registrada** no `CLAUDE.md` nesta revisão; avaliar replicá-la em `.claude/rules/architecture.md`, na lista "Creating a new route".
@@ -772,9 +848,13 @@ Levantamento feito comparando `src/core/infra/mcp/tools/` (10 tools) com as rota
 
 > Paralelizável: tasks **10, 11 e 12** não têm dependência entre si. A 13 depende da 10 e da 12; a 14 depende da 11 e da 13; a 15 e a 16 dependem só da 14 e são paralelas entre si.
 
-## 8.10 Pendências de decisão do usuário (Revisão 2)
+## 8.10 Decisões do usuário — Revisão 2 (todas fechadas)
 
-1. **R-10 — 🔴 Recomendação do Arquiteto: considerar manter o `409` apenas para "há estadia em andamento agora".** Isso preserva as duas decisões do usuário (cancela as futuras automaticamente; não cancela a em andamento) e elimina a estadia órfã invisível. Custo para o dono: esperar o hóspede atual fazer check-out — dias, não meses. Se a preferência for não bloquear em hipótese nenhuma, o plano segue como está escrito e o risco fica aceito e documentado.
-2. **R-11 — 🔴 `RemoveTempPasswordOnStayCancel` (R-6) entra nesta entrega, na próxima, ou fica em aberto?** Enquanto não existir, cada exclusão em cascata deixa códigos de fechadura válidos em nome de hóspedes com reserva cancelada.
-3. **Contrato da rota — `200` com `{ canceled_stays, surviving_in_progress_stays }` no lugar do `204`.** Recomendado (§8.2). Confirmar, já que o `204` só existe no PR ainda não mergeado.
-4. **R-12 / R-13 — notificação ao hóspede e reserva externa não cancelada na origem** — registrados como fora do escopo. Confirmar que fica assim.
+**Nenhuma pendência em aberto. O plano está pronto para o Desenvolvedor.**
+
+1. **R-10 / 409 estreito — ✅ RESOLVIDO: bloquear apenas por estadia em andamento agora.** A recomendação do Arquiteto foi aceita. Estadias futuras são canceladas em cascata, sem bloquear; a exclusão é recusada (409) só enquanto houver hóspede no imóvel. **A estadia órfã invisível deixa de ser possível** — R-10 é eliminado por desenho, não mitigado. Semântica confirmada em **§8.2**: em andamento = `check_in <= agora AND check_out >= agora AND deleted_at IS NULL`; futura = `check_in > agora AND deleted_at IS NULL`. **Sem método novo de repositório** — `allFutureFromProperty` já devolve a união dos dois e o filtro fica no serviço (§8.2, três razões). Impacto na porta em **§8.3**: um método só, `releaseFutureOccupancy(propertyId, ensureNoStayInProgress)`, com a regra viajando por callback no idioma de `saveNewWithinQuota`.
+2. **R-11 / senha da fechadura — ✅ RESOLVIDO: dívida priorizada, fora desta entrega.** O usuário está ciente de que a cascata amplia a escala (N reservas canceladas = N códigos válidos) e de que **a lacuna já existe hoje, sem cascata** — cancelar uma estadia pela rota em produção já deixa o código válido. Registrado em destaque em **R-11**, junto com o achado da **DA-14** (`GetPublicStayUseCase` não filtra `deleted_at` e ainda serve o `entrance_code` da estadia cancelada). É o único 🔴 que sai desta entrega em aberto.
+3. **Contrato da rota — ✅ RESOLVIDO: `200` com `{ "canceled_stays": 3 }`.** Duas sub-decisões minhas, consequência da decisão #1: **`surviving_in_progress_stays` foi descartado** (seria sempre `0` no caminho de sucesso — estadia em andamento agora produz 409, não 200; campo constante é ruído), e o corpo devolve **contagem, não lista de ids** (os ids viram referências mortas no instante do commit, porque toda leitura de estadia da propriedade excluída responde 404). Detalhamento em **§8.2**.
+4. **R-12 / R-13 — ✅ RESOLVIDO: fora do escopo, registrados como risco conhecido.** Nenhum hóspede é notificado do cancelamento (só há Resend para reset de senha) e reserva de origem Airbnb/Booking é cancelada só localmente — o hóspede aparece no imóvel.
+
+**Sobre a dívida MCP (§8.8):** a tool `delete_property` sai nesta entrega (task 16). Os ~22 casos de uso restantes ficam como dívida registrada, sem plano de resolução agora — a lista permanece no plano. Os **dois bloqueios estruturais** (containers `tenantDi`/`authDi`/`backofficeDi` que não chegam ao MCP, e ausência de gate de admin por tool) estão destacados em §8.8 e devem pautar a próxima entrega nessa frente: enquanto existirem, a regra permanente da §8.6 não é cumprível para `auth`, tenants e `backoffice`.
