@@ -24,12 +24,15 @@ import { DeletePropertySettingController } from "../../presentation/controller/d
 import { DeletePropertyUseCase } from "../../application/use_case/delete_property";
 import { DeletePropertyController } from "../../presentation/controller/delete_property.controller";
 import type { PropertyOccupancy } from "../../domain/service/property_occupancy";
+import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
+import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
 
 export class PropertyManagementDi {
   #propertyRepository: PropertyRepository;
   #propertySettingRepository: PropertySettingRepository;
   #entitlementService: EntitlementService;
   #propertyOccupancy: PropertyOccupancy;
+  #transactionRunner: TransactionRunner;
 
   constructor(
     entitlementService: EntitlementService,
@@ -39,6 +42,7 @@ export class PropertyManagementDi {
     this.#propertySettingRepository = new PropertySettingPostgresRepository();
     this.#entitlementService = entitlementService;
     this.#propertyOccupancy = propertyOccupancy;
+    this.#transactionRunner = new DrizzleTransactionRunner();
   }
 
   // Use Cases
@@ -90,7 +94,8 @@ export class PropertyManagementDi {
   makeDeletePropertyUseCase() {
     return new DeletePropertyUseCase(
       this.#propertyRepository,
-      this.#propertyOccupancy
+      this.#propertyOccupancy,
+      this.#transactionRunner
     );
   }
 
