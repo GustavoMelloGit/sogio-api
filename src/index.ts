@@ -35,7 +35,11 @@ async function main() {
     isProduction
       ? `🚀 API running in production mode`
       : `🚀 Listening on ${baseUrl}`,
-    { port: server.port, environment: env.NODE_ENV }
+    {
+      port: server.port,
+      environment: env.NODE_ENV,
+      hostname: env.SERVER_HOSTNAME,
+    }
   );
   logger.info(`📖 API docs: ${baseUrl}/docs`);
   logger.info(`📄 OpenAPI JSON: ${baseUrl}/docs/spec`);
