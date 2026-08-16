@@ -109,25 +109,27 @@ Invariantes:
 
 Não existe cron/scheduler no projeto. Se "acesso" fosse uma coluna, ela ficaria errada no instante em que um período vencesse e nada rodasse para virar o status. Portanto:
 
-- `SubscriptionAccessPolicy` (`billing/domain/policy/`) é uma **função pura**: `(Subscription, Plan, now) → Entitlement`.
+- `SubscriptionAccessPolicy` (`billing/domain/policy/`) é uma **função**: `(Subscription, Plan, freePlan, now) → Entitlement`. Recebe também o `Plan` Free — não só o `Plan` vigente — porque uma assinatura cancelada que chega ao fim do ciclo reverte a ele (ver decisão fechada abaixo).
 - Não existe status `expired` persistido. "Expirado" é o que a policy _conclui_ de `canceled` + `now > current_period_end`, ou de `past_due` + `now > grace_period_ends_at`.
 - Consequência direta e desejada: o requisito 10 ("não implementar expiração automática de grace period") sai de graça — a expiração é avaliada na leitura.
 
 Tabela de decisão da policy (`has_platform_access`):
 
-| status     | condição                      | acesso | `blocked_reason`        |
-| ---------- | ----------------------------- | ------ | ----------------------- |
-| `trialing` | `now ≤ trial_ends_at`         | sim    | —                       |
-| `trialing` | `now > trial_ends_at`         | não    | `trial_expired`         |
-| `active`   | período nulo (plano perpétuo) | sim    | —                       |
-| `active`   | `now ≤ current_period_end`    | sim    | —                       |
-| `active`   | `now > current_period_end`    | não    | `period_expired`        |
-| `past_due` | `now ≤ grace_period_ends_at`  | sim    | —                       |
-| `past_due` | `now > grace_period_ends_at`  | não    | `payment_failed`        |
-| `canceled` | `now ≤ current_period_end`    | sim    | —                       |
-| `canceled` | `now > current_period_end`    | não    | `subscription_canceled` |
+| status     | condição                      | acesso  | `max_properties`  | `blocked_reason` |
+| ---------- | ----------------------------- | ------- | ----------------- | ---------------- |
+| `trialing` | `now ≤ trial_ends_at`         | sim     | do `Plan` vigente | —                |
+| `trialing` | `now > trial_ends_at`         | não     | do `Plan` vigente | `trial_expired`  |
+| `active`   | período nulo (plano perpétuo) | sim     | do `Plan` vigente | —                |
+| `active`   | `now ≤ current_period_end`    | sim     | do `Plan` vigente | —                |
+| `active`   | `now > current_period_end`    | não     | do `Plan` vigente | `period_expired` |
+| `past_due` | `now ≤ grace_period_ends_at`  | sim     | do `Plan` vigente | —                |
+| `past_due` | `now > grace_period_ends_at`  | não     | do `Plan` vigente | `payment_failed` |
+| `canceled` | `now ≤ current_period_end`    | sim     | do `Plan` vigente | —                |
+| `canceled` | `now > current_period_end`    | **sim** | **do `freePlan`** | **—**            |
 
-`max_properties` do Entitlement vem sempre do `Plan` da Subscription, **inclusive quando o acesso está bloqueado** (o limite não é a defesa nesse caso; o bloqueio total é).
+`max_properties` do Entitlement vem do `Plan` da Subscription em todos os casos, **inclusive quando o acesso está bloqueado** (o limite não é a defesa nesse caso; o bloqueio total é) — **exceto** na última linha, decidida com o usuário: cancelamento não é bloqueio, é reversão ao Free.
+
+> **Decisão fechada com o usuário (substitui R-1 abaixo):** quando uma assinatura `canceled` chega ao fim do ciclo pago, a conta **não é bloqueada** — reverte para o comportamento do plano `Free` (acesso mantido, `max_properties = 1`, propriedades excedentes ficam grandfathered, exatamente como a DA-11 já trata downgrade). O `status` da `Subscription` continua `canceled` no banco (não muda o registro); só a leitura do `Entitlement` passa a resolver os limites do `freePlan` para esse caso. Isso é o que já estava descrito como opção (B) em R-1.
 
 ### DA-3 — Plano Free é **perpétuo**, com período nulo
 
@@ -234,25 +236,15 @@ Valores (o preço do Pro é placeholder, conforme requisito 5):
 
 ## 4. Riscos e Questionamentos
 
-### R-1 — 🔴 O que acontece depois que uma assinatura Pro cancelada vence? (**decisão do usuário necessária**)
+### R-1 — ✅ Resolvido: o que acontece depois que uma assinatura Pro cancelada vence
 
-O requisito 9 define o que acontece _até_ o fim do ciclo, não _depois_. Duas leituras plausíveis:
+**Decisão do usuário: (B) — Reversão ao Free.** A conta cai para `max_properties = 1` (do plano Free), mantém acesso, e as propriedades excedentes ficam grandfathered — mesmo tratamento que a DA-11 já dá a downgrade. Não é bloqueio total. Formalizado na DA-2 (tabela + nota de decisão) e refletido na task 5.
 
-- **(A) Bloqueio total** — a conta perde acesso à plataforma. É a leitura literal do requisito 11(a).
-- **(B) Reversão ao Free** — a conta cai para `max_properties = 1`, mantém acesso, e as propriedades excedentes ficam grandfathered. É o comportamento usual de SaaS e é o que a própria existência de um plano Free sugere.
+### R-2 — ✅ Resolvido: falha do handler de criação de subscription deixa a conta órfã
 
-**Default adotado no plano: (A)**, por ser a leitura literal. Mas (B) é provavelmente o que o negócio quer, e a diferença é grande: (A) significa que um cliente que cancela perde acesso aos dados de reservas dele. Se o usuário escolher (B), a mudança é contida (a `SubscriptionAccessPolicy` passa a resolver o `Plan` Free como fallback), mas precisa ser decidida **antes** de escrever a policy (task 5).
+O `inMemoryEventDispatcher` é síncrono e o `RegisterUserUseCase` faria `await dispatch(...)`. Se o handler do billing falhar (banco fora, plano `free` ausente), o usuário **já foi persistido** — não há transação abrangendo os dois BCs. Resultado: uma conta sem Subscription, que a DA-9 (fail-closed) bloqueia em tudo.
 
-### R-2 — 🟠 Falha do handler de criação de subscription deixa a conta órfã
-
-O `inMemoryEventDispatcher` é síncrono e o `RegisterUserUseCase` faria `await dispatch(...)`. Se o handler do billing falhar (banco fora, plano `free` ausente), o usuário **já foi persistido** — não há transação abrangendo os dois BCs. Resultado: uma conta sem Subscription, que a DA-9 (fail-closed) bloqueia em tudo, e cujo re-cadastro colide em `ConflictError`.
-
-Duas posturas para o caso "usuário existe, Subscription não existe":
-
-- **(A) Fail-closed puro** — entitlement `has_platform_access: false`, `blocked_reason: no_subscription`. Conta trancada até intervenção manual/backfill.
-- **(B) Self-heal na leitura** — o resolver, ao não achar Subscription, chama `EnsureFreeSubscriptionUseCase`. Conserta sozinho, mas faz um caminho de **leitura executar escrita** a cada requisição autenticada.
-
-**Default adotado: (A)**, com `EnsureFreeSubscriptionUseCase` idempotente disponível para backfill. Recomendo confirmar com o usuário — (B) é operacionalmente muito mais seguro e o custo arquitetural é modesto se restrito a esse único caso.
+**Decisão do usuário: (A) — Fail-closed puro.** Entitlement `has_platform_access: false`, `blocked_reason: no_subscription`. A conta fica trancada até intervenção manual/backfill via `EnsureFreeSubscriptionUseCase` (idempotente, já previsto na task 10). Nenhum self-heal automático na leitura.
 
 ### R-3 — 🟠 Custo de leitura: +1 query por requisição autenticada
 
@@ -352,7 +344,7 @@ Dependência type-only sobre interface publicada, resolvida no composition root.
 4. **Entidade `Subscription`** — schema Zod e transições puras (`startTrial`, `activate`, `markPastDue`, `cancel`, `changePlan`), com todas as invariantes da seção 2.2, incluindo a proibição de reentrar em `trialing`.
    - Dependências: tasks 2, 3
 
-5. **`SubscriptionAccessPolicy`** — função pura implementando exatamente a tabela da DA-2. **Confirmar R-1 antes de começar.**
+5. **`SubscriptionAccessPolicy`** — função implementando exatamente a tabela da DA-2, incluindo a reversão ao `freePlan` para `canceled` expirado (R-1, decidido).
    - Dependências: task 4
 
 6. **Interfaces de repositório do `billing`** — `PlanRepository` e `SubscriptionRepository` (incl. `currentSubscriptionWithPlanOfUser`, ver R-3).
