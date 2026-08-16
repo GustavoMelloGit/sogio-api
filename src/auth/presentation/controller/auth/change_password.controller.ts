@@ -33,6 +33,7 @@ export class ChangePasswordController implements Controller {
   path = "/auth/change-password";
   method = HttpControllerMethod.POST;
   inputSchema = inputSchema;
+  parameterSource = "json" as const;
   rateLimitPolicy = RATE_LIMIT_POLICY;
 
   openApiSpec: OpenApiOperation = {

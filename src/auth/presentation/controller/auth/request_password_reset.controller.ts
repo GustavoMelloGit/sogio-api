@@ -36,6 +36,7 @@ export class RequestPasswordResetController implements Controller {
   path = "/auth/password-reset/request";
   method = HttpControllerMethod.POST;
   inputSchema = inputSchema;
+  parameterSource = "json" as const;
   rateLimitPolicy = RATE_LIMIT_POLICY;
 
   openApiSpec: OpenApiOperation = {
