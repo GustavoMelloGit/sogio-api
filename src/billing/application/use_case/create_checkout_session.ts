@@ -16,8 +16,8 @@ type Output = {
   url: string;
 };
 
-const SUCCESS_PATH = "/billing/checkout/success";
-const CANCEL_PATH = "/billing/checkout/canceled";
+const SUCCESS_PATH = "/settings/billing?checkout=success";
+const CANCEL_PATH = "/settings/billing?checkout=canceled";
 
 /** A gateway subscription in any of these states means a checkout is already live — a second one would double-charge (R-4). */
 const LIVE_GATEWAY_STATUSES = new Set(["trialing", "active", "past_due"]);

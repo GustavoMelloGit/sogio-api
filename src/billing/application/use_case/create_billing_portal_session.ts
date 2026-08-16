@@ -11,7 +11,7 @@ type Output = {
   url: string;
 };
 
-const RETURN_PATH = "/billing";
+const RETURN_PATH = "/settings/billing?portal=return";
 
 /**
  * The customer reference is resolved from the caller's own subscription —

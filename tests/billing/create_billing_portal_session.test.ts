@@ -82,7 +82,7 @@ describe("CreateBillingPortalSessionUseCase", () => {
       gateway.createBillingPortalSessionCalls[0]?.external_customer_reference
     ).toBe("cus_portal_owner");
     expect(gateway.createBillingPortalSessionCalls[0]?.return_url).toBe(
-      `${FRONT_BASE_URL}/billing`
+      `${FRONT_BASE_URL}/settings/billing?portal=return`
     );
   });
 });
