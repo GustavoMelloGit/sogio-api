@@ -30,7 +30,8 @@ const financeDi = new FinanceDi();
  */
 const billingDi = new BillingDi();
 const propertyManagementDi = new PropertyManagementDi(
-  billingDi.makeEntitlementService()
+  billingDi.makeEntitlementService(),
+  stayDi.makeStayPropertyOccupancy()
 );
 const backofficeDi = new BackofficeDi();
 
@@ -125,6 +126,13 @@ const propertyManagementControllers: Route[] = [
   {
     authenticated: true,
     controller: propertyManagementDi.makeDeletePropertySettingController(),
+  },
+  {
+    // DA-10: deleting a property never unblocks a paywalled account, so —
+    // unlike checkout/portal — this route stays behind the platform-access
+    // gate.
+    authenticated: true,
+    controller: propertyManagementDi.makeDeletePropertyController(),
   },
 ];
 

@@ -21,16 +21,24 @@ import { UpdatePropertySettingUseCase } from "../../application/use_case/update_
 import { UpdatePropertySettingController } from "../../presentation/controller/update_property_setting.controller";
 import { DeletePropertySettingUseCase } from "../../application/use_case/delete_property_setting";
 import { DeletePropertySettingController } from "../../presentation/controller/delete_property_setting.controller";
+import { DeletePropertyUseCase } from "../../application/use_case/delete_property";
+import { DeletePropertyController } from "../../presentation/controller/delete_property.controller";
+import type { PropertyOccupancy } from "../../domain/service/property_occupancy";
 
 export class PropertyManagementDi {
   #propertyRepository: PropertyRepository;
   #propertySettingRepository: PropertySettingRepository;
   #entitlementService: EntitlementService;
+  #propertyOccupancy: PropertyOccupancy;
 
-  constructor(entitlementService: EntitlementService) {
+  constructor(
+    entitlementService: EntitlementService,
+    propertyOccupancy: PropertyOccupancy
+  ) {
     this.#propertyRepository = new PropertyPostgresRepository();
     this.#propertySettingRepository = new PropertySettingPostgresRepository();
     this.#entitlementService = entitlementService;
+    this.#propertyOccupancy = propertyOccupancy;
   }
 
   // Use Cases
@@ -79,6 +87,12 @@ export class PropertyManagementDi {
       this.#propertySettingRepository
     );
   }
+  makeDeletePropertyUseCase() {
+    return new DeletePropertyUseCase(
+      this.#propertyRepository,
+      this.#propertyOccupancy
+    );
+  }
 
   // Controllers
   makeCreatePropertyController() {
@@ -119,5 +133,8 @@ export class PropertyManagementDi {
     return new DeletePropertySettingController(
       this.makeDeletePropertySettingUseCase()
     );
+  }
+  makeDeletePropertyController() {
+    return new DeletePropertyController(this.makeDeletePropertyUseCase());
   }
 }
