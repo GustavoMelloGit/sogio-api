@@ -25,6 +25,16 @@ export class PlanPostgresRepository implements PlanRepository {
     return this.#toEntity(plan);
   }
 
+  async planOfExternalPriceReference(reference: string): Promise<Plan | null> {
+    const plan = await db.query.plansTable.findFirst({
+      where: eq(plansTable.external_price_reference, reference),
+    });
+
+    if (!plan) return null;
+
+    return this.#toEntity(plan);
+  }
+
   async allOffered(): Promise<Plan[]> {
     const plans = await db.query.plansTable.findMany({
       where: isNull(plansTable.deleted_at),
