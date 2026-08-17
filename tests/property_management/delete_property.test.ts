@@ -10,8 +10,22 @@ import {
   ledgerEntriesTable,
   propertiesTable,
   propertySettingsTable,
+  staysTable,
 } from "../../src/core/infra/database/drizzle/schema";
 import { PropertyManagementDi } from "../../src/property_management/infra/di/property_management_di";
+import { PropertyPostgresRepository } from "../../src/property_management/infra/database/postgres_repository/property_postgres_repository";
+import { DeletePropertyUseCase } from "../../src/property_management/application/use_case/delete_property";
+import { StayPropertyOccupancy } from "../../src/booking/application/service/stay_property_occupancy";
+import { CancelStayService } from "../../src/booking/application/service/cancel_stay_service";
+import { StayPostgresRepository } from "../../src/booking/infra/database/postgres_repository/stay_postgres_repository";
+import { StayCanceledEvent } from "../../src/booking/domain/event/stay_canceled_event";
+import { DrizzleTransactionRunner } from "../../src/core/infra/database/drizzle/drizzle_transaction_runner";
+import { LedgerEntryPostgresRepository } from "../../src/finance/infra/database/postgres_repository/ledger_entry_postgres_repository";
+import { RevertRevenueOnStayCancel } from "../../src/finance/application/handler/revert_revenue_on_stay_cancel";
+import { ConsoleLogger } from "../../src/core/infra/logger/console_logger";
+import type { EventDispatcher } from "../../src/core/application/event/event_dispatcher";
+import type { EventHandler } from "../../src/core/application/event/event_handler";
+import type { DomainEvent } from "../../src/core/domain/event/domain_event";
 import { makeTestEntitlementService } from "../helpers/entitlement_service";
 import { makeTestPropertyOccupancy } from "../helpers/property_occupancy";
 
@@ -66,12 +80,83 @@ async function createSetting(
   );
 }
 
+/**
+ * Minimal `EventDispatcher` local to a single test, so
+ * `RevertRevenueOnStayCancel` can be registered with a repository that
+ * fails on purpose without touching the shared `inMemoryEventDispatcher`
+ * singleton every other test relies on.
+ */
+class TestEventDispatcher implements EventDispatcher {
+  #handlers = new Map<string, EventHandler<DomainEvent>[]>();
+
+  register(eventName: string, handler: EventHandler<DomainEvent>): void {
+    const list = this.#handlers.get(eventName) ?? [];
+    list.push(handler);
+    this.#handlers.set(eventName, list);
+  }
+
+  async dispatch(event: DomainEvent): Promise<void> {
+    const handlers = this.#handlers.get(event.name) ?? [];
+    await Promise.all(handlers.map(handler => handler.handle(event)));
+  }
+}
+
+/** Simulates a failure mid-cascade (task 17) without touching real ledger rows. */
+class FailingLedgerEntryRepository extends LedgerEntryPostgresRepository {
+  override async save(): Promise<void> {
+    throw new Error("simulated failure mid-cascade");
+  }
+}
+
+/**
+ * Same wiring `PropertyManagementDi`/`StayDi.makeStayPropertyOccupancy` use
+ * in production, built directly so these tests can assert on
+ * `DeletePropertyUseCase`'s return value and thrown errors without going
+ * through `DELETE /property/:property_id`'s rate limit (30/60s, shared
+ * process-wide across every test file that hits that route — see
+ * `RATE_LIMIT_POLICY` on the controller). Behavior is identical either way;
+ * this only skips the HTTP layer for tests that don't need to assert on it.
+ */
+function makeRealDeletePropertyUseCase(): DeletePropertyUseCase {
+  return new DeletePropertyUseCase(
+    new PropertyPostgresRepository(),
+    makeTestPropertyOccupancy(),
+    new DrizzleTransactionRunner()
+  );
+}
+
+function makeDeletePropertyUseCaseWithFailingLedger(): DeletePropertyUseCase {
+  const stayRepository = new StayPostgresRepository();
+  const failingEventDispatcher = new TestEventDispatcher();
+  failingEventDispatcher.register(
+    StayCanceledEvent.NAME,
+    new RevertRevenueOnStayCancel(
+      new ConsoleLogger(),
+      new FailingLedgerEntryRepository()
+    )
+  );
+  const cancelStayService = new CancelStayService(
+    stayRepository,
+    failingEventDispatcher
+  );
+  const propertyOccupancy = new StayPropertyOccupancy(
+    stayRepository,
+    cancelStayService
+  );
+
+  return new DeletePropertyUseCase(
+    new PropertyPostgresRepository(),
+    propertyOccupancy,
+    new DrizzleTransactionRunner()
+  );
+}
+
 describe("DELETE /property/:property_id", () => {
   beforeEach(async () => {
     await truncate(TABLES);
   });
 
-  it("204 — soft-deletes a property with no pending stays", async () => {
+  it("200 — soft-deletes a property with no pending stays", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
       email: "joao@sogio.dev",
@@ -85,7 +170,9 @@ describe("DELETE /property/:property_id", () => {
       headers: { Authorization: "Bearer " + token },
     });
 
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { canceled_stays: number };
+    expect(body.canceled_stays).toBe(0);
 
     const rows = await db
       .select()
@@ -166,7 +253,7 @@ describe("DELETE /property/:property_id", () => {
       method: "DELETE",
       headers: { Authorization: "Bearer " + token },
     });
-    expect(firstDelete.status).toBe(204);
+    expect(firstDelete.status).toBe(200);
 
     const secondDelete = await api(`/property/${property.id}`, {
       method: "DELETE",
@@ -181,7 +268,7 @@ describe("DELETE /property/:property_id", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("409 — rejects deleting a property with a future stay", async () => {
+  it("200 — cancels a future stay in cascade instead of blocking the deletion (DA-4-R)", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
       email: "joao@sogio.dev",
@@ -195,22 +282,31 @@ describe("DELETE /property/:property_id", () => {
       check_out: "2040-06-03T12:00:00.000Z",
     });
     expect(bookRes.status).toBe(200);
+    const bookBody = (await bookRes.json()) as { data: { id: string } };
 
     const res = await api(`/property/${property.id}`, {
       method: "DELETE",
       headers: { Authorization: "Bearer " + token },
     });
 
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { canceled_stays: number };
+    expect(body.canceled_stays).toBe(1);
 
-    const rows = await db
+    const propertyRows = await db
       .select()
       .from(propertiesTable)
       .where(eq(propertiesTable.id, property.id));
-    expect(rows[0]?.deleted_at).toBeNull();
+    expect(propertyRows[0]?.deleted_at).not.toBeNull();
+
+    const stayRows = await db
+      .select()
+      .from(staysTable)
+      .where(eq(staysTable.id, bookBody.data.id));
+    expect(stayRows[0]?.deleted_at).not.toBeNull();
   });
 
-  it("409 — rejects deleting a property with a stay in progress", async () => {
+  it("409 — rejects deleting a property with a stay in progress right now, and the message names the guest, not the future stay (DA-4-R)", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
       email: "joao@sogio.dev",
@@ -235,9 +331,183 @@ describe("DELETE /property/:property_id", () => {
     });
 
     expect(res.status).toBe(409);
+    const body = (await res.json()) as { message: string };
+    expect(body.message).toBe(
+      "This property has a guest checked in right now. You can delete it once the current stay ends."
+    );
+
+    const rows = await db
+      .select()
+      .from(propertiesTable)
+      .where(eq(propertiesTable.id, property.id));
+    expect(rows[0]?.deleted_at).toBeNull();
   });
 
-  it("204 — a property with only a past stay can be deleted", async () => {
+  it("409 is total — an in-progress stay blocks the whole operation, leaving every future stay untouched", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao@sogio.dev",
+      password: "password123",
+    });
+    const property = await createPropertyFixture({ userId: user.id });
+    const token = await createAuthToken(user.id);
+
+    const now = new Date();
+    const inProgressRes = await bookStay(
+      token,
+      property.id,
+      {
+        check_in: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
+        check_out: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      },
+      "5511999990001"
+    );
+    expect(inProgressRes.status).toBe(200);
+    const inProgressBody = (await inProgressRes.json()) as {
+      data: { id: string };
+    };
+
+    const futureRes1 = await bookStay(
+      token,
+      property.id,
+      { check_in: "2040-06-01T12:00:00.000Z", check_out: "2040-06-03T12:00:00.000Z" },
+      "5511999990002"
+    );
+    expect(futureRes1.status).toBe(200);
+    const futureBody1 = (await futureRes1.json()) as { data: { id: string } };
+
+    const futureRes2 = await bookStay(
+      token,
+      property.id,
+      { check_in: "2041-06-01T12:00:00.000Z", check_out: "2041-06-03T12:00:00.000Z" },
+      "5511999990003"
+    );
+    expect(futureRes2.status).toBe(200);
+    const futureBody2 = (await futureRes2.json()) as { data: { id: string } };
+
+    // Exercised at the use-case level (see makeRealDeletePropertyUseCase's
+    // docblock) rather than through HTTP, so this test doesn't compete for
+    // DeletePropertyController's process-wide, per-IP rate limit budget
+    // with every other test file hitting the same route.
+    const useCase = makeRealDeletePropertyUseCase();
+    await expect(
+      useCase.execute({ property_id: property.id }, user)
+    ).rejects.toThrow();
+
+    const propertyRows = await db
+      .select()
+      .from(propertiesTable)
+      .where(eq(propertiesTable.id, property.id));
+    expect(propertyRows[0]?.deleted_at).toBeNull();
+
+    const stayRows = await db
+      .select()
+      .from(staysTable)
+      .where(eq(staysTable.property_id, property.id));
+    const staysById = new Map(stayRows.map(row => [row.id, row]));
+
+    expect(staysById.get(inProgressBody.data.id)?.deleted_at).toBeNull();
+    expect(staysById.get(futureBody1.data.id)?.deleted_at).toBeNull();
+    expect(staysById.get(futureBody2.data.id)?.deleted_at).toBeNull();
+  });
+
+  it("tudo ou nada — a failure mid-cascade leaves the property active and every stay and ledger row untouched (DA-13)", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao@sogio.dev",
+      password: "password123",
+    });
+    const property = await createPropertyFixture({ userId: user.id });
+    const token = await createAuthToken(user.id);
+
+    const bookRes = await bookStay(token, property.id, {
+      check_in: "2040-06-01T12:00:00.000Z",
+      check_out: "2040-06-03T12:00:00.000Z",
+    });
+    expect(bookRes.status).toBe(200);
+    const bookBody = (await bookRes.json()) as { data: { id: string } };
+
+    const ledgerRowsBefore = await db
+      .select()
+      .from(ledgerEntriesTable)
+      .where(eq(ledgerEntriesTable.property_id, property.id));
+
+    const useCase = makeDeletePropertyUseCaseWithFailingLedger();
+
+    await expect(
+      useCase.execute({ property_id: property.id }, user)
+    ).rejects.toThrow();
+
+    const propertyRows = await db
+      .select()
+      .from(propertiesTable)
+      .where(eq(propertiesTable.id, property.id));
+    expect(propertyRows[0]?.deleted_at).toBeNull();
+
+    const stayRows = await db
+      .select()
+      .from(staysTable)
+      .where(eq(staysTable.id, bookBody.data.id));
+    expect(stayRows[0]?.deleted_at).toBeNull();
+
+    const ledgerRowsAfter = await db
+      .select()
+      .from(ledgerEntriesTable)
+      .where(eq(ledgerEntriesTable.property_id, property.id));
+    expect(ledgerRowsAfter).toHaveLength(ledgerRowsBefore.length);
+  });
+
+  it("estorno (R-14) and não sobra estadia viva (R-10) — cancelling N stays in cascade records N negative ledger entries and leaves none of them live", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao@sogio.dev",
+      password: "password123",
+    });
+    const property = await createPropertyFixture({ userId: user.id });
+    const token = await createAuthToken(user.id);
+
+    const futureRes1 = await bookStay(
+      token,
+      property.id,
+      { check_in: "2040-06-01T12:00:00.000Z", check_out: "2040-06-03T12:00:00.000Z" },
+      "5511999990001"
+    );
+    expect(futureRes1.status).toBe(200);
+    const futureRes2 = await bookStay(
+      token,
+      property.id,
+      { check_in: "2041-06-01T12:00:00.000Z", check_out: "2041-06-03T12:00:00.000Z" },
+      "5511999990002"
+    );
+    expect(futureRes2.status).toBe(200);
+
+    // See makeRealDeletePropertyUseCase's docblock for why this bypasses
+    // HTTP: the assertions below don't depend on the controller/adapter at
+    // all, and every DELETE /property/:property_id call — regardless of
+    // which test file makes it — shares one process-wide rate limit budget.
+    const useCase = makeRealDeletePropertyUseCase();
+    const output = await useCase.execute({ property_id: property.id }, user);
+    expect(output.canceled_stays).toBe(2);
+
+    const ledgerRows = await db
+      .select()
+      .from(ledgerEntriesTable)
+      .where(eq(ledgerEntriesTable.property_id, property.id));
+    const reversals = ledgerRows.filter(row => Number(row.amount) < 0);
+    expect(reversals).toHaveLength(2);
+
+    const stayRows = await db
+      .select()
+      .from(staysTable)
+      .where(eq(staysTable.property_id, property.id));
+    const now = new Date();
+    const stillLive = stayRows.filter(
+      row => row.deleted_at === null && row.check_out >= now
+    );
+    expect(stillLive).toHaveLength(0);
+  });
+
+  it("200 — a property with only a past stay can be deleted", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
       email: "joao@sogio.dev",
@@ -257,10 +527,10 @@ describe("DELETE /property/:property_id", () => {
       headers: { Authorization: "Bearer " + token },
     });
 
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
   });
 
-  it("204 — a property whose only future stay was cancelled can be deleted", async () => {
+  it("200 — a property whose only future stay was cancelled can be deleted", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
       email: "joao@sogio.dev",
@@ -287,7 +557,9 @@ describe("DELETE /property/:property_id", () => {
       headers: { Authorization: "Bearer " + token },
     });
 
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { canceled_stays: number };
+    expect(body.canceled_stays).toBe(0);
   });
 
   it("preserves LedgerEntry and PropertySetting rows in the database after deletion (DA-5, DA-6)", async () => {
@@ -316,7 +588,7 @@ describe("DELETE /property/:property_id", () => {
       method: "DELETE",
       headers: { Authorization: "Bearer " + token },
     });
-    expect(deleteRes.status).toBe(204);
+    expect(deleteRes.status).toBe(200);
 
     const ledgerRows = await db
       .select()
@@ -368,7 +640,7 @@ describe("DELETE /property/:property_id", () => {
       method: "DELETE",
       headers: { Authorization: "Bearer " + token },
     });
-    expect(deleteRes.status).toBe(204);
+    expect(deleteRes.status).toBe(200);
 
     const afterDeleteRes = await api("/property", {
       method: "POST",

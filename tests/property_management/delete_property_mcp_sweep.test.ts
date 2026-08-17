@@ -20,6 +20,7 @@ import { makeGetPropertySettingTool } from "../../src/core/infra/mcp/tools/get_p
 import { makeCreatePropertySettingTool } from "../../src/core/infra/mcp/tools/create_property_setting";
 import { makeUpdatePropertySettingTool } from "../../src/core/infra/mcp/tools/update_property_setting";
 import { makeDeletePropertySettingTool } from "../../src/core/infra/mcp/tools/delete_property_setting";
+import { makeDeletePropertyTool } from "../../src/core/infra/mcp/tools/delete_property";
 import { PropertyManagementDi } from "../../src/property_management/infra/di/property_management_di";
 import { makeTestEntitlementService } from "../helpers/entitlement_service";
 import { makeTestPropertyOccupancy } from "../helpers/property_occupancy";
@@ -71,8 +72,8 @@ async function deleteProperty(userId: string, propertyId: string) {
     method: "DELETE",
     headers: { Authorization: "Bearer " + token },
   });
-  if (res.status !== 204) {
-    throw new Error(`fixture setup: expected 204, got ${res.status}`);
+  if (res.status !== 200) {
+    throw new Error(`fixture setup: expected 200, got ${res.status}`);
   }
 }
 
@@ -226,5 +227,40 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
       makeExtra()
     );
     expect(deleteResult.isError).toBe(true);
+  });
+
+  it("delete_property refuses to act again on the already-deleted property", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao@sogio.dev",
+      password: "password123",
+    });
+    const property = await createPropertyFixture({ userId: user.id });
+
+    const server = new McpServer({ name: "test-server", version: "1.0.0" });
+    const registeredTool = registerMcpTool(
+      server,
+      user,
+      makeDeletePropertyTool(makePropertyManagementDi())
+    );
+
+    // Deleting through the tool itself, rather than the `deleteProperty`
+    // HTTP fixture helper other tests in this file use, so setting up this
+    // test's precondition doesn't spend any of
+    // DeletePropertyController's process-wide, per-IP rate limit budget —
+    // MCP tools call the use case directly and never reach that controller.
+    const firstResult = await callTool(
+      registeredTool,
+      { property_id: property.id },
+      makeExtra()
+    );
+    expect(firstResult.isError).toBeUndefined();
+
+    const secondResult = await callTool(
+      registeredTool,
+      { property_id: property.id },
+      makeExtra()
+    );
+    expect(secondResult.isError).toBe(true);
   });
 });
