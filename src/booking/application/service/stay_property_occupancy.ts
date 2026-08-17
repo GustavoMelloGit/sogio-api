@@ -25,12 +25,10 @@ export class StayPropertyOccupancy implements PropertyOccupancy {
     const pendingStays =
       await this.stayRepository.allFutureFromProperty(propertyId);
 
-    const inProgress = pendingStays.filter(
-      ({ stay }) => stay.check_in <= new Date()
-    );
-    const future = pendingStays.filter(
-      ({ stay }) => stay.check_in > new Date()
-    );
+    // One snapshot: two separate `new Date()` calls could let a stay escape both sets.
+    const now = new Date();
+    const inProgress = pendingStays.filter(({ stay }) => stay.check_in <= now);
+    const future = pendingStays.filter(({ stay }) => stay.check_in > now);
 
     ensureNoStayInProgress(inProgress.length);
 
