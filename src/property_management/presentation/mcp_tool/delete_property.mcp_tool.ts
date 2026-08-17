@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
-import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
+import type { DeletePropertyUseCase } from "../../application/use_case/delete_property";
+import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 const inputSchema = {
   property_id: z
@@ -20,10 +20,8 @@ const inputSchema = {
  * an unbounded number of reservations in a single call.
  */
 export function makeDeletePropertyTool(
-  propertyManagementDi: PropertyManagementDi
+  useCase: DeletePropertyUseCase
 ): McpToolDefinition<typeof inputSchema> {
-  const useCase = propertyManagementDi.makeDeletePropertyUseCase();
-
   return {
     name: "delete_property",
     description:

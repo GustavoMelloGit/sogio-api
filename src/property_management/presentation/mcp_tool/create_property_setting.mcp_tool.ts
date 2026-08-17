@@ -1,11 +1,11 @@
 import { z } from "zod";
-import type { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
+import type { CreatePropertySettingUseCase } from "../../application/use_case/create_property_setting";
 import {
   boundedJsonValue,
   settingKeySchema,
   settingTypeSchema,
-} from "../../../domain/value_object/setting_value";
-import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
+} from "../../../core/domain/value_object/setting_value";
+import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 const inputSchema = {
   property_id: z
@@ -37,10 +37,8 @@ const inputSchema = {
  * them.
  */
 export function makeCreatePropertySettingTool(
-  propertyManagementDi: PropertyManagementDi
+  useCase: CreatePropertySettingUseCase
 ): McpToolDefinition<typeof inputSchema> {
-  const useCase = propertyManagementDi.makeCreatePropertySettingUseCase();
-
   return {
     name: "create_property_setting",
     description: "Creates a new configuration entry scoped to a property.",

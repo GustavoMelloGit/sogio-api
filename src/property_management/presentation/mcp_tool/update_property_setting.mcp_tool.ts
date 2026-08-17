@@ -1,10 +1,10 @@
 import { z } from "zod";
-import type { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
+import type { UpdatePropertySettingUseCase } from "../../application/use_case/update_property_setting";
 import {
   boundedJsonValue,
   settingTypeSchema,
-} from "../../../domain/value_object/setting_value";
-import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
+} from "../../../core/domain/value_object/setting_value";
+import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 const inputSchema = {
   property_id: z
@@ -46,10 +46,8 @@ const inputSchema = {
  * idempotent.
  */
 export function makeUpdatePropertySettingTool(
-  propertyManagementDi: PropertyManagementDi
+  useCase: UpdatePropertySettingUseCase
 ): McpToolDefinition<typeof inputSchema> {
-  const useCase = propertyManagementDi.makeUpdatePropertySettingUseCase();
-
   return {
     name: "update_property_setting",
     description:

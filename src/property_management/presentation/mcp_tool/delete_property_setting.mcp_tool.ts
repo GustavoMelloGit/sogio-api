@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
-import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
+import type { DeletePropertySettingUseCase } from "../../application/use_case/delete_property_setting";
+import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 const inputSchema = {
   property_id: z
@@ -22,10 +22,8 @@ const inputSchema = {
  * via `PropertyOwnershipPolicy` — this tool does not duplicate it.
  */
 export function makeDeletePropertySettingTool(
-  propertyManagementDi: PropertyManagementDi
+  useCase: DeletePropertySettingUseCase
 ): McpToolDefinition<typeof inputSchema> {
-  const useCase = propertyManagementDi.makeDeletePropertySettingUseCase();
-
   return {
     name: "delete_property_setting",
     description:

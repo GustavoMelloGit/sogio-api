@@ -26,6 +26,13 @@ import { DeletePropertyController } from "../../presentation/controller/delete_p
 import type { PropertyOccupancy } from "../../domain/service/property_occupancy";
 import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
 import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
+import { makeListPropertiesTool } from "../../presentation/mcp_tool/list_properties.mcp_tool";
+import { makeDeletePropertyTool } from "../../presentation/mcp_tool/delete_property.mcp_tool";
+import { makeCreatePropertySettingTool } from "../../presentation/mcp_tool/create_property_setting.mcp_tool";
+import { makeGetPropertySettingTool } from "../../presentation/mcp_tool/get_property_setting.mcp_tool";
+import { makeUpdatePropertySettingTool } from "../../presentation/mcp_tool/update_property_setting.mcp_tool";
+import { makeDeletePropertySettingTool } from "../../presentation/mcp_tool/delete_property_setting.mcp_tool";
+import { makeListPropertySettingsTool } from "../../presentation/mcp_tool/list_property_settings.mcp_tool";
 
 export class PropertyManagementDi {
   #propertyRepository: PropertyRepository;
@@ -141,5 +148,34 @@ export class PropertyManagementDi {
   }
   makeDeletePropertyController() {
     return new DeletePropertyController(this.makeDeletePropertyUseCase());
+  }
+
+  // MCP Tools
+  makeListPropertiesTool() {
+    return makeListPropertiesTool(this.makeFindUserPropertiesUseCase());
+  }
+  makeDeletePropertyTool() {
+    return makeDeletePropertyTool(this.makeDeletePropertyUseCase());
+  }
+  makeCreatePropertySettingTool() {
+    return makeCreatePropertySettingTool(
+      this.makeCreatePropertySettingUseCase()
+    );
+  }
+  makeGetPropertySettingTool() {
+    return makeGetPropertySettingTool(this.makeGetPropertySettingUseCase());
+  }
+  makeUpdatePropertySettingTool() {
+    return makeUpdatePropertySettingTool(
+      this.makeUpdatePropertySettingUseCase()
+    );
+  }
+  makeDeletePropertySettingTool() {
+    return makeDeletePropertySettingTool(
+      this.makeDeletePropertySettingUseCase()
+    );
+  }
+  makeListPropertySettingsTool() {
+    return makeListPropertySettingsTool(this.makeListPropertySettingsUseCase());
   }
 }

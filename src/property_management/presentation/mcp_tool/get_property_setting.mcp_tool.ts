@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
-import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
+import type { GetPropertySettingUseCase } from "../../application/use_case/get_property_setting";
+import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 const inputSchema = {
   property_id: z
@@ -22,10 +22,8 @@ const inputSchema = {
  * `PropertyOwnershipPolicy` — this tool does not duplicate it.
  */
 export function makeGetPropertySettingTool(
-  propertyManagementDi: PropertyManagementDi
+  useCase: GetPropertySettingUseCase
 ): McpToolDefinition<typeof inputSchema> {
-  const useCase = propertyManagementDi.makeGetPropertySettingUseCase();
-
   return {
     name: "get_property_setting",
     description:

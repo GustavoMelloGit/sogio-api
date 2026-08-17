@@ -1,5 +1,5 @@
-import type { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
-import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
+import type { FindUserPropertiesUseCase } from "../../application/use_case/find_user_properties";
+import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 /**
  * Wires the existing `FindUserPropertiesUseCase` (already used by the
@@ -7,10 +7,8 @@ import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool"
  * happens here beyond calling the use case with the resolved user.
  */
 export function makeListPropertiesTool(
-  propertyManagementDi: PropertyManagementDi
+  useCase: FindUserPropertiesUseCase
 ): McpToolDefinition {
-  const useCase = propertyManagementDi.makeFindUserPropertiesUseCase();
-
   return {
     name: "list_properties",
     description: "Lists the properties administered by the authenticated user.",

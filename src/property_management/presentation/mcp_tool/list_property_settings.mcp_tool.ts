@@ -3,9 +3,9 @@ import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
   MAX_LIMIT,
-} from "../../../application/dto/pagination";
-import type { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
-import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
+} from "../../../core/application/dto/pagination";
+import type { ListPropertySettingsUseCase } from "../../application/use_case/list_property_settings";
+import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 const inputSchema = {
   property_id: z
@@ -41,10 +41,8 @@ const inputSchema = {
  * negative if the property has more than one page of settings.
  */
 export function makeListPropertySettingsTool(
-  propertyManagementDi: PropertyManagementDi
+  useCase: ListPropertySettingsUseCase
 ): McpToolDefinition<typeof inputSchema> {
-  const useCase = propertyManagementDi.makeListPropertySettingsUseCase();
-
   return {
     name: "list_property_settings",
     description:
