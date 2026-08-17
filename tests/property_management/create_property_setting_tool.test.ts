@@ -15,8 +15,7 @@ import type { z } from "zod";
 import type { User } from "../../src/auth/domain/entity/user";
 import { db } from "../../src/core/infra/database/drizzle/database";
 import { propertySettingsTable } from "../../src/core/infra/database/drizzle/schema";
-import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
-import { makeCreatePropertySettingTool } from "../../src/core/infra/mcp/tools/create_property_setting";
+import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
 import { PropertyManagementDi } from "../../src/property_management/infra/di/property_management_di";
 import { makeTestEntitlementService } from "../helpers/entitlement_service";
 import { makeTestPropertyOccupancy } from "../helpers/property_occupancy";
@@ -56,7 +55,7 @@ function registerCreatePropertySettingTool(user: User): RegisteredTool {
   return registerMcpTool(
     server,
     user,
-    makeCreatePropertySettingTool(propertyManagementDi)
+    propertyManagementDi.makeCreatePropertySettingTool()
   );
 }
 

@@ -12,8 +12,7 @@ import {
 import { describe, expect, it, beforeEach } from "bun:test";
 import type { z } from "zod";
 import type { User } from "../../src/auth/domain/entity/user";
-import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
-import { makeListPropertySettingsTool } from "../../src/core/infra/mcp/tools/list_property_settings";
+import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
 import { PropertyManagementDi } from "../../src/property_management/infra/di/property_management_di";
 import { makeTestEntitlementService } from "../helpers/entitlement_service";
 import { makeTestPropertyOccupancy } from "../helpers/property_occupancy";
@@ -53,7 +52,7 @@ function registerListPropertySettingsTool(user: User): RegisteredTool {
   return registerMcpTool(
     server,
     user,
-    makeListPropertySettingsTool(propertyManagementDi)
+    propertyManagementDi.makeListPropertySettingsTool()
   );
 }
 

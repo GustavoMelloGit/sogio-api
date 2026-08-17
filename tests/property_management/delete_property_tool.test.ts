@@ -15,8 +15,7 @@ import type { z } from "zod";
 import type { User } from "../../src/auth/domain/entity/user";
 import { db } from "../../src/core/infra/database/drizzle/database";
 import { propertiesTable } from "../../src/core/infra/database/drizzle/schema";
-import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
-import { makeDeletePropertyTool } from "../../src/core/infra/mcp/tools/delete_property";
+import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
 import { PropertyManagementDi } from "../../src/property_management/infra/di/property_management_di";
 import { makeTestEntitlementService } from "../helpers/entitlement_service";
 import { makeTestPropertyOccupancy } from "../helpers/property_occupancy";
@@ -65,7 +64,7 @@ function registerDeletePropertyTool(user: User): RegisteredTool {
   return registerMcpTool(
     server,
     user,
-    makeDeletePropertyTool(propertyManagementDi)
+    propertyManagementDi.makeDeletePropertyTool()
   );
 }
 

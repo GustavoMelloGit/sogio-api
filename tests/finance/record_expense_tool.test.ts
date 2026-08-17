@@ -15,11 +15,8 @@ import { z } from "zod";
 import type { User } from "../../src/auth/domain/entity/user";
 import { db } from "../../src/core/infra/database/drizzle/database";
 import { ledgerEntriesTable } from "../../src/core/infra/database/drizzle/schema";
-import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
-import {
-  inputSchema,
-  makeRecordExpenseTool,
-} from "../../src/core/infra/mcp/tools/record_expense";
+import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
+import { inputSchema } from "../../src/finance/presentation/mcp_tool/record_expense.mcp_tool";
 import { FinanceDi } from "../../src/finance/infra/di/finance_di";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
@@ -57,7 +54,7 @@ function registerRecordExpenseTool(user: User): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
   const financeDi = new FinanceDi();
 
-  return registerMcpTool(server, user, makeRecordExpenseTool(financeDi));
+  return registerMcpTool(server, user, financeDi.makeRecordExpenseTool());
 }
 
 describe("record_expense tool", () => {

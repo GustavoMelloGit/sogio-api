@@ -14,7 +14,7 @@ import { formatISO } from "date-fns";
 import { z } from "zod";
 import type { User } from "../../src/auth/domain/entity/user";
 import { ValidationError } from "../../src/core/application/error/validation_error";
-import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
+import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
 
 function makeExtra(): RequestHandlerExtra<ServerRequest, ServerNotification> {
   return {

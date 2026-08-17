@@ -14,8 +14,7 @@ import type { z } from "zod";
 import type { User } from "../../src/auth/domain/entity/user";
 import { PropertyDi } from "../../src/booking/infra/di/property_di";
 import { StayDi } from "../../src/booking/infra/di/stay_di";
-import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
-import { makeListStaysTool } from "../../src/core/infra/mcp/tools/list_stays";
+import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
@@ -52,7 +51,7 @@ function registerListStaysTool(user: User): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
   const stayDi = new StayDi();
 
-  return registerMcpTool(server, user, makeListStaysTool(stayDi));
+  return registerMcpTool(server, user, stayDi.makeListStaysTool());
 }
 
 async function bookStayFixture(propertyId: string, user: User) {

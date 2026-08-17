@@ -12,15 +12,7 @@ import {
 import { describe, expect, it, beforeEach } from "bun:test";
 import type { z } from "zod";
 import { PropertyDi } from "../../src/booking/infra/di/property_di";
-import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
-import { makeListPropertiesTool } from "../../src/core/infra/mcp/tools/list_properties";
-import { makeBookStayTool } from "../../src/core/infra/mcp/tools/book_stay";
-import { makeListPropertySettingsTool } from "../../src/core/infra/mcp/tools/list_property_settings";
-import { makeGetPropertySettingTool } from "../../src/core/infra/mcp/tools/get_property_setting";
-import { makeCreatePropertySettingTool } from "../../src/core/infra/mcp/tools/create_property_setting";
-import { makeUpdatePropertySettingTool } from "../../src/core/infra/mcp/tools/update_property_setting";
-import { makeDeletePropertySettingTool } from "../../src/core/infra/mcp/tools/delete_property_setting";
-import { makeDeletePropertyTool } from "../../src/core/infra/mcp/tools/delete_property";
+import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
 import { PropertyManagementDi } from "../../src/property_management/infra/di/property_management_di";
 import { makeTestEntitlementService } from "../helpers/entitlement_service";
 import { makeTestPropertyOccupancy } from "../helpers/property_occupancy";
@@ -100,7 +92,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
     const registeredTool = registerMcpTool(
       server,
       user,
-      makeListPropertiesTool(makePropertyManagementDi())
+      makePropertyManagementDi().makeListPropertiesTool()
     );
     const result = await callTool(registeredTool, {}, makeExtra());
     const text = (result.content as Array<{ text: string }>)[0]?.text ?? "";
@@ -124,7 +116,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
     const registeredTool = registerMcpTool(
       server,
       user,
-      makeBookStayTool(new PropertyDi())
+      new PropertyDi().makeBookStayTool()
     );
     const result = await callTool(
       registeredTool,
@@ -172,7 +164,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
       registerMcpTool(
         server,
         user,
-        makeListPropertySettingsTool(makePropertyManagementDi())
+        makePropertyManagementDi().makeListPropertySettingsTool()
       ),
       { property_id: property.id, page: 1, limit: 20 },
       makeExtra()
@@ -183,7 +175,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
       registerMcpTool(
         server,
         user,
-        makeGetPropertySettingTool(makePropertyManagementDi())
+        makePropertyManagementDi().makeGetPropertySettingTool()
       ),
       { property_id: property.id, id: setting.id },
       makeExtra()
@@ -194,7 +186,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
       registerMcpTool(
         server,
         user,
-        makeCreatePropertySettingTool(makePropertyManagementDi())
+        makePropertyManagementDi().makeCreatePropertySettingTool()
       ),
       {
         property_id: property.id,
@@ -210,7 +202,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
       registerMcpTool(
         server,
         user,
-        makeUpdatePropertySettingTool(makePropertyManagementDi())
+        makePropertyManagementDi().makeUpdatePropertySettingTool()
       ),
       { property_id: property.id, id: setting.id, value: "15:00" },
       makeExtra()
@@ -221,7 +213,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
       registerMcpTool(
         server,
         user,
-        makeDeletePropertySettingTool(makePropertyManagementDi())
+        makePropertyManagementDi().makeDeletePropertySettingTool()
       ),
       { property_id: property.id, id: setting.id },
       makeExtra()
@@ -241,7 +233,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
     const registeredTool = registerMcpTool(
       server,
       user,
-      makeDeletePropertyTool(makePropertyManagementDi())
+      makePropertyManagementDi().makeDeletePropertyTool()
     );
 
     // Deleting through the tool itself, rather than the `deleteProperty`
