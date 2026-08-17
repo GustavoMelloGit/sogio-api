@@ -166,6 +166,10 @@ export class PropertyPostgresRepository implements PropertyRepository {
     const propertyDto = propertyResult[0];
     if (!propertyDto) throw new Error("Failed to update property");
 
-    await this.#updateAddress(propertyDto.address_id, property.address, executor);
+    await this.#updateAddress(
+      propertyDto.address_id,
+      property.address,
+      executor
+    );
   }
 }

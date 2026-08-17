@@ -23,6 +23,7 @@ import { DrizzleTransactionRunner } from "../../src/core/infra/database/drizzle/
 import { LedgerEntryPostgresRepository } from "../../src/finance/infra/database/postgres_repository/ledger_entry_postgres_repository";
 import { RevertRevenueOnStayCancel } from "../../src/finance/application/handler/revert_revenue_on_stay_cancel";
 import { ConsoleLogger } from "../../src/core/infra/logger/console_logger";
+import { inMemoryEventDispatcher } from "../../src/core/infra/event/in_memory_event_dispatcher";
 import type { EventDispatcher } from "../../src/core/application/event/event_dispatcher";
 import type { EventHandler } from "../../src/core/application/event/event_handler";
 import type { DomainEvent } from "../../src/core/domain/event/domain_event";
@@ -370,7 +371,10 @@ describe("DELETE /property/:property_id", () => {
     const futureRes1 = await bookStay(
       token,
       property.id,
-      { check_in: "2040-06-01T12:00:00.000Z", check_out: "2040-06-03T12:00:00.000Z" },
+      {
+        check_in: "2040-06-01T12:00:00.000Z",
+        check_out: "2040-06-03T12:00:00.000Z",
+      },
       "5511999990002"
     );
     expect(futureRes1.status).toBe(200);
@@ -379,7 +383,10 @@ describe("DELETE /property/:property_id", () => {
     const futureRes2 = await bookStay(
       token,
       property.id,
-      { check_in: "2041-06-01T12:00:00.000Z", check_out: "2041-06-03T12:00:00.000Z" },
+      {
+        check_in: "2041-06-01T12:00:00.000Z",
+        check_out: "2041-06-03T12:00:00.000Z",
+      },
       "5511999990003"
     );
     expect(futureRes2.status).toBe(200);
@@ -457,6 +464,21 @@ describe("DELETE /property/:property_id", () => {
     expect(ledgerRowsAfter).toHaveLength(ledgerRowsBefore.length);
   });
 
+  it("R-15 — StayCanceledEvent has exactly one handler, and it only writes to Postgres; this is what makes tudo-ou-nada above true", () => {
+    // Locks the invariant DA-13 relies on: the transaction above only
+    // covers every effect of the cascade because, today, cancelling a stay
+    // has no effect outside the database. If a second StayCanceledEvent
+    // handler is ever registered (e.g. R-6/R-11's future
+    // RemoveTempPasswordOnStayCancel), this test starts failing — which is
+    // the point: that handler's external effect must NOT run inside
+    // DeletePropertyUseCase's transaction (DA-13, part 3), and a failing
+    // test here forces that decision instead of letting the guarantee rot
+    // silently.
+    expect(
+      inMemoryEventDispatcher.handlerCountFor(StayCanceledEvent.NAME)
+    ).toBe(1);
+  });
+
   it("estorno (R-14) and não sobra estadia viva (R-10) — cancelling N stays in cascade records N negative ledger entries and leaves none of them live", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
@@ -469,14 +491,20 @@ describe("DELETE /property/:property_id", () => {
     const futureRes1 = await bookStay(
       token,
       property.id,
-      { check_in: "2040-06-01T12:00:00.000Z", check_out: "2040-06-03T12:00:00.000Z" },
+      {
+        check_in: "2040-06-01T12:00:00.000Z",
+        check_out: "2040-06-03T12:00:00.000Z",
+      },
       "5511999990001"
     );
     expect(futureRes1.status).toBe(200);
     const futureRes2 = await bookStay(
       token,
       property.id,
-      { check_in: "2041-06-01T12:00:00.000Z", check_out: "2041-06-03T12:00:00.000Z" },
+      {
+        check_in: "2041-06-01T12:00:00.000Z",
+        check_out: "2041-06-03T12:00:00.000Z",
+      },
       "5511999990002"
     );
     expect(futureRes2.status).toBe(200);

@@ -31,3 +31,4 @@ alwaysApply: true
 - Then create the controller that will be used to handle the incoming HTTP requests and call the appropriate use case.
 - Then add the factory methods to the DI container.
 - Then add the route to the routes file.
+- Then add the corresponding MCP tool in `src/core/infra/mcp/tools/`, registered in the barrel (`tools/index.ts`), the import block of `mcp/routes.ts`, and the `tools` array in `makeMcpRequestHandler` — reusing the same DI instances the HTTP route uses. Every new use case or endpoint ships with its MCP tool in the same delivery, unless it falls into one of the documented exceptions in `CLAUDE.md` (credential material, the OAuth protocol itself, third-party webhooks, unauthenticated public links, LGPD account deletion, hosted payment sessions, or operational routes like `/health`/`/docs`).
