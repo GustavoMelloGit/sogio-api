@@ -100,16 +100,18 @@ export class UpdatePropertyController implements Controller {
   async handle(request: ControllerRequest, user: User) {
     const input = request.body as Input;
 
-    const output = await this.useCase.execute({
-      property_id: input.property_id,
-      user_id: user.id,
-      update_data: {
-        name: input.name,
-        address: input.address,
-        images: input.images,
-        capacity: input.capacity,
+    const output = await this.useCase.execute(
+      {
+        property_id: input.property_id,
+        update_data: {
+          name: input.name,
+          address: input.address,
+          images: input.images,
+          capacity: input.capacity,
+        },
       },
-    });
+      user
+    );
 
     return output;
   }

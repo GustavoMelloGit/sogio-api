@@ -1,6 +1,8 @@
 import type { UseCase } from "../../../core/application/use_case/use_case";
+import type { EntitlementService } from "../../../billing/application/service/entitlement_service";
 import type { PropertyRepository } from "../../domain/repository/property_repository";
 import { Property } from "../../domain/entity/property";
+import { PropertyQuotaPolicy } from "../../domain/policy/property_quota_policy";
 
 export type CreatePropertyInput = {
   name: string;
@@ -45,12 +47,23 @@ export type CreatePropertyOutput = {
 export class CreatePropertyUseCase
   implements UseCase<CreatePropertyInput, CreatePropertyOutput>
 {
-  constructor(private readonly propertyRepository: PropertyRepository) {}
+  constructor(
+    private readonly propertyRepository: PropertyRepository,
+    private readonly entitlementService: EntitlementService
+  ) {}
 
   async execute(input: CreatePropertyInput): Promise<CreatePropertyOutput> {
+    const entitlement = await this.entitlementService.entitlementOf(
+      input.user_id
+    );
     const property = Property.create(input);
 
-    await this.propertyRepository.save(property);
+    await this.propertyRepository.saveNewWithinQuota(property, currentCount =>
+      PropertyQuotaPolicy.ensureWithinLimit(
+        currentCount,
+        entitlement.max_properties
+      )
+    );
 
     return {
       id: property.id,

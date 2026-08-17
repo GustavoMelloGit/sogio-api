@@ -12,9 +12,10 @@ import {
 import { describe, expect, it, beforeEach } from "bun:test";
 import type { z } from "zod";
 import type { User } from "../../src/auth/domain/entity/user";
-import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
-import { makeListPropertySettingsTool } from "../../src/core/infra/mcp/tools/list_property_settings";
+import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
 import { PropertyManagementDi } from "../../src/property_management/infra/di/property_management_di";
+import { makeTestEntitlementService } from "../helpers/entitlement_service";
+import { makeTestPropertyOccupancy } from "../helpers/property_occupancy";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
@@ -43,17 +44,23 @@ async function callTool(
 
 function registerListPropertySettingsTool(user: User): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
-  const propertyManagementDi = new PropertyManagementDi();
+  const propertyManagementDi = new PropertyManagementDi(
+    makeTestEntitlementService(),
+    makeTestPropertyOccupancy()
+  );
 
   return registerMcpTool(
     server,
     user,
-    makeListPropertySettingsTool(propertyManagementDi)
+    propertyManagementDi.makeListPropertySettingsTool()
   );
 }
 
 async function createSettingFixture(propertyId: string, user: User) {
-  const propertyManagementDi = new PropertyManagementDi();
+  const propertyManagementDi = new PropertyManagementDi(
+    makeTestEntitlementService(),
+    makeTestPropertyOccupancy()
+  );
 
   return propertyManagementDi.makeCreatePropertySettingUseCase().execute(
     {

@@ -20,6 +20,7 @@
     "db:push:test": "bun --env-file=.env.test x drizzle-kit push",
     "db:migration": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:seed": "bun run scripts/seed_plans.ts",
     "db:baseline-migrations": "bun run scripts/baseline_drizzle_migrations.ts"
   },
   "devDependencies": {
@@ -48,6 +49,7 @@
     "node-ical": "^0.20.1",
     "pg": "^8.21.0",
     "resend": "^6.20.0",
+    "stripe": "^22.5.0",
     "zod": "^4.4.3"
   },
   "lint-staged": {

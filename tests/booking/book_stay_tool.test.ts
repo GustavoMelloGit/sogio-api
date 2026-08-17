@@ -16,11 +16,8 @@ import type { User } from "../../src/auth/domain/entity/user";
 import { PropertyDi } from "../../src/booking/infra/di/property_di";
 import { db } from "../../src/core/infra/database/drizzle/database";
 import { staysTable } from "../../src/core/infra/database/drizzle/schema";
-import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
-import {
-  inputSchema,
-  makeBookStayTool,
-} from "../../src/core/infra/mcp/tools/book_stay";
+import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
+import { inputSchema } from "../../src/booking/presentation/mcp_tool/book_stay.mcp_tool";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
@@ -88,7 +85,7 @@ function registerBookStayTool(user: User): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
   const propertyDi = new PropertyDi();
 
-  return registerMcpTool(server, user, makeBookStayTool(propertyDi));
+  return registerMcpTool(server, user, propertyDi.makeBookStayTool());
 }
 
 describe("book_stay tool", () => {

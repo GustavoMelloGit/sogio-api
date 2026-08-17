@@ -68,10 +68,10 @@ export class FindPropertyController implements Controller {
   async handle(request: ControllerRequest, user: User) {
     const input = request.body as Input;
 
-    const output = await this.useCase.execute({
-      property_id: input.property_id,
-      user_id: user.id,
-    });
+    const output = await this.useCase.execute(
+      { property_id: input.property_id },
+      user
+    );
 
     return output;
   }

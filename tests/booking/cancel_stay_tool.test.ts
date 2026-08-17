@@ -17,8 +17,7 @@ import { PropertyDi } from "../../src/booking/infra/di/property_di";
 import { StayDi } from "../../src/booking/infra/di/stay_di";
 import { db } from "../../src/core/infra/database/drizzle/database";
 import { staysTable } from "../../src/core/infra/database/drizzle/schema";
-import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool";
-import { makeCancelStayTool } from "../../src/core/infra/mcp/tools/cancel_stay";
+import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
@@ -54,7 +53,7 @@ async function callTool(
 function registerCancelStayTool(user: User): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
 
-  return registerMcpTool(server, user, makeCancelStayTool(new StayDi()));
+  return registerMcpTool(server, user, new StayDi().makeCancelStayTool());
 }
 
 async function bookStayFixture(propertyId: string, user: User) {

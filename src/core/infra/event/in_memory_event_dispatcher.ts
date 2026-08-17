@@ -30,6 +30,20 @@ class InMemoryEventDispatcher implements EventDispatcher {
       await Promise.all(handlers.map(handler => handler.handle(event)));
     }
   }
+
+  /**
+   * Introspection kept off the `EventDispatcher` port on purpose — only the
+   * concrete singleton exposes it, for tests that lock an invariant about
+   * what's registered for an event. Exists for R-15: `DeletePropertyUseCase`'s
+   * "tudo ou nada" transaction (DA-13) only covers every effect of its
+   * cascade because, today, `StayCanceledEvent` has exactly one handler and
+   * it only writes to Postgres. A test asserting that count should fail
+   * loudly the day a second handler with an external effect is registered,
+   * instead of the transaction silently stopping covering "tudo".
+   */
+  handlerCountFor(eventName: string): number {
+    return this.handlers.get(eventName)?.length ?? 0;
+  }
 }
 
 export const inMemoryEventDispatcher = new InMemoryEventDispatcher(

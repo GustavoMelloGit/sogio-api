@@ -1,5 +1,6 @@
 import type { PropertyRepository } from "../../domain/repository/property_repository";
 import type { PropertySettingRepository } from "../../domain/repository/property_setting_repository";
+import type { EntitlementService } from "../../../billing/application/service/entitlement_service";
 import { UpdatePropertyUseCase } from "../../application/use_case/update_property";
 import { UpdatePropertyController } from "../../presentation/controller/update_property.controller";
 import { PropertyPostgresRepository } from "../database/postgres_repository/property_postgres_repository";
@@ -20,19 +21,43 @@ import { UpdatePropertySettingUseCase } from "../../application/use_case/update_
 import { UpdatePropertySettingController } from "../../presentation/controller/update_property_setting.controller";
 import { DeletePropertySettingUseCase } from "../../application/use_case/delete_property_setting";
 import { DeletePropertySettingController } from "../../presentation/controller/delete_property_setting.controller";
+import { DeletePropertyUseCase } from "../../application/use_case/delete_property";
+import { DeletePropertyController } from "../../presentation/controller/delete_property.controller";
+import type { PropertyOccupancy } from "../../domain/service/property_occupancy";
+import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
+import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
+import { makeListPropertiesTool } from "../../presentation/mcp_tool/list_properties.mcp_tool";
+import { makeDeletePropertyTool } from "../../presentation/mcp_tool/delete_property.mcp_tool";
+import { makeCreatePropertySettingTool } from "../../presentation/mcp_tool/create_property_setting.mcp_tool";
+import { makeGetPropertySettingTool } from "../../presentation/mcp_tool/get_property_setting.mcp_tool";
+import { makeUpdatePropertySettingTool } from "../../presentation/mcp_tool/update_property_setting.mcp_tool";
+import { makeDeletePropertySettingTool } from "../../presentation/mcp_tool/delete_property_setting.mcp_tool";
+import { makeListPropertySettingsTool } from "../../presentation/mcp_tool/list_property_settings.mcp_tool";
 
 export class PropertyManagementDi {
   #propertyRepository: PropertyRepository;
   #propertySettingRepository: PropertySettingRepository;
+  #entitlementService: EntitlementService;
+  #propertyOccupancy: PropertyOccupancy;
+  #transactionRunner: TransactionRunner;
 
-  constructor() {
+  constructor(
+    entitlementService: EntitlementService,
+    propertyOccupancy: PropertyOccupancy
+  ) {
     this.#propertyRepository = new PropertyPostgresRepository();
     this.#propertySettingRepository = new PropertySettingPostgresRepository();
+    this.#entitlementService = entitlementService;
+    this.#propertyOccupancy = propertyOccupancy;
+    this.#transactionRunner = new DrizzleTransactionRunner();
   }
 
   // Use Cases
   makeCreatePropertyUseCase() {
-    return new CreatePropertyUseCase(this.#propertyRepository);
+    return new CreatePropertyUseCase(
+      this.#propertyRepository,
+      this.#entitlementService
+    );
   }
   makeUpdatePropertyUseCase() {
     return new UpdatePropertyUseCase(this.#propertyRepository);
@@ -71,6 +96,13 @@ export class PropertyManagementDi {
     return new DeletePropertySettingUseCase(
       this.#propertyRepository,
       this.#propertySettingRepository
+    );
+  }
+  makeDeletePropertyUseCase() {
+    return new DeletePropertyUseCase(
+      this.#propertyRepository,
+      this.#propertyOccupancy,
+      this.#transactionRunner
     );
   }
 
@@ -113,5 +145,37 @@ export class PropertyManagementDi {
     return new DeletePropertySettingController(
       this.makeDeletePropertySettingUseCase()
     );
+  }
+  makeDeletePropertyController() {
+    return new DeletePropertyController(this.makeDeletePropertyUseCase());
+  }
+
+  // MCP Tools
+  makeListPropertiesTool() {
+    return makeListPropertiesTool(this.makeFindUserPropertiesUseCase());
+  }
+  makeDeletePropertyTool() {
+    return makeDeletePropertyTool(this.makeDeletePropertyUseCase());
+  }
+  makeCreatePropertySettingTool() {
+    return makeCreatePropertySettingTool(
+      this.makeCreatePropertySettingUseCase()
+    );
+  }
+  makeGetPropertySettingTool() {
+    return makeGetPropertySettingTool(this.makeGetPropertySettingUseCase());
+  }
+  makeUpdatePropertySettingTool() {
+    return makeUpdatePropertySettingTool(
+      this.makeUpdatePropertySettingUseCase()
+    );
+  }
+  makeDeletePropertySettingTool() {
+    return makeDeletePropertySettingTool(
+      this.makeDeletePropertySettingUseCase()
+    );
+  }
+  makeListPropertySettingsTool() {
+    return makeListPropertySettingsTool(this.makeListPropertySettingsUseCase());
   }
 }

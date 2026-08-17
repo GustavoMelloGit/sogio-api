@@ -12,6 +12,7 @@ import { BunHttpControllerAdapter } from "../adapters/http_controller_adapter";
 import { FinanceDi } from "../../../../finance/infra/di/finance_di";
 import { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
 import { BackofficeDi } from "../../../../backoffice/infra/di/backoffice_di";
+import { BillingDi } from "../../../../billing/infra/di/billing_di";
 import { OpenApiBuilder } from "../swagger/open_api_builder";
 import { scalarUiHtml } from "../swagger/scalar_ui";
 import { makeMcpRequestHandler } from "../../mcp/routes";
@@ -22,13 +23,29 @@ const authDi = new AuthDi();
 const stayDi = new StayDi();
 const corsMiddleware = new CorsMiddleware();
 const financeDi = new FinanceDi();
-const propertyManagementDi = new PropertyManagementDi();
+/**
+ * Registers `StartFreeSubscriptionOnUserCreated` on the shared event
+ * dispatcher from its constructor (not idempotent) — must be instantiated
+ * exactly once and this single instance reused everywhere (DA-7).
+ */
+const billingDi = new BillingDi();
+const propertyManagementDi = new PropertyManagementDi(
+  billingDi.makeEntitlementService(),
+  stayDi.makeStayPropertyOccupancy()
+);
 const backofficeDi = new BackofficeDi();
 
 type Route = {
   controller: Controller;
   authenticated: boolean;
   adminOnly?: boolean;
+  /**
+   * Opt-out of the DA-9 platform-access gate. Fail-closed by default — only
+   * set this for a route a blocked user must still be able to reach (their
+   * own account, LGPD deletion, OAuth connection hygiene, the OAuth
+   * protocol step itself). See `.claude/plans/2026-08-15-add-billing-subscriptions.md`.
+   */
+  allowWithoutPlatformAccess?: boolean;
 };
 
 const healthController: Route = {
@@ -110,6 +127,13 @@ const propertyManagementControllers: Route[] = [
     authenticated: true,
     controller: propertyManagementDi.makeDeletePropertySettingController(),
   },
+  {
+    // DA-10: deleting a property never unblocks a paywalled account, so —
+    // unlike checkout/portal — this route stays behind the platform-access
+    // gate.
+    authenticated: true,
+    controller: propertyManagementDi.makeDeletePropertyController(),
+  },
 ];
 
 const stayControllers: Route[] = [
@@ -150,10 +174,12 @@ const authControllers: Route[] = [
   },
   {
     authenticated: true,
+    allowWithoutPlatformAccess: true,
     controller: authDi.makeGetUserController(),
   },
   {
     authenticated: true,
+    allowWithoutPlatformAccess: true,
     controller: authDi.makePurgeUserDataController(),
   },
   {
@@ -170,10 +196,12 @@ const authControllers: Route[] = [
   },
   {
     authenticated: true,
+    allowWithoutPlatformAccess: true,
     controller: authDi.makeListConnectedAppsController(),
   },
   {
     authenticated: true,
+    allowWithoutPlatformAccess: true,
     controller: authDi.makeDisconnectAppController(),
   },
 ];
@@ -208,6 +236,7 @@ const delegatedAccessControllers: Route[] = [
   },
   {
     authenticated: true,
+    allowWithoutPlatformAccess: true,
     controller: authDi.makeDecideAuthorizationRequestController(),
   },
   {
@@ -250,6 +279,44 @@ const backofficeControllers: Route[] = [
   },
 ];
 
+const billingControllers: Route[] = [
+  {
+    // Public pricing page — no login required, analogous to
+    // GET /public/booking/stay/:stay_id.
+    authenticated: false,
+    controller: billingDi.makeListPlansController(),
+  },
+  {
+    authenticated: true,
+    allowWithoutPlatformAccess: true,
+    controller: billingDi.makeGetSubscriptionStatusController(),
+  },
+  {
+    authenticated: true,
+    allowWithoutPlatformAccess: true,
+    controller: billingDi.makeGetSubscriptionHistoryController(),
+  },
+  {
+    // DA-5: a blocked account must still be able to pay its way out — the
+    // only exit from the paywall cannot itself sit behind the paywall (R-2).
+    authenticated: true,
+    allowWithoutPlatformAccess: true,
+    controller: billingDi.makeCreateCheckoutSessionController(),
+  },
+  {
+    // DA-5, same justification as the checkout session route above.
+    authenticated: true,
+    allowWithoutPlatformAccess: true,
+    controller: billingDi.makeCreateBillingPortalSessionController(),
+  },
+  {
+    // The caller is the gateway, not a logged-in user — outside the
+    // platform-access gate by construction, not by exception.
+    authenticated: false,
+    controller: billingDi.makeStripeWebhookController(),
+  },
+];
+
 const controllers = [
   ...tenantControllers,
   ...propertyControllers,
@@ -260,6 +327,7 @@ const controllers = [
   ...financeControllers,
   ...propertyManagementControllers,
   ...backofficeControllers,
+  ...billingControllers,
   healthController,
 ];
 
@@ -268,38 +336,47 @@ const routeMap = new Map<
   Partial<Record<HttpControllerMethod, (request: Request) => Promise<Response>>>
 >();
 
-controllers.forEach(({ authenticated, adminOnly, controller }) => {
-  const alreadyExists = routeMap.get(controller.path);
-  if (!alreadyExists) {
-    routeMap.set(controller.path, {
-      [controller.method]: BunHttpControllerAdapter(
-        controller,
-        authenticated,
-        adminOnly
-      ),
-      // Add OPTIONS handler for CORS preflight
-      [HttpControllerMethod.OPTIONS]: async (request: Request) =>
-        corsMiddleware.handlePreflightRequest(request, controller.corsPolicy),
-    });
-  } else {
-    routeMap.set(controller.path, {
-      ...alreadyExists,
-      [controller.method]: BunHttpControllerAdapter(
-        controller,
-        authenticated,
-        adminOnly
-      ),
-      // Add OPTIONS handler for CORS preflight
-      [HttpControllerMethod.OPTIONS]: async (request: Request) =>
-        corsMiddleware.handlePreflightRequest(request, controller.corsPolicy),
-    });
+const entitlementService = billingDi.makeEntitlementService();
+
+controllers.forEach(
+  ({ authenticated, adminOnly, allowWithoutPlatformAccess, controller }) => {
+    const alreadyExists = routeMap.get(controller.path);
+    if (!alreadyExists) {
+      routeMap.set(controller.path, {
+        [controller.method]: BunHttpControllerAdapter(
+          controller,
+          authenticated,
+          entitlementService,
+          adminOnly,
+          allowWithoutPlatformAccess
+        ),
+        // Add OPTIONS handler for CORS preflight
+        [HttpControllerMethod.OPTIONS]: async (request: Request) =>
+          corsMiddleware.handlePreflightRequest(request, controller.corsPolicy),
+      });
+    } else {
+      routeMap.set(controller.path, {
+        ...alreadyExists,
+        [controller.method]: BunHttpControllerAdapter(
+          controller,
+          authenticated,
+          entitlementService,
+          adminOnly,
+          allowWithoutPlatformAccess
+        ),
+        // Add OPTIONS handler for CORS preflight
+        [HttpControllerMethod.OPTIONS]: async (request: Request) =>
+          corsMiddleware.handlePreflightRequest(request, controller.corsPolicy),
+      });
+    }
   }
-});
+);
 
 const handleMcpRequest = makeMcpRequestHandler({
   propertyDi,
   stayDi,
   financeDi,
+  billingDi,
   propertyManagementDi,
 });
 

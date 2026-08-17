@@ -1,13 +1,13 @@
 import type { PropertyRepository } from "../../domain/repository/property_repository";
-import { ResourceNotFoundError } from "../../../core/application/error/resource_not_found_error";
 import type { UseCase } from "../../../core/application/use_case/use_case";
+import type { User } from "../../../auth/domain/entity/user";
 import type { SafeUpdateEntity } from "../../../core/domain/entity/base_entity";
 import type { PropertyData } from "../../domain/entity/property";
 import type { DeepPartial } from "../../../core/application/types/deep_partial";
+import { PropertyOwnershipPolicy } from "../../domain/policy/property_ownership_policy";
 
 type Input = {
   property_id: string;
-  user_id: string;
   update_data: DeepPartial<SafeUpdateEntity<PropertyData>>;
 };
 
@@ -37,27 +37,27 @@ type Output = {
 export class UpdatePropertyUseCase implements UseCase<Input, Output> {
   constructor(private readonly propertyRepository: PropertyRepository) {}
 
-  async execute(input: Input): Promise<Output> {
+  async execute(input: Input, user: User): Promise<Output> {
     const property = await this.propertyRepository.propertyOfId(
       input.property_id
     );
+    const ownedProperty = PropertyOwnershipPolicy.ensureOwnership(
+      property,
+      user
+    );
 
-    if (!property || property.user_id !== input.user_id) {
-      throw new ResourceNotFoundError("Property");
-    }
-
-    property.changeDetails(input.update_data);
-    await this.propertyRepository.save(property);
+    ownedProperty.changeDetails(input.update_data);
+    await this.propertyRepository.save(ownedProperty);
 
     return {
-      id: property.id,
-      name: property.name,
-      user_id: property.user_id,
-      address: property.address.data,
-      images: property.images,
-      capacity: property.capacity,
-      created_at: property.created_at,
-      updated_at: property.updated_at,
+      id: ownedProperty.id,
+      name: ownedProperty.name,
+      user_id: ownedProperty.user_id,
+      address: ownedProperty.address.data,
+      images: ownedProperty.images,
+      capacity: ownedProperty.capacity,
+      created_at: ownedProperty.created_at,
+      updated_at: ownedProperty.updated_at,
     };
   }
 }

@@ -7,6 +7,7 @@ import type {
   StayWithTenant,
 } from "../../../domain/repository/stay_repository";
 import { db } from "../../../../core/infra/database/drizzle/database";
+import { currentExecutor } from "../../../../core/infra/database/drizzle/transaction_context";
 import {
   staysTable,
   tenantsTable,
@@ -19,8 +20,14 @@ import {
 } from "../../../../core/application/dto/pagination";
 
 export class StayPostgresRepository implements StayRepository {
+  /**
+   * Writes through `currentExecutor()` (DA-13), same as `saveStay` below —
+   * `DeletePropertyUseCase`'s cascade calls this to decide insert vs update
+   * for every stay it cancels, inside a single transaction. Resolves to
+   * plain `db` outside `TransactionRunner.run`, unchanged from before.
+   */
   async stayOfId(id: string): Promise<Stay | null> {
-    const stay = await db.query.staysTable.findFirst({
+    const stay = await currentExecutor().query.staysTable.findFirst({
       where: and(eq(staysTable.id, id), isNull(staysTable.deleted_at)),
       with: {
         tenant: true,
@@ -44,7 +51,10 @@ export class StayPostgresRepository implements StayRepository {
   }
 
   async #createStay(stay: Stay): Promise<Stay> {
-    const result = await db.insert(staysTable).values(stay.data).returning();
+    const result = await currentExecutor()
+      .insert(staysTable)
+      .values(stay.data)
+      .returning();
 
     if (!result[0]) throw new Error("Failed to create stay");
 
@@ -52,7 +62,7 @@ export class StayPostgresRepository implements StayRepository {
   }
 
   async #updateStay(stay: Stay): Promise<Stay> {
-    const result = await db
+    const result = await currentExecutor()
       .update(staysTable)
       .set(stay.data)
       .where(eq(staysTable.id, stay.id))
@@ -63,8 +73,17 @@ export class StayPostgresRepository implements StayRepository {
     return Stay.reconstitute(result[0]);
   }
 
+  /**
+   * Reads through `currentExecutor()` (DA-13): called by
+   * `DeletePropertyUseCase`'s cascade inside its transaction, and a plain
+   * `db.query` there would open a second pool connection while the first is
+   * still held open by the transaction — with `max: 10` and no
+   * `connectionTimeoutMillis`, ten concurrent deletions deadlock the pool
+   * permanently. Resolves to plain `db` outside `TransactionRunner.run`,
+   * unchanged from before.
+   */
   async allFutureFromProperty(propertyId: string): Promise<StayWithTenant[]> {
-    const stays = await db.query.staysTable.findMany({
+    const stays = await currentExecutor().query.staysTable.findMany({
       where: and(
         eq(staysTable.property_id, propertyId),
         gte(staysTable.check_out, new Date()),

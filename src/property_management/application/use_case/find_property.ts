@@ -1,10 +1,10 @@
-import { ResourceNotFoundError } from "../../../core/application/error/resource_not_found_error";
 import type { UseCase } from "../../../core/application/use_case/use_case";
+import type { User } from "../../../auth/domain/entity/user";
 import type { PropertyRepository } from "../../domain/repository/property_repository";
+import { PropertyOwnershipPolicy } from "../../domain/policy/property_ownership_policy";
 
 type Input = {
   property_id: string;
-  user_id: string;
 };
 
 type Output = {
@@ -30,24 +30,24 @@ type Output = {
 export class FindPropertyUseCase implements UseCase<Input, Output> {
   constructor(private readonly propertyRepository: PropertyRepository) {}
 
-  async execute(input: Input): Promise<Output> {
+  async execute(input: Input, user: User): Promise<Output> {
     const property = await this.propertyRepository.propertyOfId(
       input.property_id
     );
-
-    if (!property || property.user_id !== input.user_id) {
-      throw new ResourceNotFoundError("Property");
-    }
+    const ownedProperty = PropertyOwnershipPolicy.ensureOwnership(
+      property,
+      user
+    );
 
     return {
-      id: property.id,
-      name: property.name,
-      capacity: property.capacity,
-      images: property.images,
-      address: property.address.data,
-      user_id: property.user_id,
-      created_at: property.created_at,
-      updated_at: property.updated_at,
+      id: ownedProperty.id,
+      name: ownedProperty.name,
+      capacity: ownedProperty.capacity,
+      images: ownedProperty.images,
+      address: ownedProperty.address.data,
+      user_id: ownedProperty.user_id,
+      created_at: ownedProperty.created_at,
+      updated_at: ownedProperty.updated_at,
     };
   }
 }

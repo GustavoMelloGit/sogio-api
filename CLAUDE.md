@@ -44,7 +44,7 @@ bun run test          # Executa todos os testes
 
 Os testes ficam em `tests/<bounded context>/<test name>.test.ts`.
 
-> **Pré-requisito**: o arquivo `.env.test` na raiz do projeto deve conter a variável `DATABASE_URL` com as credenciais reais do banco local, a variável `API_BASE_URL` (ex: `http://localhost:4000`) — obrigatória fora de `development` desde a introdução dos documentos de descoberta OAuth —, a variável `FRONT_BASE_URL` (ex: `http://localhost:5173`) — obrigatória fora de `development` desde a introdução do `/authorize` (redirect de consentimento do protocolo OAuth) —, e as variáveis `RESEND_API_KEY` e `PASSWORD_RESET_EMAIL_FROM` — obrigatórias fora de `development` desde a introdução da recuperação de senha por email; em `test` podem ser valores fake, já que o adapter Resend nunca é exercido de verdade nos testes.
+> **Pré-requisito**: o arquivo `.env.test` na raiz do projeto deve conter a variável `DATABASE_URL` com as credenciais reais do banco local, a variável `API_BASE_URL` (ex: `http://localhost:4000`) — obrigatória fora de `development` desde a introdução dos documentos de descoberta OAuth —, a variável `FRONT_BASE_URL` (ex: `http://localhost:5173`) — obrigatória fora de `development` desde a introdução do `/authorize` (redirect de consentimento do protocolo OAuth) —, as variáveis `RESEND_API_KEY` e `PASSWORD_RESET_EMAIL_FROM` — obrigatórias fora de `development` desde a introdução da recuperação de senha por email —, e as variáveis `STRIPE_SECRET_KEY` e `STRIPE_WEBHOOK_SECRET` — obrigatórias fora de `development` desde a integração com o gateway de pagamento; em `test` todas podem ser valores fake, já que os adapters Resend e Stripe nunca são exercidos de verdade nos testes (a verificação de assinatura do webhook é testada localmente, assinando o payload com o mesmo segredo fake — ver `tests/billing/stripe_webhook_verifier.test.ts`).
 
 ## Arquitetura
 
@@ -52,14 +52,14 @@ Os testes ficam em `tests/<bounded context>/<test name>.test.ts`.
 
 ### Estrutura de Camadas
 
-Cada módulo de negócio (`auth`, `booking`, `property_management`, `finance`) possui quatro camadas:
+Cada módulo de negócio (`auth`, `booking`, `property_management`, `finance`, `billing`) possui quatro camadas:
 
 ```
 src/[modulo]/
 ├── domain/         # Entidades, interfaces de repositório, value objects, eventos, policies
 ├── application/    # Use cases, serviços, DTOs, event handlers
 ├── infra/          # Repositórios Drizzle, container DI, integrações externas
-└── presentation/   # Controllers HTTP
+└── presentation/   # Controllers HTTP e tools MCP
 ```
 
 O módulo `src/core/` provê infraestrutura compartilhada: tipo base de entidade, erros customizados, interface `UseCase`, roteamento HTTP, configuração do DI e setup do banco.
@@ -76,7 +76,33 @@ O módulo `src/core/` provê infraestrutura compartilhada: tipo base de entidade
 
 **Tratamento de Erros** — use cases lançam erros tipados; o adaptador HTTP mapeia os nomes de erro para status codes: `ValidationError` → 422, `ConflictError` → 409, `ResourceNotFoundError` → 404, `UnauthorizedError` → 401, `IllegalStateError` → 500.
 
+**Exclusão de propriedade** (`DELETE /property/:property_id`) é soft delete que **cancela em cascata** as estadias futuras da propriedade — `Stay.cancel()` para cada uma, revertendo a receita no ledger. `LedgerEntry`, `PropertySetting` e `ExternalBookingSource` nunca são tocados, apenas deixam de ser servidos. `PropertyOwnershipPolicy` é o portão único de posse+`deleted_at` para todo use case property-scoped nos BCs `property_management`, `booking` e `finance` — nunca duplicar essa checagem inline. `PropertyPostgresRepository.propertyOfId` deliberadamente **não** filtra `deleted_at`: ele sustenta a decisão INSERT-vs-UPDATE de `save()`, e filtrar ali faria a própria escrita do soft delete falhar com 500. O `409` sobrevive **estreitado**: só bloqueia quando há um hóspede no imóvel agora (`check_in <= agora AND check_out >= agora`) — uma estadia futura nunca bloqueia, é cancelada. A checagem e a liberação da ocupação atravessam para `booking` por uma porta (`PropertyOccupancy.releaseFutureOccupancy`, um comando com um callback de regra — mesmo idioma de `PropertyRepository.saveNewWithinQuota`) declarada em `property_management` e implementada em `booking`, preservando a direção de dependência `booking → property_management` e mantendo a regra do 409 dentro de `property_management`. Tudo roda dentro de uma única transação (`TransactionRunner`, `core/application/transaction/`, implementada sobre `db.transaction` com o executor publicado via `AsyncLocalStorage` — ver `core/infra/database/drizzle/transaction_context.ts`): qualquer falha no meio da cascata, incluindo a corrida em que uma estadia futura vira "em andamento" entre a leitura e o cancelamento, aborta a operação inteira com `409`, sem rastro parcial. A rota retorna `200` com `{ "canceled_stays": N }`, não `204`. Essa garantia de "tudo ou nada" depende de uma invariante que **precisa continuar sendo verdadeira**: nenhum handler de `StayCanceledEvent` pode ter efeito fora do Postgres enquanto rodar dentro dessa transação — hoje só existe `RevertRevenueOnStayCancel`, que só escreve no ledger; o dia em que um segundo handler for registrado (ex.: remover a senha da fechadura), o efeito externo tem que ser pós-commit, idempotente e retentável, nunca dentro da transação. Um teste (`tests/property_management/delete_property.test.ts`) trava essa invariante contando os handlers registrados em `StayCanceledEvent`.
+
 **Autenticação** — JWT Bearer tokens. `SessionManager` cria/valida tokens. O middleware de auth extrai o usuário e o repassa ao controller. Rotas declaram `authenticated: boolean` em `routes.ts`.
+
+**Superfície MCP obrigatória** — todo caso de uso ou endpoint novo **de escopo de usuário** nasce com a **tool MCP correspondente, na mesma entrega**. O produto tem que funcionar independente de UI: o backend concentra as regras de negócio e uma IA conectada ao `/mcp` deve conseguir executar todas as ações **do próprio usuário**. As tools ficam em `src/<bc>/presentation/mcp_tool/` e são registradas em dois pontos (factory `make<X>Tool()` no Di do BC, array `tools` de `makeMcpRequestHandler`), sempre sobre as **mesmas instâncias de DI** que o HTTP usa.
+
+**Administração não entra no MCP.** Caso de uso que opera sobre a **aplicação inteira** — configuração global, dados de todos os usuários — em vez dos dados do usuário logado **não tem tool MCP**, e não é dívida a pagar depois: é exclusão deliberada. Na prática isso cobre o BC `backoffice` inteiro e qualquer rota `adminOnly`. O MCP existe para o usuário dirigir a própria conta; administrar a plataforma não é ação de usuário.
+
+Demais exceções: material de credencial (cadastro, login, troca e recuperação de senha), o próprio protocolo OAuth que emite o token do `/mcp` e seus documentos de descoberta, webhooks de terceiros, links públicos não autenticados, exclusão de conta por LGPD, sessões de pagamento que devolvem URL para um humano abrir, e rotas de operação (`/health`, `/docs`). Toda exceção usada precisa estar registrada no plano da entrega.
+
+### Bounded Context `billing`
+
+Modelo de monetização SaaS: cada `User` tem exatamente uma `Subscription`, vinculada a um `Plan` do catálogo (`free` ou `pro`, semeados via `bun run db:seed`). O **entitlement** (acesso à plataforma + `max_properties`) é sempre **derivado** de `Subscription` + `Plan` no momento da leitura (`SubscriptionAccessPolicy`), nunca uma coluna persistida — não há scheduler no projeto para expirar períodos automaticamente. `EntitlementService` (`billing/application/service/`) é o Open Host Service que `core/infra/http`, `core/infra/mcp` e `property_management` consomem via interface, nunca a infraestrutura de `billing` diretamente.
+
+O acesso é bloqueado (fail-closed) em toda rota `authenticated: true` e em `/mcp`, exceto as rotas marcadas com `allowWithoutPlatformAccess: true` em `routes.ts` (conta própria, exclusão LGPD, higiene de apps conectados, decisão OAuth, checkout e portal de cobrança) — uma conta sem `Subscription` fica bloqueada até intervenção manual. Referências externas são strings opacas anuláveis (`external_reference`, `external_customer_reference`, `external_price_reference`); só `billing/infra/gateway/` conhece o nome do fornecedor (Stripe) — `domain` e `application` só conhecem "gateway".
+
+Todo evento relevante do ciclo de vida da assinatura (`SubscriptionStartedEvent`, `SubscriptionPlanChangedEvent`, `SubscriptionPaymentFailedEvent`, `SubscriptionCanceledEvent`, `SubscriptionRenewedEvent`) alimenta o **Histórico da Assinatura**: um registro append-only (`SubscriptionHistoryEntry`, um agregado próprio — não faz parte de `Subscription`) exposto ao próprio usuário via `GET /billing/subscription/history` (paginado, `allowWithoutPlatformAccess: true`). O escritor único é `RecordSubscriptionHistoryEntryUseCase`, que captura e loga qualquer falha de escrita em vez de propagá-la — uma falha ao gravar auditoria nunca pode derrubar cadastro de usuário ou troca de plano, que já foram confirmados quando o handler roda. `SubscriptionPlanChangedEvent` é o único evento de troca de plano (substitui o antigo `SubscriptionActivatedEvent`, removido): carrega `opens_paid_cycle`, derivado dentro do agregado `Subscription` (`has_paid_cycle`), que é o fato que um futuro `finance` usa para reconhecer receita sem recarregar o `Plan`. `SubscriptionRenewedEvent` cobre um novo ciclo pago abrindo sem troca de plano.
+
+#### Integração com o gateway de pagamento
+
+`billing` cobra de verdade através de três caminhos: **Checkout** hospedado (`POST /billing/checkout-session`) para a primeira assinatura, **Customer Portal** hospedado (`POST /billing/portal-session`) para tudo depois dela, e um **webhook** (`POST /billing/webhooks/stripe`, `authenticated: false`) para manter o estado local sincronizado. O gateway é a fonte de verdade sobre dinheiro e período de cobrança; `billing` continua sendo a fonte de verdade sobre entitlement. As duas rotas de pagamento têm `allowWithoutPlatformAccess: true` — uma conta bloqueada precisa conseguir pagar para se desbloquear.
+
+A verificação da assinatura `Stripe-Signature` acontece **dentro** de `ProcessGatewayWebhookUseCase`, nunca no controller — não existe (nem pode existir) um caminho que invoque as transições de domínio com um evento não verificado, e não existe bypass "só em dev". Reentrega do mesmo evento é absorvida por uma tabela de idempotência (`processed_gateway_events`, `external_event_id` único: `claim` antes de processar, `release` só no caminho de falha). Um evento mais antigo que `Subscription.external_event_at` é descartado — defesa contra reentrega fora de ordem.
+
+As transições dirigidas por webhook (`activate`, `changePlan`, `startTrialUntil`, `markPastDue`, `cancel`) são idempotentes: reentrada no mesmo estado nunca lança `ConflictError` — um `ConflictError` escapando do caminho do webhook é sempre um bug, porque vira um loop de retentativa do Stripe até o endpoint ser desativado. `markPastDue` tolera `active`/`trialing`/`past_due` e ancora `grace_period_ends_at` na primeira falha; `cancel` já cancelada é um no-op silencioso. `SubscribeToPlanUseCase` foi renomeado para `GrantPlanUseCase` (concede plano sem cobrar — mecanismo interno, sem rota) e `CancelSubscriptionUseCase` passou a receber `{ user_id }` em vez de `User`, para que ambos possam ser reusados pelo orquestrador do webhook.
+
+O catálogo (`price_id` do Stripe) é sincronizado manualmente: a variável opcional `STRIPE_PRO_PRICE_ID` faz `seedPlans()` fazer upsert de `external_price_reference` no plano `pro` a cada execução.
 
 ### Banco de Dados
 
@@ -95,6 +121,9 @@ Definidas em `src/core/infra/config/environments.ts`:
 - `PASSWORD_RESET_EMAIL_FROM` — remetente (`"Nome <email>"`) usado nos emails enviados. Obrigatória fora de `development`
 - `PASSWORD_RESET_REQUEST_TTL_SECONDS` — tempo de vida de um pedido de recuperação de senha, em segundos; default 1 hora
 - `CORS_ALLOWED_ORIGINS` — lista opcional de origens permitidas para CORS, separadas por vírgula; se ausente, cai para `[FRONT_BASE_URL]`
+- `STRIPE_SECRET_KEY` — chave secreta da API do Stripe. Obrigatória fora de `development`
+- `STRIPE_WEBHOOK_SECRET` — segredo de assinatura usado para verificar o header `Stripe-Signature` no webhook. Obrigatória fora de `development`
+- `STRIPE_PRO_PRICE_ID` — `price_id` do Stripe para o plano Pro; opcional. Quando presente, `seedPlans()` faz upsert desse valor em `plans.external_price_reference`
 
 ### Estilo de Código
 

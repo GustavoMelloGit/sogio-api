@@ -72,6 +72,10 @@ export class TenantPostgresRepository implements TenantRepository {
           eq(propertiesTable.user_id, ownerId),
           isNull(tenantsTable.deleted_at),
           isNull(staysTable.deleted_at),
+          // R-5: a tenant whose only stay is on a deleted property
+          // disappears from GET /tenants, consistent with everything else
+          // scoped by the property.
+          isNull(propertiesTable.deleted_at),
           query ? ilike(tenantsTable.name, `%${query}%`) : undefined
         )
       );

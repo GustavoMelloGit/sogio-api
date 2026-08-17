@@ -41,12 +41,13 @@ Plataforma de gestão de alugueis de curta duração. Proprietários cadastram i
 
 ### Bounded Contexts
 
-| Contexto                | Responsabilidade                                                             |
-| ----------------------- | ---------------------------------------------------------------------------- |
-| **Auth**                | Identidade e autenticação de usuários                                        |
-| **Booking**             | Reservas, estadias, hóspedes (tenants) e integração com plataformas externas |
-| **Property Management** | Catálogo de imóveis (nome, endereço, imagens, capacidade)                    |
-| **Finance**             | Ledger financeiro por propriedade (receitas e despesas)                      |
+| Contexto                | Responsabilidade                                                                                |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| **Auth**                | Identidade e autenticação de usuários                                                           |
+| **Booking**             | Reservas, estadias, hóspedes (tenants) e integração com plataformas externas                    |
+| **Property Management** | Catálogo de imóveis (nome, endereço, imagens, capacidade)                                       |
+| **Finance**             | Ledger financeiro por propriedade (receitas e despesas do proprietário)                         |
+| **Billing**             | Planos e assinaturas — ledger do Sogio sobre o proprietário; entitlement de acesso à plataforma |
 
 ### Agregados Principais
 
@@ -55,6 +56,9 @@ Plataforma de gestão de alugueis de curta duração. Proprietários cadastram i
 - **Tenant** (Booking) — o hóspede; identificado naturalmente pelo telefone
 - **Property** (Property Management) — catálogo do imóvel com detalhes completos
 - **LedgerEntry** (Finance) — registro financeiro; receita (positivo) ou despesa (negativo)
+- **Plan** (Billing) — item do catálogo comercial do Sogio (nome, preço, intervalo de cobrança, limites); nunca um enum em código
+- **Subscription** (Billing) — vínculo 1:1 entre um `User` e um `Plan`; muda de plano in-place (não gera uma nova assinatura por troca)
+- **SubscriptionHistoryEntry** (Billing) — registro append-only de cada transição do ciclo de vida da assinatura; agregado próprio, não faz parte de `Subscription`
 
 ### Invariantes Críticas do Domínio
 
@@ -64,13 +68,31 @@ Plataforma de gestão de alugueis de curta duração. Proprietários cadastram i
 - Estadias iniciadas não podem ser canceladas
 - Estadias já canceladas não podem ser alteradas
 - O código de entrada deve ter um número mínimo de caracteres, mas o tamanho exato pode variar conforme o modelo da fechadura inteligente
+- Entitlement (acesso à plataforma + limite de propriedades) é sempre **derivado** de `Subscription` + `Plan` no momento da leitura, nunca uma coluna persistida — não há scheduler no projeto para mantê-la correta ao longo do tempo
+- O plano `Free` é perpétuo (`price_amount = 0`): nunca tem `current_period_end`, senão toda conta gratuita seria bloqueada ~30 dias após o cadastro
+- Cancelar uma assinatura de plano perpétuo (Free) é proibido — não há ciclo a encerrar
+- Uma assinatura que já teve `trial_ends_at` preenchido nunca reentra em `trialing`, mesmo trocando de plano
+- O período (`current_period_end`) e a referência (`external_reference`) de uma assinatura paga são fornecidos pelo gateway de pagamento, não calculados localmente — `BillingCyclePolicy` continua existindo apenas para o caminho interno (Free, `GrantPlanUseCase`, testes). As transições dirigidas por webhook (`activate`, `changePlan`, `startTrialUntil`, `markPastDue`, `cancel`) são idempotentes por construção: nunca lançam `ConflictError` quando o estado já é o alvo, porque isso viraria um loop de retentativa do gateway
+
+### Vocabulário do Gateway de Pagamento
+
+- **Gateway de pagamento** — sistema externo que cobra. O domínio nunca diz "Stripe", só `billing/infra/gateway/` conhece o fornecedor
+- **Checkout** — sessão hospedada em que o proprietário assina pela primeira vez; produz só uma URL
+- **Portal de cobrança** — sessão hospedada para gerenciar uma assinatura existente; produz só uma URL
+- **Evento do gateway** (`GatewayBillingEvent`) — um fato que o gateway afirma, normalizado no vocabulário da Sogio antes de chegar em `application`; pode chegar repetido ou fora de ordem
 
 ### Eventos de Domínio
 
-| Evento              | Disparado por           | Efeito                                                                      |
-| ------------------- | ----------------------- | --------------------------------------------------------------------------- |
-| `StayBookedEvent`   | Confirmação de reserva  | Criação de senha temporária na fechadura + lançamento de receita no Finance |
-| `StayCanceledEvent` | Cancelamento de estadia | Estorno da receita no Finance                                               |
+| Evento                           | Disparado por                                                                    | Efeito                                                                                          |
+| -------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `StayBookedEvent`                | Confirmação de reserva                                                           | Criação de senha temporária na fechadura + lançamento de receita no Finance                     |
+| `StayCanceledEvent`              | Cancelamento de estadia                                                          | Estorno da receita no Finance                                                                   |
+| `UserCreatedEvent`               | Cadastro de usuário (Auth)                                                       | Criação automática da Subscription no plano Free (Billing)                                      |
+| `SubscriptionStartedEvent`       | Subscription criada pela primeira vez (Billing)                                  | Registro da entrada `started` no Histórico da Assinatura                                        |
+| `SubscriptionPlanChangedEvent`   | Toda troca de plano bem-sucedida (Billing)                                       | Registro da entrada `plan_changed`; carrega `opens_paid_cycle` para um futuro gancho do Finance |
+| `SubscriptionPaymentFailedEvent` | `MarkSubscriptionPastDueUseCase` marca `past_due`                                | Registro da entrada `payment_failed` no Histórico da Assinatura                                 |
+| `SubscriptionCanceledEvent`      | Cancelamento de assinatura (Billing)                                             | Registro da entrada `canceled` no Histórico da Assinatura                                       |
+| `SubscriptionRenewedEvent`       | `SyncSubscriptionFromGatewayUseCase`, quando o período avança sem troca de plano | Registro da entrada `renewed` no Histórico da Assinatura                                        |
 
 ### Observação Arquitetural Importante
 

@@ -1,4 +1,7 @@
 import { GetPublicStayUseCase } from "../../application/use_case/stay/get_public_stay";
+import { StayPropertyOccupancy } from "../../application/service/stay_property_occupancy";
+import { CancelStayService } from "../../application/service/cancel_stay_service";
+import type { PropertyOccupancy } from "../../../property_management/domain/service/property_occupancy";
 import { GetStayUseCase } from "../../application/use_case/stay/get_stay";
 import { FindPropertyStaysUseCase } from "../../application/use_case/stay/find_property_stays";
 import { CancelStayUseCase } from "../../application/use_case/stay/cancel_stay";
@@ -11,6 +14,8 @@ import { FindPropertyStaysController } from "../../presentation/controller/stay/
 import { CancelStayController } from "../../presentation/controller/stay/cancel_stay.controller";
 import { UpdateStayController } from "../../presentation/controller/stay/update_stay.controller";
 import { GetDashboardOverviewController } from "../../presentation/controller/dashboard/get_dashboard_overview.controller";
+import { makeCancelStayTool } from "../../presentation/mcp_tool/cancel_stay.mcp_tool";
+import { makeListStaysTool } from "../../presentation/mcp_tool/list_stays.mcp_tool";
 import { StayPostgresRepository } from "../database/postgres_repository/stay_postgres_repository";
 import type { TenantRepository } from "../../domain/repository/tenant_repository";
 import { TenantPostgresRepository } from "../database/postgres_repository/tenant_postgres_repository";
@@ -83,7 +88,7 @@ export class StayDi {
     return new CancelStayUseCase(
       this.#stayRepository,
       this.#propertyRepository,
-      this.#eventDispatcher
+      this.makeCancelStayService()
     );
   }
   makeUpdateStayUseCase() {
@@ -98,6 +103,18 @@ export class StayDi {
       this.#propertyRepository,
       this.#stayRepository,
       this.#ledgerEntryRepository
+    );
+  }
+
+  // Services
+  makeCancelStayService(): CancelStayService {
+    return new CancelStayService(this.#stayRepository, this.#eventDispatcher);
+  }
+  /** Consumed by `PropertyManagementDi` in the composition root (DA-3). */
+  makeStayPropertyOccupancy(): PropertyOccupancy {
+    return new StayPropertyOccupancy(
+      this.#stayRepository,
+      this.makeCancelStayService()
     );
   }
 
@@ -129,5 +146,13 @@ export class StayDi {
       this.#logger,
       this.#deviceManagementService
     );
+  }
+
+  // MCP Tools
+  makeCancelStayTool() {
+    return makeCancelStayTool(this.makeCancelStayUseCase());
+  }
+  makeListStaysTool() {
+    return makeListStaysTool(this.makeFindPropertyStaysUseCase());
   }
 }
