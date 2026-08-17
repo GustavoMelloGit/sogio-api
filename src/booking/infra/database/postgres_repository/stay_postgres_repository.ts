@@ -73,8 +73,17 @@ export class StayPostgresRepository implements StayRepository {
     return Stay.reconstitute(result[0]);
   }
 
+  /**
+   * Reads through `currentExecutor()` (DA-13): called by
+   * `DeletePropertyUseCase`'s cascade inside its transaction, and a plain
+   * `db.query` there would open a second pool connection while the first is
+   * still held open by the transaction — with `max: 10` and no
+   * `connectionTimeoutMillis`, ten concurrent deletions deadlock the pool
+   * permanently. Resolves to plain `db` outside `TransactionRunner.run`,
+   * unchanged from before.
+   */
   async allFutureFromProperty(propertyId: string): Promise<StayWithTenant[]> {
-    const stays = await db.query.staysTable.findMany({
+    const stays = await currentExecutor().query.staysTable.findMany({
       where: and(
         eq(staysTable.property_id, propertyId),
         gte(staysTable.check_out, new Date()),

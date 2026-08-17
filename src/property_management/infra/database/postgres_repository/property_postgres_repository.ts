@@ -24,9 +24,16 @@ export class PropertyPostgresRepository implements PropertyRepository {
    * INSERT path on a row that already exists — primary key violation, 500.
    * Authorization for a soft-deleted property is `PropertyOwnershipPolicy`'s
    * job, not this method's.
+   *
+   * Reads through `currentExecutor()` (DA-13): `save()` calls this from
+   * inside `DeletePropertyUseCase`'s transaction, and a plain `db.query`
+   * there would open a second pool connection while the first is still held
+   * — deadlocks the pool under concurrent deletions (same hazard as
+   * `StayPostgresRepository.allFutureFromProperty`). Resolves to plain `db`
+   * outside `TransactionRunner.run`, unchanged from before.
    */
   async propertyOfId(id: string): Promise<Property | null> {
-    const property = await db.query.propertiesTable.findFirst({
+    const property = await currentExecutor().query.propertiesTable.findFirst({
       where: eq(propertiesTable.id, id),
       with: {
         address: true,
