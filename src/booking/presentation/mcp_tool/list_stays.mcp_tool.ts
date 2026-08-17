@@ -3,9 +3,9 @@ import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
   MAX_LIMIT,
-} from "../../../application/dto/pagination";
-import type { StayDi } from "../../../../booking/infra/di/stay_di";
-import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
+} from "../../../core/application/dto/pagination";
+import type { FindPropertyStaysUseCase } from "../../application/use_case/stay/find_property_stays";
+import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 const inputSchema = {
   property_id: z
@@ -55,10 +55,8 @@ const inputSchema = {
  * context in a single call.
  */
 export function makeListStaysTool(
-  stayDi: StayDi
+  useCase: FindPropertyStaysUseCase
 ): McpToolDefinition<typeof inputSchema> {
-  const useCase = stayDi.makeFindPropertyStaysUseCase();
-
   return {
     name: "list_stays",
     description: "Lists the stays booked for a property, paginated.",

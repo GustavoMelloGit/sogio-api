@@ -1,7 +1,7 @@
 import { z } from "zod";
-import type { PropertyDi } from "../../../../booking/infra/di/property_di";
-import { tenantSexSchema } from "../../../../booking/domain/entity/tenant";
-import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
+import type { BookStayUseCase } from "../../application/use_case/property/book_stay";
+import { tenantSexSchema } from "../../domain/entity/tenant";
+import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 export const inputSchema = {
   property_id: z
@@ -69,10 +69,8 @@ export const inputSchema = {
  * password and must never be sent into an LLM's context.
  */
 export function makeBookStayTool(
-  propertyDi: PropertyDi
+  useCase: BookStayUseCase
 ): McpToolDefinition<typeof inputSchema> {
-  const useCase = propertyDi.makeBookStayUseCase();
-
   return {
     name: "book_stay",
     description:

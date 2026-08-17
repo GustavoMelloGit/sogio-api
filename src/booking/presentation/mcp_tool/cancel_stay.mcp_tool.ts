@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { StayDi } from "../../../../booking/infra/di/stay_di";
-import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
+import type { CancelStayUseCase } from "../../application/use_case/stay/cancel_stay";
+import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 const inputSchema = {
   stay_id: z
@@ -23,10 +23,8 @@ const inputSchema = {
  * physical access.
  */
 export function makeCancelStayTool(
-  stayDi: StayDi
+  useCase: CancelStayUseCase
 ): McpToolDefinition<typeof inputSchema> {
-  const useCase = stayDi.makeCancelStayUseCase();
-
   return {
     name: "cancel_stay",
     description:
