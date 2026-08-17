@@ -73,7 +73,8 @@ O Desenvolvedor é responsável por traduzir as diretrizes arquiteturais em cód
 ### Tools MCP
 
 - Todo caso de uso ou endpoint novo **de escopo de usuário** sai com a tool MCP correspondente, na mesma entrega — o produto tem que ser dirigível sem UI
-- Tools ficam em `src/core/infra/mcp/tools/`, registradas em três pontos: barrel `tools/index.ts`, imports de `mcp/routes.ts` e o array `tools` de `makeMcpRequestHandler`
+- Tools ficam em `src/<bc>/presentation/mcp_tool/<nome>.mcp_tool.ts` — mesma convenção de `presentation/<papel>/<nome>.<papel>.ts` usada por `controller/` e `middleware/`
+- Registradas em dois pontos: factory `make<X>Tool()` no `[Module]Di` do BC (recebe o use case, não o container) e o array `tools` de `makeMcpRequestHandler` (`core/infra/mcp/routes.ts`)
 - Sempre sobre as **mesmas instâncias de DI** do HTTP — nunca reimplementar autorização na tool
 - **Administração não entra no MCP**: caso de uso que opera sobre a aplicação inteira (config global, dados de todos os usuários) em vez do usuário logado não tem tool, e isso não é dívida — cobre o BC `backoffice` e qualquer rota `adminOnly`
 - Demais exceções estão em `CLAUDE.md`; toda exceção usada precisa estar registrada no plano da entrega

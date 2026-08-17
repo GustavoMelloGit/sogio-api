@@ -59,7 +59,7 @@ src/[modulo]/
 ├── domain/         # Entidades, interfaces de repositório, value objects, eventos, policies
 ├── application/    # Use cases, serviços, DTOs, event handlers
 ├── infra/          # Repositórios Drizzle, container DI, integrações externas
-└── presentation/   # Controllers HTTP
+└── presentation/   # Controllers HTTP e tools MCP
 ```
 
 O módulo `src/core/` provê infraestrutura compartilhada: tipo base de entidade, erros customizados, interface `UseCase`, roteamento HTTP, configuração do DI e setup do banco.
@@ -80,7 +80,7 @@ O módulo `src/core/` provê infraestrutura compartilhada: tipo base de entidade
 
 **Autenticação** — JWT Bearer tokens. `SessionManager` cria/valida tokens. O middleware de auth extrai o usuário e o repassa ao controller. Rotas declaram `authenticated: boolean` em `routes.ts`.
 
-**Superfície MCP obrigatória** — todo caso de uso ou endpoint novo **de escopo de usuário** nasce com a **tool MCP correspondente, na mesma entrega**. O produto tem que funcionar independente de UI: o backend concentra as regras de negócio e uma IA conectada ao `/mcp` deve conseguir executar todas as ações **do próprio usuário**. As tools ficam em `src/core/infra/mcp/tools/` e são registradas em três pontos (barrel `tools/index.ts`, imports de `mcp/routes.ts` e o array `tools` de `makeMcpRequestHandler`), sempre sobre as **mesmas instâncias de DI** que o HTTP usa.
+**Superfície MCP obrigatória** — todo caso de uso ou endpoint novo **de escopo de usuário** nasce com a **tool MCP correspondente, na mesma entrega**. O produto tem que funcionar independente de UI: o backend concentra as regras de negócio e uma IA conectada ao `/mcp` deve conseguir executar todas as ações **do próprio usuário**. As tools ficam em `src/<bc>/presentation/mcp_tool/` e são registradas em dois pontos (factory `make<X>Tool()` no Di do BC, array `tools` de `makeMcpRequestHandler`), sempre sobre as **mesmas instâncias de DI** que o HTTP usa.
 
 **Administração não entra no MCP.** Caso de uso que opera sobre a **aplicação inteira** — configuração global, dados de todos os usuários — em vez dos dados do usuário logado **não tem tool MCP**, e não é dívida a pagar depois: é exclusão deliberada. Na prática isso cobre o BC `backoffice` inteiro e qualquer rota `adminOnly`. O MCP existe para o usuário dirigir a própria conta; administrar a plataforma não é ação de usuário.
 
