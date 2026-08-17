@@ -5,7 +5,7 @@ import {
   MAX_LIMIT,
 } from "../../../application/dto/pagination";
 import type { StayDi } from "../../../../booking/infra/di/stay_di";
-import type { McpToolDefinition } from "../mcp_tool";
+import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
 
 const inputSchema = {
   property_id: z

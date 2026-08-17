@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { FinanceDi } from "../../../../finance/infra/di/finance_di";
 import { expenseCategorySchema } from "../../../../finance/domain/entity/ledger_entry";
-import type { McpToolDefinition } from "../mcp_tool";
+import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
 
 export const inputSchema = {
   property_id: z

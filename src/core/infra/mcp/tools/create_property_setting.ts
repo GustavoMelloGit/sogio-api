@@ -5,7 +5,7 @@ import {
   settingKeySchema,
   settingTypeSchema,
 } from "../../../domain/value_object/setting_value";
-import type { McpToolDefinition } from "../mcp_tool";
+import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
 
 const inputSchema = {
   property_id: z

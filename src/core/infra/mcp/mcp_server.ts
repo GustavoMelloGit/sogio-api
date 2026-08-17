@@ -1,7 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { z } from "zod";
 import type { User } from "../../../auth/domain/entity/user";
-import { registerMcpTool, type McpToolDefinition } from "./mcp_tool";
+import { registerMcpTool } from "./mcp_tool_adapter";
+import type { McpToolDefinition } from "../../presentation/mcp_tool/mcp_tool";
 
 export type CreateMcpServerOptions = {
   name: string;

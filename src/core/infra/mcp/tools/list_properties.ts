@@ -1,5 +1,5 @@
 import type { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
-import type { McpToolDefinition } from "../mcp_tool";
+import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
 
 /**
  * Wires the existing `FindUserPropertiesUseCase` (already used by the

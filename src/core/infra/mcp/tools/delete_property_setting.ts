@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
-import type { McpToolDefinition } from "../mcp_tool";
+import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
 
 const inputSchema = {
   property_id: z

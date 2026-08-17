@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { PropertyDi } from "../../../../booking/infra/di/property_di";
 import { tenantSexSchema } from "../../../../booking/domain/entity/tenant";
-import type { McpToolDefinition } from "../mcp_tool";
+import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
 
 export const inputSchema = {
   property_id: z
