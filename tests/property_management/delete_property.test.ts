@@ -22,6 +22,7 @@ import { StayCanceledEvent } from "../../src/booking/domain/event/stay_canceled_
 import { DrizzleTransactionRunner } from "../../src/core/infra/database/drizzle/drizzle_transaction_runner";
 import { LedgerEntryPostgresRepository } from "../../src/finance/infra/database/postgres_repository/ledger_entry_postgres_repository";
 import { RevertRevenueOnStayCancel } from "../../src/finance/application/handler/revert_revenue_on_stay_cancel";
+import { ConflictError } from "../../src/core/application/error/conflict_error";
 import { ConsoleLogger } from "../../src/core/infra/logger/console_logger";
 import { inMemoryEventDispatcher } from "../../src/core/infra/event/in_memory_event_dispatcher";
 import type { EventDispatcher } from "../../src/core/application/event/event_dispatcher";
@@ -399,7 +400,7 @@ describe("DELETE /property/:property_id", () => {
     const useCase = makeRealDeletePropertyUseCase();
     await expect(
       useCase.execute({ property_id: property.id }, user)
-    ).rejects.toThrow();
+    ).rejects.toBeInstanceOf(ConflictError);
 
     const propertyRows = await db
       .select()
@@ -441,9 +442,12 @@ describe("DELETE /property/:property_id", () => {
 
     const useCase = makeDeletePropertyUseCaseWithFailingLedger();
 
+    // Asserts the exact simulated error escapes untouched, proving the
+    // rollback below happened because of this failure — not because it got
+    // swallowed and replaced by something else (e.g. IllegalStateError).
     await expect(
       useCase.execute({ property_id: property.id }, user)
-    ).rejects.toThrow();
+    ).rejects.toThrow("simulated failure mid-cascade");
 
     const propertyRows = await db
       .select()
@@ -464,16 +468,8 @@ describe("DELETE /property/:property_id", () => {
     expect(ledgerRowsAfter).toHaveLength(ledgerRowsBefore.length);
   });
 
-  it("R-15 — StayCanceledEvent has exactly one handler, and it only writes to Postgres; this is what makes tudo-ou-nada above true", () => {
-    // Locks the invariant DA-13 relies on: the transaction above only
-    // covers every effect of the cascade because, today, cancelling a stay
-    // has no effect outside the database. If a second StayCanceledEvent
-    // handler is ever registered (e.g. R-6/R-11's future
-    // RemoveTempPasswordOnStayCancel), this test starts failing — which is
-    // the point: that handler's external effect must NOT run inside
-    // DeletePropertyUseCase's transaction (DA-13, part 3), and a failing
-    // test here forces that decision instead of letting the guarantee rot
-    // silently.
+  it("R-15 — exactly one handler is registered for StayCanceledEvent", () => {
+    // Guards DA-13; doesn't catch an external effect added to the existing handler.
     expect(
       inMemoryEventDispatcher.handlerCountFor(StayCanceledEvent.NAME)
     ).toBe(1);
