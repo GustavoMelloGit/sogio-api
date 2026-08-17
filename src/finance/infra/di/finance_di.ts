@@ -11,6 +11,7 @@ import type { LedgerEntryRepository } from "../../domain/repository/ledger_entry
 import { RecordExpenseController } from "../../presentation/controller/record_expense.controller";
 import { RecordRevenueController } from "../../presentation/controller/record_revenue.controller";
 import { FindPropertyFinancialMovementsController } from "../../presentation/controller/find_property_financial_movements.controller";
+import { makeRecordExpenseTool } from "../../presentation/mcp_tool/record_expense.mcp_tool";
 import { LedgerEntryPostgresRepository } from "../database/postgres_repository/ledger_entry_postgres_repository";
 import { RevertRevenueOnStayCancel } from "../../application/handler/revert_revenue_on_stay_cancel";
 import { StayCanceledEvent } from "../../../booking/domain/event/stay_canceled_event";
@@ -88,5 +89,10 @@ export class FinanceDi {
     return new FindPropertyFinancialMovementsController(
       this.makeFindPropertyFinancialMovementsUseCase()
     );
+  }
+
+  // MCP Tools
+  makeRecordExpenseTool() {
+    return makeRecordExpenseTool(this.makeRecordExpenseUseCase());
   }
 }

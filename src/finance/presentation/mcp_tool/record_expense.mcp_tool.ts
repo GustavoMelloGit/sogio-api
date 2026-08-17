@@ -1,7 +1,7 @@
 import { z } from "zod";
-import type { FinanceDi } from "../../../../finance/infra/di/finance_di";
-import { expenseCategorySchema } from "../../../../finance/domain/entity/ledger_entry";
-import type { McpToolDefinition } from "../../../presentation/mcp_tool/mcp_tool";
+import type { RecordExpenseUseCase } from "../../application/use_case/record_expense";
+import { expenseCategorySchema } from "../../domain/entity/ledger_entry";
+import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 export const inputSchema = {
   property_id: z
@@ -32,10 +32,8 @@ export const inputSchema = {
  * the `LedgerEntry` entity respectively.
  */
 export function makeRecordExpenseTool(
-  financeDi: FinanceDi
+  useCase: RecordExpenseUseCase
 ): McpToolDefinition<typeof inputSchema> {
-  const useCase = financeDi.makeRecordExpenseUseCase();
-
   return {
     name: "record_expense",
     description: "Records a financial expense for a property.",
