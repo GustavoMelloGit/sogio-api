@@ -16,20 +16,7 @@ import { CoreDi } from "../di/core_di";
 import { CorsMiddleware } from "../../presentation/middleware/cors.middleware";
 import { McpIdentityResolver } from "./identity_resolver";
 import { createMcpServer } from "./mcp_server";
-import type { McpToolDefinition } from "./mcp_tool";
-import {
-  makeBookStayTool,
-  makeCancelStayTool,
-  makeCreatePropertySettingTool,
-  makeDeletePropertySettingTool,
-  makeDeletePropertyTool,
-  makeGetPropertySettingTool,
-  makeListPropertiesTool,
-  makeListPropertySettingsTool,
-  makeListStaysTool,
-  makeRecordExpenseTool,
-  makeUpdatePropertySettingTool,
-} from "./tools";
+import type { McpToolDefinition } from "../../presentation/mcp_tool/mcp_tool";
 
 const MCP_SERVER_NAME = "sogio";
 const MCP_SERVER_VERSION = "1.0.0";
@@ -114,17 +101,17 @@ export function makeMcpRequestHandler(
   const entitlementService = dependencies.billingDi.makeEntitlementService();
 
   const tools: McpToolDefinition<z.ZodRawShape>[] = [
-    makeListPropertiesTool(dependencies.propertyManagementDi),
-    makeListStaysTool(dependencies.stayDi),
-    makeRecordExpenseTool(dependencies.financeDi),
-    makeBookStayTool(dependencies.propertyDi),
-    makeCancelStayTool(dependencies.stayDi),
-    makeListPropertySettingsTool(dependencies.propertyManagementDi),
-    makeGetPropertySettingTool(dependencies.propertyManagementDi),
-    makeCreatePropertySettingTool(dependencies.propertyManagementDi),
-    makeUpdatePropertySettingTool(dependencies.propertyManagementDi),
-    makeDeletePropertySettingTool(dependencies.propertyManagementDi),
-    makeDeletePropertyTool(dependencies.propertyManagementDi),
+    dependencies.propertyManagementDi.makeListPropertiesTool(),
+    dependencies.stayDi.makeListStaysTool(),
+    dependencies.financeDi.makeRecordExpenseTool(),
+    dependencies.propertyDi.makeBookStayTool(),
+    dependencies.stayDi.makeCancelStayTool(),
+    dependencies.propertyManagementDi.makeListPropertySettingsTool(),
+    dependencies.propertyManagementDi.makeGetPropertySettingTool(),
+    dependencies.propertyManagementDi.makeCreatePropertySettingTool(),
+    dependencies.propertyManagementDi.makeUpdatePropertySettingTool(),
+    dependencies.propertyManagementDi.makeDeletePropertySettingTool(),
+    dependencies.propertyManagementDi.makeDeletePropertyTool(),
   ];
 
   return async function handleMcpRequest(request: Request): Promise<Response> {
