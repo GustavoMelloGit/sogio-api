@@ -70,6 +70,14 @@ O Desenvolvedor é responsável por traduzir as diretrizes arquiteturais em cód
 - Factory methods nomeados `make[Component]` (ex: `makeBookStayUseCase`)
 - Instâncias criadas uma única vez em `routes.ts`
 
+### Tools MCP
+
+- Todo caso de uso ou endpoint novo **de escopo de usuário** sai com a tool MCP correspondente, na mesma entrega — o produto tem que ser dirigível sem UI
+- Tools ficam em `src/core/infra/mcp/tools/`, registradas em três pontos: barrel `tools/index.ts`, imports de `mcp/routes.ts` e o array `tools` de `makeMcpRequestHandler`
+- Sempre sobre as **mesmas instâncias de DI** do HTTP — nunca reimplementar autorização na tool
+- **Administração não entra no MCP**: caso de uso que opera sobre a aplicação inteira (config global, dados de todos os usuários) em vez do usuário logado não tem tool, e isso não é dívida — cobre o BC `backoffice` e qualquer rota `adminOnly`
+- Demais exceções estão em `CLAUDE.md`; toda exceção usada precisa estar registrada no plano da entrega
+
 ### Convenções de Nomenclatura
 
 - Arquivos: `snake_case.ts`
