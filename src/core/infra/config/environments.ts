@@ -156,8 +156,6 @@ const envSchema = z
     STRIPE_SECRET_KEY: z.string().trim().optional(),
     /** Signing secret used to verify `Stripe-Signature` on the webhook route. Required outside `development` (R-9, DA-2). */
     STRIPE_WEBHOOK_SECRET: z.string().trim().optional(),
-    /** External price id of the Pro plan's catalog entry — manual sync channel (DA-11). */
-    STRIPE_PRO_PRICE_ID: z.string().trim().optional(),
   })
   .refine(data => data.NODE_ENV === "development" || !!data.API_BASE_URL, {
     message: "API_BASE_URL is required outside development",

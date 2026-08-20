@@ -18,7 +18,6 @@ import type { PaymentGateway } from "../../application/gateway/payment_gateway";
 import type { GatewayWebhookVerifier } from "../../application/gateway/gateway_webhook_verifier";
 import { StripePaymentGateway } from "../gateway/stripe_payment_gateway";
 import { StripeWebhookVerifier } from "../gateway/stripe_webhook_verifier";
-import { CreatePlanUseCase } from "../../application/use_case/create_plan";
 import { ListPlansUseCase } from "../../application/use_case/list_plans";
 import { GrantPlanUseCase } from "../../application/use_case/grant_plan";
 import { CancelSubscriptionUseCase } from "../../application/use_case/cancel_subscription";
@@ -164,10 +163,6 @@ export class BillingDi {
   }
 
   // Use Cases
-  makeCreatePlanUseCase() {
-    return new CreatePlanUseCase(this.#planRepository);
-  }
-
   makeListPlansUseCase() {
     return new ListPlansUseCase(this.#planRepository);
   }
