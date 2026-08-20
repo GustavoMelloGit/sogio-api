@@ -10,11 +10,11 @@ A direção escolhida: **o catálogo comercial do Sogio passa a ser propriedade 
 
 ## Personas
 
-| Persona                                            | Papel nesta entrega                                                                                                                                                        |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Arquiteto** (`.claude/personas/arquiteto.md`)     | Este documento                                                                                                                                                             |
+| Persona                                             | Papel nesta entrega                                                                                                                                                                                                                                                            |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Arquiteto** (`.claude/personas/arquiteto.md`)     | Este documento                                                                                                                                                                                                                                                                 |
 | **Analista de Segurança** (`analista_seguranca.md`) | **Revisão obrigatória e bloqueante** (task 14). Esta entrega abre um caminho em que **input externo escreve regra de negócio de autorização** (`max_properties`) no banco — categoricamente diferente do webhook de assinatura, que só move o estado de uma assinatura por vez |
-| **Desenvolvedor** (`desenvolvedor.md`)              | Tasks 1–13, 15                                                                                                                                                             |
+| **Desenvolvedor** (`desenvolvedor.md`)              | Tasks 1–13, 15                                                                                                                                                                                                                                                                 |
 
 ---
 
@@ -50,30 +50,30 @@ Consequência direta e desejada: `Plan` deixa de ser uma entidade anêmica (só 
 
 ### 2.2 Linguagem ubíqua — termos novos
 
-| Termo                                    | Significado                                                                                                                                                                             |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Catálogo de planos**                   | O conjunto de `Plan` oferecidos. Já existia implicitamente em `allOffered()`; agora ganha nome e um dono                                                                                 |
+| Termo                                           | Significado                                                                                                                                                                                      |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Catálogo de planos**                          | O conjunto de `Plan` oferecidos. Já existia implicitamente em `allOffered()`; agora ganha nome e um dono                                                                                         |
 | **Entrada de catálogo** (`GatewayCatalogEntry`) | Um Price do gateway já normalizado para o vocabulário do Sogio. **Não é um `Plan`** — é a matéria-prima da qual um `Plan` é derivado. Vive em `application/gateway/`, como `GatewayBillingEvent` |
-| **Evento de catálogo** (`GatewayCatalogEvent`) | Um fato que o gateway afirma sobre o catálogo. Família irmã de `GatewayBillingEvent`, não uma variante dela (§2.6)                                                                       |
-| **Sincronização de catálogo**            | Aplicar **uma** entrada/aposentadoria ao catálogo local. Push, dirigido por webhook                                                                                                     |
-| **Reconciliação de catálogo**            | Ler o catálogo **inteiro** do gateway e aplicá-lo. Pull, sob demanda. É o que resolve o bootstrap                                                                                       |
-| **Plano aposentado**                     | `Plan` com `deleted_at` preenchido: some da vitrine (`allOffered`), continua resolvível para quem já assina. Nunca "deletado"                                                            |
+| **Evento de catálogo** (`GatewayCatalogEvent`)  | Um fato que o gateway afirma sobre o catálogo. Família irmã de `GatewayBillingEvent`, não uma variante dela (§2.6)                                                                               |
+| **Sincronização de catálogo**                   | Aplicar **uma** entrada/aposentadoria ao catálogo local. Push, dirigido por webhook                                                                                                              |
+| **Reconciliação de catálogo**                   | Ler o catálogo **inteiro** do gateway e aplicá-lo. Pull, sob demanda. É o que resolve o bootstrap                                                                                                |
+| **Plano aposentado**                            | `Plan` com `deleted_at` preenchido: some da vitrine (`allOffered`), continua resolvível para quem já assina. Nunca "deletado"                                                                    |
 
 Vocabulário deliberadamente ausente: nada aqui diz "Stripe", "price", "product" fora de `billing/infra/gateway/`. `application` fala em "entrada de catálogo" e "referência de preço".
 
 ### 2.3 De onde vem cada campo — a decisão central
 
-| Campo do `Plan`               | Origem                                                     | Natureza  |
-| ----------------------------- | ---------------------------------------------------------- | --------- |
-| `external_price_reference`    | `price.id`                                                 | Nativo    |
-| `external_product_reference`  | `price.product` (**coluna nova**, §2.4)                    | Nativo    |
-| `price_amount`                | `price.unit_amount`                                        | Nativo    |
-| `billing_interval`            | `price.recurring.interval` + `interval_count`              | Nativo    |
-| `deleted_at`                  | derivado de `price.active` / `product.active` / eventos `deleted` | Nativo |
-| `code`                        | `metadata.sogio_plan_code`                                 | Metadata  |
-| `name`                        | `metadata.sogio_plan_name`                                 | Metadata  |
-| `max_properties`              | `metadata.sogio_max_properties`                            | Metadata  |
-| `trial_days`                  | `metadata.sogio_trial_days`                                | Metadata  |
+| Campo do `Plan`              | Origem                                                            | Natureza |
+| ---------------------------- | ----------------------------------------------------------------- | -------- |
+| `external_price_reference`   | `price.id`                                                        | Nativo   |
+| `external_product_reference` | `price.product` (**coluna nova**, §2.4)                           | Nativo   |
+| `price_amount`               | `price.unit_amount`                                               | Nativo   |
+| `billing_interval`           | `price.recurring.interval` + `interval_count`                     | Nativo   |
+| `deleted_at`                 | derivado de `price.active` / `product.active` / eventos `deleted` | Nativo   |
+| `code`                       | `metadata.sogio_plan_code`                                        | Metadata |
+| `name`                       | `metadata.sogio_plan_name`                                        | Metadata |
+| `max_properties`             | `metadata.sogio_max_properties`                                   | Metadata |
+| `trial_days`                 | `metadata.sogio_trial_days`                                       | Metadata |
 
 **Por que `name` vem de metadata e não do `product.name`.** O payload de webhook do Stripe nunca vem com `product` expandido — é só um id. Buscar o nome do Product exigiria uma chamada de rede **dentro** do caminho do webhook, cujo timeout vira retentativa. Além disso o `product.name` é o nome que aparece no Checkout hospedado e nas faturas do Stripe; o `name` do `Plan` é o nome que aparece na **nossa** vitrine. São conceitos próximos mas não idênticos, e manter o descritor inteiro do Sogio num único lugar (o `metadata` do Price) é mais legível para quem opera do que espalhá-lo entre Product e Price.
 
@@ -122,7 +122,7 @@ Guarda que cai fora disso e é obrigatória: **um sinal de aposentadoria só se 
 
 ### DA-2 — `code` protegido por imutabilidade + validação de forma, não por allowlist
 
-O `code` é *load-bearing*: `SubscriptionEntitlementService` faz `planOfCode("free")` e, se não achar, **toda conta do sistema falha fechada**. O risco real é alguém digitar `fre` no dashboard e derrubar produção.
+O `code` é _load-bearing_: `SubscriptionEntitlementService` faz `planOfCode("free")` e, se não achar, **toda conta do sistema falha fechada**. O risco real é alguém digitar `fre` no dashboard e derrubar produção.
 
 A proteção é a **I-1 (imutabilidade)**: como o `code` é a chave de casamento e nunca é alterado numa linha existente, um `sogio_plan_code: "fre"` no Price do Free **não renomeia** o plano `free` — ele cria um plano novo e inútil de code `fre`, e o `free` continua exatamente onde estava. O erro vira lixo visível na vitrine, não um outage.
 
@@ -146,7 +146,7 @@ A tabela `processed_gateway_events` é reusada sem mudança de schema (a chave �
 
 ### DA-4 — O caminho de catálogo **nunca lança**
 
-Esta é a regra dura da entrega, e é a herança direta da invariante estabelecida pela integração Stripe: *uma exceção escapando do caminho do webhook vira loop de retentativa até o Stripe desativar o endpoint*.
+Esta é a regra dura da entrega, e é a herança direta da invariante estabelecida pela integração Stripe: _uma exceção escapando do caminho do webhook vira loop de retentativa até o Stripe desativar o endpoint_.
 
 Um evento de catálogo malformado é o caso **esperado**, não o excepcional — a metadata é string livre digitada num dashboard. Um `ValidationError` ali seria um endpoint desativado por causa de um typo.
 
@@ -158,16 +158,16 @@ Contrato:
 
 **Tabela de validação (as regras que o parser aplica):**
 
-| Situação                                                        | Resultado                                                                   |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `sogio_plan_code` ausente ou fora da forma                       | **Entrada ignorada.** É o caso normal: qualquer Price da conta que não seja catálogo do Sogio |
-| `sogio_plan_name` ausente ou vazio                               | **Entrada ignorada**                                                        |
-| `sogio_plan_name` > 100 chars                                    | **Clampado** para 100 (campo de exibição, erro não-semântico)               |
-| `sogio_max_properties` ausente, não-inteiro, ou fora de `[1, 10000]` | **Entrada ignorada.** Nunca assumir default: chutar alto abre o paywall, chutar baixo tranca quem pagou |
-| `sogio_trial_days` **ausente**                                   | `0`. Ausência é uma afirmação clara ("sem trial")                            |
-| `sogio_trial_days` presente e inválido (`"-1"`, `"quinze"`, > 365) | **Entrada ignorada.** Presente-e-errado é engano, e não se chuta em cima de engano |
-| `unit_amount` nulo (preço tiered/metered)                        | **Entrada ignorada**                                                        |
-| `currency !== "brl"`                                             | **Entrada ignorada.** `plans` não tem coluna de moeda — um preço em USD entraria como se fosse R$ |
+| Situação                                                                                 | Resultado                                                                                                                         |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `sogio_plan_code` ausente ou fora da forma                                               | **Entrada ignorada.** É o caso normal: qualquer Price da conta que não seja catálogo do Sogio                                     |
+| `sogio_plan_name` ausente ou vazio                                                       | **Entrada ignorada**                                                                                                              |
+| `sogio_plan_name` > 100 chars                                                            | **Clampado** para 100 (campo de exibição, erro não-semântico)                                                                     |
+| `sogio_max_properties` ausente, não-inteiro, ou fora de `[1, 10000]`                     | **Entrada ignorada.** Nunca assumir default: chutar alto abre o paywall, chutar baixo tranca quem pagou                           |
+| `sogio_trial_days` **ausente**                                                           | `0`. Ausência é uma afirmação clara ("sem trial")                                                                                 |
+| `sogio_trial_days` presente e inválido (`"-1"`, `"quinze"`, > 365)                       | **Entrada ignorada.** Presente-e-errado é engano, e não se chuta em cima de engano                                                |
+| `unit_amount` nulo (preço tiered/metered)                                                | **Entrada ignorada**                                                                                                              |
+| `currency !== "brl"`                                                                     | **Entrada ignorada.** `plans` não tem coluna de moeda — um preço em USD entraria como se fosse R$                                 |
 | `recurring` ausente (preço avulso), ou `interval !== "month"`, ou `interval_count !== 1` | **Entrada ignorada.** `billingIntervalSchema` só conhece `monthly`; um preço anual entrando como mensal é mentira de precificação |
 
 Princípio por trás da tabela: **campo semântico errado invalida a entrada inteira; campo de exibição errado é normalizado.**
@@ -186,9 +186,9 @@ O problema mais sério: webhook só dispara quando algo muda. Com `plans` vazia 
 
 **Alternativas rejeitadas:**
 
-- *Só a rota admin, sem boot* — mantém o deadlock acima e não cobre ambiente novo.
-- *Só o boot, sem rota* — força restart para toda correção de catálogo.
-- *Pedir para o operador forçar uma edição no dashboard* — funciona uma vez, não é documentável como procedimento, e não cobre recuperação de desastre.
+- _Só a rota admin, sem boot_ — mantém o deadlock acima e não cobre ambiente novo.
+- _Só o boot, sem rota_ — força restart para toda correção de catálogo.
+- _Pedir para o operador forçar uma edição no dashboard_ — funciona uma vez, não é documentável como procedimento, e não cobre recuperação de desastre.
 
 **Nota sobre o cutover específico de produção:** a ordem escolhida é **gateway primeiro, deploy depois** (§7), e nela quem faz o bootstrap é a reconciliação de boot — que o próprio `pm2 restart` no fim do `deploy.yml` dispara, sem passo extra. Isso é deliberado: a reconciliação é o mecanismo do qual todo ambiente futuro depende, e é melhor exercitá-la em voz alta neste deploy, com três caminhos de recuperação disponíveis, do que deixá-la mascarada pelo webhook e descobrir que está quebrada meses depois. Ver R-6.
 
@@ -213,12 +213,12 @@ Ambos gravam `external_event_at` e são recusados quando o evento é mais antigo
 
 ### DA-8 — Eventos do gateway tratados: **seis**, mapeados para **quatro** eventos de catálogo
 
-| Evento Stripe                    | Evento de catálogo (vocabulário Sogio) | Efeito                                                                 |
-| -------------------------------- | -------------------------------------- | ---------------------------------------------------------------------- |
-| `price.created`, `price.updated` | `catalog_entry_changed`                | Cria/atualiza o plano do `code` da entrada; aposenta se `active: false` |
-| `price.deleted`                  | `catalog_entry_retired`                | Aposenta o plano ligado àquela referência de preço                     |
-| `product.created`, `product.updated` | `catalog_product_offering_changed`  | Aposenta / des-aposenta todos os planos ligados àquele Product          |
-| `product.deleted`                | `catalog_product_retired`              | Aposenta todos os planos ligados àquele Product                        |
+| Evento Stripe                        | Evento de catálogo (vocabulário Sogio) | Efeito                                                                  |
+| ------------------------------------ | -------------------------------------- | ----------------------------------------------------------------------- |
+| `price.created`, `price.updated`     | `catalog_entry_changed`                | Cria/atualiza o plano do `code` da entrada; aposenta se `active: false` |
+| `price.deleted`                      | `catalog_entry_retired`                | Aposenta o plano ligado àquela referência de preço                      |
+| `product.created`, `product.updated` | `catalog_product_offering_changed`     | Aposenta / des-aposenta todos os planos ligados àquele Product          |
+| `product.deleted`                    | `catalog_product_retired`              | Aposenta todos os planos ligados àquele Product                         |
 
 **Aviso operacional importante:** na prática o Stripe **arquiva**, não deleta. Um Price já usado em uma assinatura não pode ser deletado — só recebe `active: false`. Um Product só é deletável se não tiver nenhum Price. Logo `price.deleted`/`product.deleted` são caminhos quase mortos, e **o caminho real de aposentadoria é arquivar** (`active: false`), que chega como `price.updated`/`product.updated`. O usuário pediu explicitamente o tratamento de `deleted`; ele fica, é trivial, mas a instrução ao operador é **arquivar**, não procurar botão de deletar.
 
@@ -296,7 +296,7 @@ Se `free` for aposentado, `allOffered()` esvazia (vitrine vazia) e, embora `plan
 
 ### R-3 — 🟠 Metadata é string livre; três dos quatro campos de negócio agora dependem de digitação correta
 
-`max_properties`, `trial_days` e `code` são digitados à mão em dois ambientes (test e live) sem validação no ponto de entrada. A tabela de DA-4 transforma todo erro em "entrada ignorada" (falha silenciosa e segura) em vez de dado errado gravado — mas *silenciosa* é a palavra incômoda: o operador que digitou errado só descobre olhando o log ou a vitrine.
+`max_properties`, `trial_days` e `code` são digitados à mão em dois ambientes (test e live) sem validação no ponto de entrada. A tabela de DA-4 transforma todo erro em "entrada ignorada" (falha silenciosa e segura) em vez de dado errado gravado — mas _silenciosa_ é a palavra incômoda: o operador que digitou errado só descobre olhando o log ou a vitrine.
 
 **Mitigação:** toda rejeição loga em nível `warn` com o `price id` e a razão. Recomenda-se que a task 15 documente a verificação de `GET /billing/plans` como passo obrigatório do setup.
 
@@ -359,9 +359,9 @@ Só existem local/teste e produção/live. `NODE_ENV === "production"` exige `li
 
 ### Q-2 — ✅ Resolvido: valores confirmados, idênticos aos do seed atual
 
-| Plano | `sogio_max_properties` | `sogio_trial_days` | `unit_amount` |
-| ----- | ---------------------- | ------------------ | ------------- |
-| Free  | `1`                    | `0`                | `0` (BRL, mensal, recorrente) |
+| Plano | `sogio_max_properties` | `sogio_trial_days` | `unit_amount`                                                   |
+| ----- | ---------------------- | ------------------ | --------------------------------------------------------------- |
+| Free  | `1`                    | `0`                | `0` (BRL, mensal, recorrente)                                   |
 | Pro   | `5`                    | `14`               | `2500` (BRL, mensal — **já é o valor do Price live**, não muda) |
 
 São exatamente os valores que `seedPlans()` usa hoje, o que torna o cutover uma mudança de **dono** do catálogo, não de conteúdo: nenhum usuário vê limite ou preço diferente no dia do deploy. Valores exatos a digitar estão no §7.
@@ -372,53 +372,53 @@ São exatamente os valores que `seedPlans()` usa hoje, o que torna o cutover uma
 
 ### Arquivos novos — `src/billing/`
 
-| Arquivo                                                         | Responsabilidade                                                                                                       |
-| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `application/gateway/gateway_catalog_entry.ts`                   | `GatewayCatalogEntry` — Price normalizado no vocabulário Sogio (`external_price_reference`, `external_product_reference`, `code`, `name`, `price_amount`, `billing_interval`, `max_properties`, `trial_days`, `is_offered`) |
-| `application/gateway/gateway_catalog_event.ts`                   | União `GatewayCatalogEvent`: `catalog_entry_changed`, `catalog_entry_retired`, `catalog_product_offering_changed`, `catalog_product_retired` (DA-8) |
-| `application/use_case/sync_plan_catalog_entry.ts`                | **Escritor único do catálogo.** Dono de I-1, I-2, I-3, staleness, DA-1 e da regra "nunca lança" (DA-4)                  |
-| `application/use_case/reconcile_plan_catalog_from_gateway.ts`    | Lê `listCatalogEntries()` e delega cada entrada ao use case acima (DA-5)                                                |
-| `infra/gateway/stripe_catalog_entry_parser.ts`                   | Price bruto do Stripe → `GatewayCatalogEntry \| null`. Implementa a tabela de DA-4. Compartilhado pelo verificador e pelo gateway |
-| `presentation/controller/sync_plan_catalog.controller.ts`        | `POST /billing/catalog/sync`, `adminOnly`, `allowWithoutPlatformAccess` (DA-5)                                          |
+| Arquivo                                                       | Responsabilidade                                                                                                                                                                                                            |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `application/gateway/gateway_catalog_entry.ts`                | `GatewayCatalogEntry` — Price normalizado no vocabulário Sogio (`external_price_reference`, `external_product_reference`, `code`, `name`, `price_amount`, `billing_interval`, `max_properties`, `trial_days`, `is_offered`) |
+| `application/gateway/gateway_catalog_event.ts`                | União `GatewayCatalogEvent`: `catalog_entry_changed`, `catalog_entry_retired`, `catalog_product_offering_changed`, `catalog_product_retired` (DA-8)                                                                         |
+| `application/use_case/sync_plan_catalog_entry.ts`             | **Escritor único do catálogo.** Dono de I-1, I-2, I-3, staleness, DA-1 e da regra "nunca lança" (DA-4)                                                                                                                      |
+| `application/use_case/reconcile_plan_catalog_from_gateway.ts` | Lê `listCatalogEntries()` e delega cada entrada ao use case acima (DA-5)                                                                                                                                                    |
+| `infra/gateway/stripe_catalog_entry_parser.ts`                | Price bruto do Stripe → `GatewayCatalogEntry \| null`. Implementa a tabela de DA-4. Compartilhado pelo verificador e pelo gateway                                                                                           |
+| `presentation/controller/sync_plan_catalog.controller.ts`     | `POST /billing/catalog/sync`, `adminOnly`, `allowWithoutPlatformAccess` (DA-5)                                                                                                                                              |
 
 ### Arquivos modificados — `src/billing/`
 
-| Arquivo                                                | Mudança                                                                                                             |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `domain/entity/plan.ts`                                | `external_product_reference` e `external_event_at` no schema; métodos `syncFromCatalog()` e `retire()` idempotentes (DA-7) |
-| `domain/repository/plan_repository.ts`                 | `plansOfExternalProductReference(reference): Promise<Plan[]>`                                                        |
-| `infra/database/postgres_repository/plan_postgres_repository.ts` | Novo método; `save()` cobre as duas colunas novas; tratamento de violação de unique como recusa (R-11)      |
-| `application/gateway/payment_gateway.ts`               | `listCatalogEntries(): Promise<GatewayCatalogEntry[]>` (DA-6)                                                        |
-| `infra/gateway/stripe_payment_gateway.ts`              | Implementa `listCatalogEntries` (lista Prices ativos **e** inativos, expande o necessário, usa o parser compartilhado) |
-| `infra/gateway/stripe_webhook_verifier.ts`             | Guarda de `livemode` (DA-9) antes do `#normalize`; normalização dos seis tipos novos (DA-8); tipo de retorno passa a `GatewayBillingEvent \| GatewayCatalogEvent \| null` |
-| `application/gateway/gateway_webhook_verifier.ts`      | Tipo de retorno da porta acompanha o acima                                                                          |
-| `application/use_case/process_gateway_webhook.ts`      | `#dispatch` ganha os ramos de catálogo, delegando ao `SyncPlanCatalogEntryUseCase` (DA-3)                            |
-| `infra/di/billing_di.ts`                               | Factories dos use cases e do controller novos; **remove** `makeCreatePlanUseCase` (DA-11)                            |
-| `infra/database/seed_plans.ts`                         | Remove o ramo `STRIPE_PRO_PRICE_ID`; comentário redefine o papel para fixture de dev/teste (DA-10)                   |
-| `application/use_case/create_plan.ts`                  | **Deletado** (DA-11)                                                                                                |
+| Arquivo                                                          | Mudança                                                                                                                                                                   |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `domain/entity/plan.ts`                                          | `external_product_reference` e `external_event_at` no schema; métodos `syncFromCatalog()` e `retire()` idempotentes (DA-7)                                                |
+| `domain/repository/plan_repository.ts`                           | `plansOfExternalProductReference(reference): Promise<Plan[]>`                                                                                                             |
+| `infra/database/postgres_repository/plan_postgres_repository.ts` | Novo método; `save()` cobre as duas colunas novas; tratamento de violação de unique como recusa (R-11)                                                                    |
+| `application/gateway/payment_gateway.ts`                         | `listCatalogEntries(): Promise<GatewayCatalogEntry[]>` (DA-6)                                                                                                             |
+| `infra/gateway/stripe_payment_gateway.ts`                        | Implementa `listCatalogEntries` (lista Prices ativos **e** inativos, expande o necessário, usa o parser compartilhado)                                                    |
+| `infra/gateway/stripe_webhook_verifier.ts`                       | Guarda de `livemode` (DA-9) antes do `#normalize`; normalização dos seis tipos novos (DA-8); tipo de retorno passa a `GatewayBillingEvent \| GatewayCatalogEvent \| null` |
+| `application/gateway/gateway_webhook_verifier.ts`                | Tipo de retorno da porta acompanha o acima                                                                                                                                |
+| `application/use_case/process_gateway_webhook.ts`                | `#dispatch` ganha os ramos de catálogo, delegando ao `SyncPlanCatalogEntryUseCase` (DA-3)                                                                                 |
+| `infra/di/billing_di.ts`                                         | Factories dos use cases e do controller novos; **remove** `makeCreatePlanUseCase` (DA-11)                                                                                 |
+| `infra/database/seed_plans.ts`                                   | Remove o ramo `STRIPE_PRO_PRICE_ID`; comentário redefine o papel para fixture de dev/teste (DA-10)                                                                        |
+| `application/use_case/create_plan.ts`                            | **Deletado** (DA-11)                                                                                                                                                      |
 
 ### Arquivos modificados — fora de `billing/`
 
-| Arquivo                                                     | Mudança                                                                                          |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `src/core/infra/database/drizzle/schemas/billing_schemas.ts` | `plansTable`: `external_product_reference` (varchar 255, nullable, index não-único), `external_event_at` (timestamptz nullable) |
-| `drizzle/` (migration nova)                                  | `bun run db:migration` — as duas colunas                                                          |
-| `src/core/infra/http/routes/routes.ts`                       | Rota `POST /billing/catalog/sync` em `billingControllers`                                          |
-| `src/core/infra/config/environments.ts`                      | **Remove** `STRIPE_PRO_PRICE_ID` (DA-10)                                                          |
-| `src/index.ts`                                               | Reconciliação de catálogo no boot, não-fatal, pulada em test/sem chave (DA-5)                     |
+| Arquivo                                                      | Mudança                                                                                                                                            |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/core/infra/database/drizzle/schemas/billing_schemas.ts` | `plansTable`: `external_product_reference` (varchar 255, nullable, index não-único), `external_event_at` (timestamptz nullable)                    |
+| `drizzle/` (migration nova)                                  | `bun run db:migration` — as duas colunas                                                                                                           |
+| `src/core/infra/http/routes/routes.ts`                       | Rota `POST /billing/catalog/sync` em `billingControllers`                                                                                          |
+| `src/core/infra/config/environments.ts`                      | **Remove** `STRIPE_PRO_PRICE_ID` (DA-10)                                                                                                           |
+| `src/index.ts`                                               | Reconciliação de catálogo no boot, não-fatal, pulada em test/sem chave (DA-5)                                                                      |
 | `CLAUDE.md`                                                  | Seção `billing`: catálogo agora vem do gateway; remove `STRIPE_PRO_PRICE_ID` da lista de env vars; documenta a rota admin nova e a exclusão de MCP |
-| `.claude/personas/arquiteto.md`                              | Invariantes do domínio: I-1, I-2, I-3                                                             |
-| `scripts/backfill_free_subscriptions.ts`                     | **Novo.** Reparo pontual das contas sem `Subscription` (R-5)                                       |
+| `.claude/personas/arquiteto.md`                              | Invariantes do domínio: I-1, I-2, I-3                                                                                                              |
+| `scripts/backfill_free_subscriptions.ts`                     | **Novo.** Reparo pontual das contas sem `Subscription` (R-5)                                                                                       |
 
 ### Testes — `tests/billing/`
 
-| Arquivo                                | Cobertura                                                                                                                                    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stripe_catalog_entry_parser.test.ts`  | **Cada linha da tabela de DA-4**, uma por caso. Parser nunca lança                                                                            |
-| `sync_plan_catalog_entry.test.ts`      | I-1 (`code` imutável / typo cria plano novo em vez de renomear), I-2 (Free nunca aposentado), DA-1 (aposentadoria só com referência ligada), staleness, des-aposentadoria, idempotência de `retire` |
-| `reconcile_plan_catalog.test.ts`       | **I-3: reconciliação contra prices sem metadata NÃO aposenta nada** (o cenário do outage no deploy); reconciliação popula banco vazio; ignora staleness |
-| `process_gateway_webhook.test.ts`      | Estendido: evento de catálogo passa pela idempotência; **evento de catálogo malformado devolve 200 e não lança** (DA-4); guarda de `livemode` (DA-9) rejeita nos dois sentidos |
-| `seed_plans.test.ts`                   | Reescrito — dois dos três casos atuais testam o ramo `STRIPE_PRO_PRICE_ID` removido                                                            |
+| Arquivo                               | Cobertura                                                                                                                                                                                           |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stripe_catalog_entry_parser.test.ts` | **Cada linha da tabela de DA-4**, uma por caso. Parser nunca lança                                                                                                                                  |
+| `sync_plan_catalog_entry.test.ts`     | I-1 (`code` imutável / typo cria plano novo em vez de renomear), I-2 (Free nunca aposentado), DA-1 (aposentadoria só com referência ligada), staleness, des-aposentadoria, idempotência de `retire` |
+| `reconcile_plan_catalog.test.ts`      | **I-3: reconciliação contra prices sem metadata NÃO aposenta nada** (o cenário do outage no deploy); reconciliação popula banco vazio; ignora staleness                                             |
+| `process_gateway_webhook.test.ts`     | Estendido: evento de catálogo passa pela idempotência; **evento de catálogo malformado devolve 200 e não lança** (DA-4); guarda de `livemode` (DA-9) rejeita nos dois sentidos                      |
+| `seed_plans.test.ts`                  | Reescrito — dois dos três casos atuais testam o ramo `STRIPE_PRO_PRICE_ID` removido                                                                                                                 |
 
 ---
 
@@ -440,12 +440,12 @@ Invertida em relação à primeira versão do plano. A justificativa completa es
 
 Esta é uma conta de pagamento **live**. O escopo de escrita desta entrega é **fechado** e se resume a:
 
-| Permitido                                                                 | Onde  |
-| ------------------------------------------------------------------------- | ----- |
-| `POST /v1/products` — criar o Product do Free                              | 7.2   |
-| `POST /v1/prices` — criar o Price do Free                                  | 7.2   |
-| `POST /v1/prices/{id}` — escrever **apenas `metadata`** no Price do Pro    | 7.3   |
-| `POST /v1/webhook_endpoints/{id}` — escrever **apenas `enabled_events`**   | 7.5   |
+| Permitido                                                                | Onde |
+| ------------------------------------------------------------------------ | ---- |
+| `POST /v1/products` — criar o Product do Free                            | 7.2  |
+| `POST /v1/prices` — criar o Price do Free                                | 7.2  |
+| `POST /v1/prices/{id}` — escrever **apenas `metadata`** no Price do Pro  | 7.3  |
+| `POST /v1/webhook_endpoints/{id}` — escrever **apenas `enabled_events`** | 7.5  |
 
 **Fora de escopo, sem exceção:** arquivar/desativar qualquer Price ou Product existente, mexer em Customers, Subscriptions, Invoices ou reembolsos, criar endpoint de webhook novo, rotacionar segredo de webhook. Qualquer necessidade fora desta lista para a execução e volta para decisão.
 

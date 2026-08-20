@@ -50,7 +50,13 @@ async function reconcilePlanCatalog(logger: Logger) {
   } catch (error) {
     logger.error(
       "❌ Plan catalog reconciliation failed at boot — continuing with whatever is already in the database",
-      { error }
+      // Serialized explicitly: a raw Error's message/stack are non-enumerable,
+      // so JSON.stringify would log `{}` and hide the cause.
+      {
+        error: Error.isError(error)
+          ? { name: error.name, message: error.message }
+          : String(error),
+      }
     );
   }
 }
