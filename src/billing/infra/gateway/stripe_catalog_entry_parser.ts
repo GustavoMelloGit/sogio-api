@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import type { Logger } from "../../../core/application/logger/logger";
+import { env } from "../../../core/infra/config/environments";
 import type { GatewayCatalogEntry } from "../../application/gateway/gateway_catalog_entry";
 import type { BillingInterval } from "../../domain/entity/plan";
 
@@ -31,11 +32,32 @@ function hasOrphanSurrogate(value: string): boolean {
  * one (DA-4). The single definition of "valid catalog entry", imported by
  * both `StripeWebhookVerifier` and `StripePaymentGateway.listCatalogEntries`
  * so the two paths can never disagree about the catalog.
+ *
+ * S-2: also the one place that can close the `livemode` gap for both
+ * callers at once. `StripeWebhookVerifier` already rejects a mismatched
+ * `Event.livemode` before dispatch (DA-9), but `listCatalogEntries()` reads
+ * `Stripe.Price` objects directly, with no equivalent check — a test-mode
+ * `STRIPE_SECRET_KEY` configured by mistake in production would otherwise
+ * let boot/admin reconciliation read the sandbox catalog and overwrite
+ * `plans` with it.
  */
 export function parseStripeCatalogEntry(
   price: Stripe.Price,
   logger: Logger
 ): GatewayCatalogEntry | null {
+  const expectedLivemode = env.NODE_ENV === "production";
+  if (price.livemode !== expectedLivemode) {
+    logger.warn(
+      "Ignoring catalog entry: livemode does not match this environment (S-2)",
+      {
+        price_id: price.id,
+        livemode: price.livemode,
+        expected_livemode: expectedLivemode,
+      }
+    );
+    return null;
+  }
+
   const code = parseCode(price.metadata.sogio_plan_code);
   if (!code) {
     logger.warn(

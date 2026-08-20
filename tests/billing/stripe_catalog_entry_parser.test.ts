@@ -28,6 +28,9 @@ function makePrice(
     product?: string;
     metadata?: Record<string, string>;
     recurring?: { interval: string; interval_count: number } | null;
+    // Defaults to `false` — matches the non-production `NODE_ENV` (`test`)
+    // this suite always runs under (S-2).
+    livemode?: boolean;
   } = {}
 ): Stripe.Price {
   return {
@@ -42,6 +45,7 @@ function makePrice(
         : overrides.recurring,
     unit_amount:
       overrides.unit_amount === undefined ? 2500 : overrides.unit_amount,
+    livemode: overrides.livemode ?? false,
   } as unknown as Stripe.Price;
 }
 
@@ -307,5 +311,19 @@ describe("parseStripeCatalogEntry — never throws (DA-4)", () => {
 
     expect(() => parseStripeCatalogEntry(price, silentLogger)).not.toThrow();
     expect(parseStripeCatalogEntry(price, silentLogger)).toBeNull();
+  });
+});
+
+describe("parseStripeCatalogEntry — livemode (S-2)", () => {
+  it("ignores the entry when price.livemode does not match this environment", () => {
+    const price = makePrice({ livemode: true });
+
+    expect(parseStripeCatalogEntry(price, silentLogger)).toBeNull();
+  });
+
+  it("accepts the entry when price.livemode matches this environment", () => {
+    const price = makePrice({ livemode: false });
+
+    expect(parseStripeCatalogEntry(price, silentLogger)).not.toBeNull();
   });
 });

@@ -775,6 +775,10 @@ function priceCreatedPayload(overrides: {
       object: {
         id: overrides.id ?? `price_test_${crypto.randomUUID()}`,
         object: "price",
+        // S-2: a real Stripe Price embedded in an event always carries its
+        // own `livemode`, matching the event's — mirrored here so the
+        // parser's own livemode guard doesn't reject these fixtures.
+        livemode: overrides.livemode ?? false,
         active: overrides.active ?? true,
         currency: overrides.currency ?? "brl",
         metadata: overrides.metadata ?? {},
