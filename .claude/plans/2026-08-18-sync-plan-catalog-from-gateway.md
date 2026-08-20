@@ -190,7 +190,7 @@ O problema mais sério: webhook só dispara quando algo muda. Com `plans` vazia 
 - *Só o boot, sem rota* — força restart para toda correção de catálogo.
 - *Pedir para o operador forçar uma edição no dashboard* — funciona uma vez, não é documentável como procedimento, e não cobre recuperação de desastre.
 
-**Nota sobre o cutover específico de produção:** anotar a metadata nos Prices existentes e criar o Price do Free **já dispara** `price.updated`/`price.created`. Ou seja, se o deploy for feito **antes** da configuração no Stripe, o catálogo se popula sozinho pelo webhook, sem restart e sem chamar rota nenhuma. Essa é a ordem recomendada (§7).
+**Nota sobre o cutover específico de produção:** a ordem escolhida é **gateway primeiro, deploy depois** (§7), e nela quem faz o bootstrap é a reconciliação de boot — que o próprio `pm2 restart` no fim do `deploy.yml` dispara, sem passo extra. Isso é deliberado: a reconciliação é o mecanismo do qual todo ambiente futuro depende, e é melhor exercitá-la em voz alta neste deploy, com três caminhos de recuperação disponíveis, do que deixá-la mascarada pelo webhook e descobrir que está quebrada meses depois. Ver R-6.
 
 ### DA-6 — `PaymentGateway` ganha uma leitura, e ela devolve vocabulário do Sogio
 
@@ -224,11 +224,18 @@ Ambos gravam `external_event_at` e são recusados quando o evento é mais antigo
 
 ### DA-9 — Guarda de `livemode` no verificador — vale para os eventos de assinatura também
 
-Todo evento do Stripe carrega `livemode: boolean`. Existe uma conta **sandbox separada** (`acct_1U4tXiFiq3OP0Stz`) com catálogo próprio. Um `STRIPE_WEBHOOK_SECRET` de endpoint test-mode configurado por engano em produção faria eventos de teste **passarem na verificação de assinatura** (o segredo é legítimo para aquele endpoint) e reescreverem o catálogo real — inclusive `max_properties`.
+Todo evento do Stripe carrega `livemode: boolean`. Um `STRIPE_WEBHOOK_SECRET` de endpoint test-mode configurado por engano em produção faria eventos de teste **passarem na verificação de assinatura** (o segredo é legítimo para aquele endpoint) e reescreverem o catálogo real — inclusive `max_properties`.
 
-**Decisão: o verificador rejeita todo evento cujo `livemode` não bate com o ambiente** — em `NODE_ENV === "production"`, só `livemode: true`; fora dela, só `livemode: false`. Rejeição é `null` (200, sem escrita, log de warn), não exceção.
+**Decisão (fecha Q-1): a regra é binária, sobre um único predicado.**
 
-É um endurecimento que nasce por causa do catálogo mas **se aplica igualmente ao caminho de assinatura já existente**, e melhora os dois. Deve ficar no verificador compartilhado, antes do `#normalize`.
+```
+esperado = (NODE_ENV === "production")
+se (event.livemode !== esperado) → rejeita
+```
+
+Rejeição é `null` (200, sem escrita, log de `warn`), nunca exceção. Fica no verificador compartilhado, **antes** do `#normalize` — então vale para os eventos de assinatura já existentes tanto quanto para os de catálogo. É um endurecimento que nasce por causa do catálogo e melhora os dois caminhos.
+
+**Sobre `sandbox`:** `NODE_ENV` ainda admite `development | test | sandbox | production` em `environments.ts`, mas **não existe ambiente `sandbox` na prática** — só local/teste e produção/live. O predicado acima trata `sandbox` junto com os não-produção sem precisar mencioná-lo, o que é o comportamento certo hoje. **Não remover o valor do enum nesta entrega** — não é escopo. Fica registrado que ele é um valor morto, e que o dia em que alguém criar de fato um ambiente `sandbox` precisará decidir explicitamente de que lado da linha de `livemode` ele fica; a regra binária torna essa decisão visível em vez de silenciosa.
 
 ### DA-10 — `seedPlans()` sobrevive rebaixado a fixture de desenvolvimento e teste
 
@@ -275,7 +282,9 @@ O raio de explosão de um login do Stripe comprometido cresce de "reembolsos e p
 
 **Mitigações desta entrega:** validação de faixa (`[1, 10000]`), guarda de `livemode` (DA-9), imutabilidade do `code` (DA-2), proteção do Free (I-2). **Nenhuma delas mitiga um ator autenticado no dashboard.** Isso é inerente à direção escolhida.
 
-**Mitigações fora do escopo, recomendadas ao usuário:** 2FA obrigatório e revisão de membros na conta Stripe; log de auditoria de toda escrita no catálogo (poderia reusar o idioma append-only de `SubscriptionHistoryEntry`, mas é outra entrega).
+Desde a decisão de executar §7 via API, some-se: **acesso programático à API do Stripe (MCP, chaves de API, agentes) também é, agora, acesso de escrita aos limites de autorização do produto.** O raio de explosão de uma chave secreta vazada cresce junto com o do dashboard. Isso reforça, e não substitui, o escopo de escrita explicitamente limitado do §7.
+
+**Mitigações fora do escopo, recomendadas ao usuário:** 2FA obrigatório e revisão de membros na conta Stripe; rotação/escopo restrito das chaves de API usadas por ferramental; log de auditoria de toda escrita no catálogo (poderia reusar o idioma append-only de `SubscriptionHistoryEntry`, mas é outra entrega).
 
 **→ Item central da revisão do Analista de Segurança.**
 
@@ -299,19 +308,32 @@ Consequência direta e aceita de DA-2 (imutabilidade em vez de allowlist). `sogi
 
 Contas criadas enquanto `plans` estava vazia **não têm `Subscription`**. O gate é read-only e não há scheduler: elas continuam bloqueadas para sempre depois do catálogo popular. `EnsureFreeSubscriptionUseCase` já é idempotente e foi escrito prevendo "um futuro backfill" — mas alguém precisa chamá-lo. **Task 12 é obrigatória, não opcional.** Sem ela, a entrega conserta o futuro e abandona os usuários que o incidente já atingiu.
 
-### R-6 — 🟠 O `plans` de produção está vazio; a ordem do cutover importa
+### R-6 — 🟠 Configurar o gateway antes do deploy queima os eventos e joga o bootstrap todo na reconciliação — e mesmo assim é a ordem certa
 
-Se a metadata for configurada no Stripe **antes** do deploy, os webhooks disparados serão de tipos que o código ainda não trata → nada acontece → o catálogo só popula no boot seguinte (reconciliação). Se o deploy vier **antes**, a configuração no Stripe dispara os webhooks já tratados e popula na hora.
+Configurando o Stripe **agora**, antes do código estar em produção, os `price.created`/`price.updated` disparados chegam num endpoint que ainda não trata catálogo. Verifiquei o caminho no código: `StripeWebhookVerifier.#normalize` cai no `default:`, loga em `debug` e devolve `null`; `ProcessGatewayWebhookUseCase` retorna **antes** do `claim`; o controller responde **200**. Ou seja, **a janela pré-deploy é comprovadamente inerte** — nada quebra, nada entra em retentativa, nada é gravado. Os eventos simplesmente se perdem (200 não é retentado), e o bootstrap passa a depender inteiramente da reconciliação de boot.
 
-**Ordem recomendada: deploy primeiro, Stripe depois** (§7). Nenhuma das duas ordens quebra nada — a de trás só é mais lenta.
+Isso soa como perder uma rede de segurança, e por isso a recomendação anterior era a inversa. **A recomendação mudou, e o motivo é que a perda é aparente:**
+
+1. O `deploy.yml` termina em `pm2 restart stayhub_api` — **a reconciliação de boot roda como parte do próprio deploy**, sem passo manual nenhum.
+2. A reconciliação é o mecanismo do qual **todo ambiente futuro** depende (banco restaurado, alvo de deploy novo, recuperação de desastre). Exercitá-la neste deploy, em voz alta, é teste; deixá-la mascarada pelo webhook é adiar a descoberta de um bug nela para o dia em que não houver plano B.
+3. Se ela falhar, ainda restam **dois** caminhos, não zero: a rota admin `POST /billing/catalog/sync` (que funciona justamente por ter `allowWithoutPlatformAccess`) e tocar qualquer Price no Stripe, que dispara `price.updated` e popula pelo webhook agora já tratado.
+4. A configuração do gateway fica verificável por leitura de API **antes** de qualquer código subir, então o deploy passa a ter um único trabalho e um único modo de falha.
+
+**Ordem recomendada, revisada: gateway primeiro, deploy depois** (§7).
 
 ### R-7 — 🟠 Reconciliação no boot torna o Stripe uma dependência de inicialização
 
 Mitigado por desenho (falha logada e engolida, servidor sobe mesmo assim), mas continua sendo verdade que um deploy num momento de indisponibilidade do Stripe sobe com o catálogo do banco anterior. Em banco vazio + Stripe fora, o resultado é o estado atual, e o restart seguinte conserta. Aceito.
 
-### R-8 — 🟡 Setup precisa ser feito duas vezes, em duas contas distintas
+### R-8 — 🟢 Resolvido por Q-1: a conta sandbox do Stripe não precisa ser configurada nesta entrega
 
-Conta live `acct_1U4tXYCOmGc1OKvH` e conta sandbox `acct_1U4tXiFiq3OP0Stz` têm catálogos independentes. Metadata configurada só na live faz o ambiente de sandbox continuar quebrado, e vice-versa. §7 lista as duas passagens.
+O plano original previa duas passagens de setup (live `acct_1U4tXYCOmGc1OKvH` e sandbox `acct_1U4tXiFiq3OP0Stz`). Com Q-1 fechada — **não existe ambiente `sandbox` na prática** — a segunda passagem some do escopo:
+
+- `test` nunca fala com a rede (reconciliação pulada por DA-5) e tira catálogo do `seedPlans` (DA-10).
+- `development` não tem `STRIPE_SECRET_KEY`, então também não reconcilia, e usa o mesmo fixture.
+- Se alguém rodar `development` com uma chave test-mode real, a reconciliação roda contra a conta sandbox sem metadata: pela I-3, o resultado é **no-op** — nada criado, nada aposentado. Inofensivo.
+
+A conta sandbox segue existindo e sem uso por esta entrega. Se um dia houver necessidade de exercitar o fluxo ponta a ponta em test mode, §7 é replicado lá sem nenhuma mudança de código.
 
 ### R-9 — 🟡 `plans.name` vem de input externo e é servido em JSON público
 
@@ -325,13 +347,24 @@ Em dev, sem seed atualizado e sem reconciliação, `plans.external_price_referen
 
 Dois Prices declarando o mesmo `sogio_plan_code` fazem o segundo repontar o plano (último a chegar vence) — comportamento razoável, mas o operador pode não esperar. E se dois planos distintos apontarem para o mesmo price id, a unique estoura. O caminho de escrita precisa tratar violação de unique como recusa logada, **não** como exceção propagada (DA-4).
 
-### Q-1 — ❓ Precisa de decisão do usuário: catálogo em `sandbox` (`NODE_ENV=sandbox`)
+### R-12 — 🟠 A metadata é escrita antes do parser existir, então a chave certa é um contrato de papel
 
-`NODE_ENV` admite `sandbox`. A guarda de `livemode` (DA-9) foi escrita como "produção exige `livemode: true`, o resto exige `livemode: false`" — o que casa com sandbox usando a conta Stripe de teste. **Confirmar que o ambiente `sandbox` do Sogio aponta para `acct_1U4tXiFiq3OP0Stz` (test mode)** e não para a conta live. Se apontar para a live, a regra precisa mudar.
+Consequência da nova ordem (R-6): o §7 grava `sogio_plan_code`, `sogio_plan_name`, `sogio_max_properties` e `sogio_trial_days` no gateway **antes** da task 5 escrever o parser que os lê. Não há nada automatizado ligando os dois lados — se o parser sair esperando `sogio_property_limit`, a divergência só aparece no deploy, como catálogo vazio e silencioso (DA-4 não lança).
 
-### Q-2 — ❓ Precisa de decisão do usuário: `max_properties` do Free e do Pro no Stripe
+**Mitigações:** (a) o §7 é a **especificação normativa** dos nomes de chave, e a task 5 implementa exatamente aquelas strings, sem sinônimo nem tolerância; (b) o §7 termina relendo os Prices por API e conferindo contra a própria tabela; (c) o teste do parser (task 13) usa como fixture o payload real relido no passo de verificação, e não um payload inventado.
 
-O seed atual diz Free = 1 imóvel, Pro = 5 imóveis, Pro trial = 14 dias, Pro = R$25,00. O Price live do Pro já é R$25,00 (`unit_amount: 2500`) ✅. **Os valores de `sogio_max_properties` e `sogio_trial_days` precisam ser confirmados pelo usuário antes de serem digitados no dashboard**, porque a partir desta entrega o dashboard é a fonte de verdade e o código deixa de ter opinião.
+### Q-1 — ✅ Resolvido: não existe ambiente `sandbox`; a guarda de `livemode` é binária
+
+Só existem local/teste e produção/live. `NODE_ENV === "production"` exige `livemode: true`; qualquer outro ambiente exige `livemode: false` — um único predicado, sem enumerar ambientes (DA-9). O valor `sandbox` **permanece** no enum de `environments.ts`; removê-lo não é escopo desta entrega. Consequência secundária: a conta Stripe sandbox sai do escopo de setup (R-8).
+
+### Q-2 — ✅ Resolvido: valores confirmados, idênticos aos do seed atual
+
+| Plano | `sogio_max_properties` | `sogio_trial_days` | `unit_amount` |
+| ----- | ---------------------- | ------------------ | ------------- |
+| Free  | `1`                    | `0`                | `0` (BRL, mensal, recorrente) |
+| Pro   | `5`                    | `14`               | `2500` (BRL, mensal — **já é o valor do Price live**, não muda) |
+
+São exatamente os valores que `seedPlans()` usa hoje, o que torna o cutover uma mudança de **dono** do catálogo, não de conteúdo: nenhum usuário vê limite ou preço diferente no dia do deploy. Valores exatos a digitar estão no §7.
 
 ---
 
@@ -389,61 +422,120 @@ O seed atual diz Free = 1 imóvel, Pro = 5 imóveis, Pro trial = 14 dias, Pro = 
 
 ---
 
-## 7. Setup manual no Stripe — instrução para o usuário, não código
+## 7. Configuração do gateway — executada pelo Orquestrador via API
 
-> **Precisa ser feito duas vezes: na conta live `acct_1U4tXYCOmGc1OKvH` ("Sogio") e na conta sandbox `acct_1U4tXiFiq3OP0Stz` ("Sogio sandbox").** Os valores de `sogio_max_properties` e `sogio_trial_days` dependem de Q-2.
+> **Mudou desde a primeira versão deste plano.** O Orquestrador tem acesso de leitura e escrita à API do Stripe (MCP) na conta **live `acct_1U4tXYCOmGc1OKvH`**. Esta seção deixa de ser "instruções para o usuário no dashboard" e passa a ser **um roteiro de chamadas de API que o Orquestrador executa**. Só o passo 6 (verificação contra a API do Sogio já deployada) e o passo 7 (reparo) dependem do código estar em produção.
+>
+> Por Q-1, a conta sandbox **não** é configurada nesta entrega (R-8). Uma passagem só, na live.
 
-**Ordem recomendada: deploy do código primeiro, configuração no Stripe depois** — assim a própria configuração dispara os webhooks que populam o catálogo, sem restart e sem chamar rota nenhuma (R-6).
+### 7.0 Ordem: gateway primeiro, deploy depois
 
-### Passo 1 — Adicionar os tipos de evento no endpoint de webhook existente
-
-Ao endpoint que já recebe os eventos de assinatura, adicionar: `price.created`, `price.updated`, `price.deleted`, `product.created`, `product.updated`, `product.deleted`. **Não criar um endpoint novo** — o código trata tudo num só caminho verificado.
-
-### Passo 2 — Anotar a metadata no Price do Pro já existente
-
-Price `price_1U57UhCOmGc1OKvHERzRLNrU` (R$25,00/mês, ativo, `metadata: {}` hoje):
+Invertida em relação à primeira versão do plano. A justificativa completa está em **R-6**; em uma linha: a janela pré-deploy é comprovadamente inerte (o código atual devolve 200 e ignora eventos de catálogo), o `pm2 restart` no fim do `deploy.yml` já dispara a reconciliação de boot, e fazer o bootstrap por ela é o que valida — em voz alta, neste deploy — o mecanismo do qual todo ambiente futuro depende.
 
 ```
-sogio_plan_code     = pro
-sogio_plan_name     = Pro
-sogio_max_properties = 5      ← confirmar (Q-2)
-sogio_trial_days     = 14     ← confirmar (Q-2)
+7.1 … 7.5  (agora, via API)  →  merge + deploy  →  7.6 verificação  →  7.7 reparo
 ```
 
-### Passo 3 — Criar Product + Price do Free
+### 7.A Escopo de escrita — o que o Orquestrador pode e não pode tocar
 
-Não existe hoje. Criar Product "Sogio Free" e, nele, um Price **recorrente, mensal, R$ 0,00, moeda BRL**, com:
+Esta é uma conta de pagamento **live**. O escopo de escrita desta entrega é **fechado** e se resume a:
+
+| Permitido                                                                 | Onde  |
+| ------------------------------------------------------------------------- | ----- |
+| `POST /v1/products` — criar o Product do Free                              | 7.2   |
+| `POST /v1/prices` — criar o Price do Free                                  | 7.2   |
+| `POST /v1/prices/{id}` — escrever **apenas `metadata`** no Price do Pro    | 7.3   |
+| `POST /v1/webhook_endpoints/{id}` — escrever **apenas `enabled_events`**   | 7.5   |
+
+**Fora de escopo, sem exceção:** arquivar/desativar qualquer Price ou Product existente, mexer em Customers, Subscriptions, Invoices ou reembolsos, criar endpoint de webhook novo, rotacionar segredo de webhook. Qualquer necessidade fora desta lista para a execução e volta para decisão.
+
+### 7.B 🔴 Regra dura de `enabled_events`: é substituição, não acréscimo
+
+`enabled_events` no endpoint de webhook do Stripe é um **conjunto que se sobrescreve por inteiro**. Enviar só os seis tipos de catálogo **remove silenciosamente** `checkout.session.completed`, `customer.subscription.created/updated/deleted` e `invoice.payment_failed` — ou seja, derruba a integração de cobrança inteira em produção, sem erro, sem alarme, e o sintoma só aparece na primeira assinatura que ninguém sincroniza.
+
+**Procedimento obrigatório, nesta ordem:**
+
+1. `GET /v1/webhook_endpoints` — localizar o endpoint que já aponta para `POST /billing/webhooks/stripe`. **Não criar um endpoint novo** (DA-3: um único endpoint, um único segredo).
+2. Ler e **registrar** o `enabled_events` atual.
+3. Escrever a **união** (atual ∪ os seis novos).
+4. Reler e conferir que os antigos continuam lá.
+
+### 7.1 — Conferir o estado de partida
+
+`GET /v1/products` e `GET /v1/prices` na conta live. Estado esperado, levantado antes deste plano:
+
+- Product `prod_V5HtfE1AP8RTC6` "Sogio Pro"
+  - Price `price_1U57UhCOmGc1OKvHERzRLNrU` — R$25,00/mês, ativo, `metadata: {}`
+  - Price `price_1U57UgCOmGc1OKvH6fqgy3IU` — R$0/mês, **inativo**, `metadata: {}`
+- Nenhum Product/Price de `free`
+
+Se o estado divergir, parar e reavaliar — o §7 assume esse ponto de partida.
+
+### 7.2 — Criar Product + Price do Free
+
+Product: nome "Sogio Free". Price nele, **recorrente, mensal, `unit_amount: 0`, `currency: brl`**, com:
 
 ```
-sogio_plan_code     = free
-sogio_plan_name     = Free
-sogio_max_properties = 1      ← confirmar (Q-2)
+sogio_plan_code      = free
+sogio_plan_name      = Free
+sogio_max_properties = 1
 sogio_trial_days     = 0
 ```
 
-Ninguém assina esse Price — ele existe puramente como catálogo, para o Free não ficar sendo a única regra de negócio ainda escondida em código. `CreateCheckoutSessionUseCase` já rejeita checkout de plano perpétuo (`price_amount = 0`).
+Ninguém assina esse Price — ele existe puramente como catálogo, para o Free deixar de ser a única regra de negócio ainda escondida em código. `CreateCheckoutSessionUseCase` já recusa checkout de plano perpétuo (`price_amount = 0`), então não há caminho para alguém cair nele.
 
-### Passo 4 — Cuidar do Price de R$0 inativo que já existe
+`sogio_trial_days = 0` é explícito de propósito: por DA-4 a ausência já significaria `0`, mas escrever o zero deixa o descritor completo e legível para quem abrir o dashboard depois.
 
-Price `price_1U57UgCOmGc1OKvH6fqgy3IU` (R$0/mês, **inativo**, no Product "Sogio Pro"). **Deixar sem metadata.** Sem `sogio_plan_code` ele é simplesmente ignorado (DA-4). Se receber `sogio_plan_code = free`, criaria um plano `free` ligado ao Product errado e já aposentado.
+### 7.3 — Anotar metadata no Price do Pro
 
-### Passo 5 — Verificar
+`POST /v1/prices/price_1U57UhCOmGc1OKvHERzRLNrU`, **escrevendo apenas `metadata`**:
 
-`GET /billing/plans` deve devolver os dois planos, com `price_amount`, `max_properties` e `trial_days` corretos. Este passo é obrigatório: a falha de metadata é silenciosa por desenho (R-3).
+```
+sogio_plan_code      = pro
+sogio_plan_name      = Pro
+sogio_max_properties = 5
+sogio_trial_days     = 14
+```
 
-### Passo 6 — Reparar as contas quebradas
+`unit_amount` **não é tocado** — o Price já é R$25,00 (`2500`), que é exatamente o valor do seed. Nada de preço muda neste cutover (Q-2).
 
-Rodar o script da task 12 (`scripts/backfill_free_subscriptions.ts`) **depois** do passo 5. Sem isso, quem se cadastrou durante o incidente continua bloqueado para sempre (R-5).
+### 7.4 — Não tocar no Price de R$0 inativo
 
-### Lembretes operacionais
+`price_1U57UgCOmGc1OKvH6fqgy3IU` (R$0/mês, inativo, dentro do Product "Sogio Pro") **fica sem metadata**. Sem `sogio_plan_code` ele é simplesmente ignorado (DA-4). Anotá-lo com `free` criaria um plano `free` ligado ao Product errado e já nascido aposentado — exatamente o cenário que a I-2 existe para impedir, e que é melhor nunca provocar.
 
-- **Aposentar plano = arquivar o Price** (`active: false`), não procurar botão de deletar. O Stripe não deixa deletar Price já usado (DA-8).
-- **Mudar preço** = criar um Price novo com o mesmo `sogio_plan_code`; o plano local repontará sozinho. Assinantes do preço antigo não são migrados automaticamente (§4).
-- `STRIPE_PRO_PRICE_ID` deixa de existir. Se estiver setada em algum `.env`, pode ser removida.
+### 7.5 — Adicionar os seis tipos de evento ao endpoint existente
+
+Seguindo integralmente o procedimento de **7.B**, acrescentar à união:
+
+```
+price.created  price.updated  price.deleted
+product.created  product.updated  product.deleted
+```
+
+### 7.6 — Verificação (depois do deploy)
+
+Nesta ordem:
+
+1. **Antes do deploy:** reler por API os dois Prices anotados e conferir chave a chave contra as tabelas de 7.2 e 7.3. É a única barreira contra a divergência de nomes de chave descrita em **R-12**. Registrar aqui o `price_id` e o `product_id` do Free criados, para o plano virar o registro do que foi feito.
+2. **Depois do deploy:** `GET /billing/plans` deve devolver os dois planos com `price_amount`, `max_properties` e `trial_days` corretos. **Passo obrigatório e não delegável** — toda falha de metadata é silenciosa por desenho (DA-4/R-3), então esta é a única confirmação de que o caminho funcionou de ponta a ponta.
+3. Conferir no log do deploy que a reconciliação de boot rodou sem erro. Se `GET /billing/plans` vier vazio, a ordem de recuperação é: (a) `POST /billing/catalog/sync`; (b) tocar um Price no Stripe para disparar `price.updated`; (c) investigar a reconciliação.
+
+### 7.7 — Reparar as contas quebradas
+
+Rodar `scripts/backfill_free_subscriptions.ts` (task 12) **depois** de 7.6 passar. Sem isso, quem se cadastrou durante o incidente continua bloqueado para sempre (R-5).
+
+### Lembretes operacionais permanentes
+
+- **Aposentar plano = arquivar o Price** (`active: false`). O Stripe não deixa deletar Price já usado em assinatura, então `price.deleted` é caminho quase morto e não é onde se clica (DA-8).
+- **Mudar preço** = criar um Price novo com o mesmo `sogio_plan_code`; o plano local repontará sozinho. Assinantes do preço antigo **não** são migrados automaticamente (§4).
+- `STRIPE_PRO_PRICE_ID` deixa de existir (DA-10). Se estiver setada em algum `.env` ou secret de CI, pode ser removida.
 
 ---
 
 ## 8. Tasks
+
+0. **⚙️ Configuração do gateway via API — executada pelo Orquestrador, ANTES do deploy** — o roteiro inteiro do §7, passos 7.1 a 7.5. Escopo de escrita fechado (7.A) e o procedimento de união de `enabled_events` (7.B) são obrigatórios. Encerra com a releitura por API do passo 7.6.1 e com os ids do Free criados registrados de volta neste plano.
+   - Dependências: nenhuma. **Não bloqueia** as tasks 1–13 (que são código), mas **precisa estar concluída antes do deploy** (R-6)
 
 1. **Schema e migration do `Plan`** — `external_product_reference` e `external_event_at` em `billing_schemas.ts`; `bun run db:migration`.
    - Dependências: nenhuma
@@ -471,12 +563,14 @@ Rodar o script da task 12 (`scripts/backfill_free_subscriptions.ts`) **depois** 
     - Dependências: nenhuma
 13. **Testes** — os cinco arquivos do §6, com prioridade para os três cenários de outage (I-2, I-3 e "malformado devolve 200").
     - Dependências: tasks 10, 11
-14. **🔒 Revisão do Analista de Segurança — bloqueante, antes do PR.** Escopo mínimo: (a) R-1, o novo raio de explosão de um dashboard Stripe comprometido sobre `max_properties`; (b) a guarda de `livemode` (DA-9) fecha de fato a confusão test/live; (c) nenhum caminho do catálogo lança (DA-4) — verificar inclusive violação de unique e falha de parse; (d) I-2 e I-3 são infalsificáveis, incluindo o cenário "reconciliação contra prices sem metadata"; (e) a rota admin com `allowWithoutPlatformAccess` não vira bypass de nada além dela mesma; (f) R-9, `name` de origem externa servido em JSON público.
-    - Dependências: task 13
-15. **Documentação** — `CLAUDE.md` (seção `billing`, env vars, rota nova, exclusão MCP), `.claude/personas/arquiteto.md` (I-1, I-2, I-3), e o runbook do §7 registrado onde o usuário conseguir achar.
+14. **🔒 Revisão do Analista de Segurança — bloqueante, antes do PR.** Escopo mínimo: (a) R-1, o novo raio de explosão de um dashboard Stripe comprometido sobre `max_properties`; (b) a guarda de `livemode` (DA-9) fecha de fato a confusão test/live; (c) nenhum caminho do catálogo lança (DA-4) — verificar inclusive violação de unique e falha de parse; (d) I-2 e I-3 são infalsificáveis, incluindo o cenário "reconciliação contra prices sem metadata"; (e) a rota admin com `allowWithoutPlatformAccess` não vira bypass de nada além dela mesma; (f) R-9, `name` de origem externa servido em JSON público; (g) a configuração do gateway feita na task 0 — confirmar por leitura de API que o `enabled_events` do endpoint **preservou** os cinco eventos de assinatura (7.B) e que nenhuma escrita saiu do escopo de 7.A.
+    - Dependências: tasks 0, 13
+15. **Documentação** — `CLAUDE.md` (seção `billing`: catálogo vem do gateway, rota admin nova, exclusão MCP; remover `STRIPE_PRO_PRICE_ID` da lista de env vars), `.claude/personas/arquiteto.md` (I-1, I-2, I-3), e os "lembretes operacionais permanentes" do §7 (arquivar ≠ deletar; trocar preço = Price novo com o mesmo `sogio_plan_code`) registrados onde o operador ache — eles sobrevivem ao cutover.
     - Dependências: task 11
 
-> Paralelizável: tasks 1 e 3 e 12 abrem juntas. Depois de 3, as tasks 5 e (com 1,2) 4 correm em paralelo. Tasks 7 e 8 correm em paralelo depois de 5.
+> **Paralelização:** a task 0 é trabalho de gateway e corre em paralelo com todo o resto — só precisa estar pronta antes do deploy. Em código: tasks 1, 3 e 12 abrem juntas; depois de 3, as tasks 5 e (com 1, 2) 4 correm em paralelo; tasks 7 e 8 correm em paralelo depois de 5.
+>
+> **Sequência de cutover:** task 0 → merge → deploy (o `pm2 restart` do `deploy.yml` dispara a reconciliação) → §7.6 verificação → task 12 executada (§7.7).
 
 ---
 
@@ -487,5 +581,6 @@ Rodar o script da task 12 (`scripts/backfill_free_subscriptions.ts`) **depois** 
 3. **Um único parser.** O verificador de webhook e o `listCatalogEntries` devem chamar exatamente o mesmo código para decidir o que é uma entrada de catálogo válida. Duas implementações divergindo é como o webhook e a reconciliação passam a discordar sobre o catálogo.
 4. **`code` nunca é escrito numa linha existente.** Nem por `syncFromCatalog`, nem por um `update` solto no repositório.
 5. **Reuse o idioma da entrega Stripe** em vez de inventar: `external_event_at` para staleness, `claim`/`release` para idempotência, `Logger` estruturado com o id da referência em toda recusa, porta em `application/gateway/` com implementação única em `infra/gateway/`.
-6. **Não implemente as tasks 1–13 antes de Q-1 e Q-2 serem respondidas** — Q-2 muda o que vai ser digitado no Stripe, e o §7 é entregável junto com o código.
-7. Fluxo de branch, commits (Conventional Commits, um commit por modificação) e PR seguem `.claude/personas/orquestrador.md`. Todo comando roda dentro do worktree.
+6. **Q-1 e Q-2 estão fechadas — não há mais bloqueio para começar.** Duas consequências que valem para o código: a guarda de `livemode` é o predicado binário `NODE_ENV === "production"` (DA-9), sem enumerar ambientes e sem tocar no enum; e os valores de negócio do cutover são os mesmos do seed atual, então o dia do deploy não muda limite nem preço de ninguém.
+7. **Os nomes das chaves de metadata são contrato, não sugestão.** `sogio_plan_code`, `sogio_plan_name`, `sogio_max_properties`, `sogio_trial_days` — exatamente essas strings, sem sinônimo, sem fallback, sem tolerância a variação. Elas já vão estar escritas no gateway antes de você escrever o parser (R-12), e o §7 é a especificação normativa. Use como fixture do teste do parser o payload real relido no passo 7.6.1, não um payload inventado.
+8. Fluxo de branch, commits (Conventional Commits, um commit por modificação) e PR seguem `.claude/personas/orquestrador.md`. Todo comando roda dentro do worktree.
