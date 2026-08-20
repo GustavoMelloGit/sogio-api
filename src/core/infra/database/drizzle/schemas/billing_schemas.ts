@@ -22,12 +22,23 @@ export const plansTable = pgTable(
     max_properties: integer().notNull(),
     trial_days: integer().notNull(),
     external_price_reference: varchar({ length: 255 }),
+    // Not unique: several Prices can belong to the same Product (§2.4).
+    // Lets a product.updated/product.deleted event resolve every plan it
+    // affects without a network round-trip inside the webhook path.
+    external_product_reference: varchar({ length: 255 }),
+    // Instant, in the gateway's clock, of the last catalog event applied —
+    // the DA-1/§2.4 out-of-order guard for the catalog (same idiom as
+    // subscriptions.external_event_at).
+    external_event_at: timestamp({ withTimezone: true, mode: "date" }),
   },
   table => [
     // The webhook resolves a plan by this reference (DA-9) — it must be
     // provably unambiguous.
     uniqueIndex("plans_external_price_reference_idx").on(
       table.external_price_reference
+    ),
+    index("plans_external_product_reference_idx").on(
+      table.external_product_reference
     ),
   ]
 );
