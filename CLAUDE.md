@@ -88,7 +88,7 @@ Demais exceções: material de credencial (cadastro, login, troca e recuperaçã
 
 ### Bounded Context `billing`
 
-Modelo de monetização SaaS: cada `User` tem exatamente uma `Subscription`, vinculada a um `Plan` do catálogo (`free` ou `pro`, semeados via `bun run db:seed`). O **entitlement** (acesso à plataforma + `max_properties`) é sempre **derivado** de `Subscription` + `Plan` no momento da leitura (`SubscriptionAccessPolicy`), nunca uma coluna persistida — não há scheduler no projeto para expirar períodos automaticamente. `EntitlementService` (`billing/application/service/`) é o Open Host Service que `core/infra/http`, `core/infra/mcp` e `property_management` consomem via interface, nunca a infraestrutura de `billing` diretamente.
+Modelo de monetização SaaS: cada `User` tem exatamente uma `Subscription`, vinculada a um `Plan` do catálogo (`free` e `pro`). O catálogo é propriedade do **gateway de pagamento** — ver "Catálogo de planos" abaixo; `bun run db:seed` continua existindo, mas só como fixture de `development`/`test`. O **entitlement** (acesso à plataforma + `max_properties`) é sempre **derivado** de `Subscription` + `Plan` no momento da leitura (`SubscriptionAccessPolicy`), nunca uma coluna persistida — não há scheduler no projeto para expirar períodos automaticamente. `EntitlementService` (`billing/application/service/`) é o Open Host Service que `core/infra/http`, `core/infra/mcp` e `property_management` consomem via interface, nunca a infraestrutura de `billing` diretamente.
 
 O acesso é bloqueado (fail-closed) em toda rota `authenticated: true` e em `/mcp`, exceto as rotas marcadas com `allowWithoutPlatformAccess: true` em `routes.ts` (conta própria, exclusão LGPD, higiene de apps conectados, decisão OAuth, checkout e portal de cobrança) — uma conta sem `Subscription` fica bloqueada até intervenção manual. Referências externas são strings opacas anuláveis (`external_reference`, `external_customer_reference`, `external_price_reference`); só `billing/infra/gateway/` conhece o nome do fornecedor (Stripe) — `domain` e `application` só conhecem "gateway".
 
@@ -102,7 +102,13 @@ A verificação da assinatura `Stripe-Signature` acontece **dentro** de `Process
 
 As transições dirigidas por webhook (`activate`, `changePlan`, `startTrialUntil`, `markPastDue`, `cancel`) são idempotentes: reentrada no mesmo estado nunca lança `ConflictError` — um `ConflictError` escapando do caminho do webhook é sempre um bug, porque vira um loop de retentativa do Stripe até o endpoint ser desativado. `markPastDue` tolera `active`/`trialing`/`past_due` e ancora `grace_period_ends_at` na primeira falha; `cancel` já cancelada é um no-op silencioso. `SubscribeToPlanUseCase` foi renomeado para `GrantPlanUseCase` (concede plano sem cobrar — mecanismo interno, sem rota) e `CancelSubscriptionUseCase` passou a receber `{ user_id }` em vez de `User`, para que ambos possam ser reusados pelo orquestrador do webhook.
 
-O catálogo (`price_id` do Stripe) é sincronizado manualmente: a variável opcional `STRIPE_PRO_PRICE_ID` faz `seedPlans()` fazer upsert de `external_price_reference` no plano `pro` a cada execução.
+#### Catálogo de planos
+
+O gateway de pagamento é a fonte de verdade sobre o catálogo comercial: preço, nome, `max_properties` e `trial_days` vêm do Price do gateway (campos nativos + `metadata`, prefixo `sogio_`) e chegam ao Sogio por dois canais que convergem no mesmo escritor, `SyncPlanCatalogEntryUseCase` — **webhook** (`price.created/updated/deleted`, `product.created/updated/deleted`, normalizados em `GatewayCatalogEvent`, uma família irmã de `GatewayBillingEvent`, não uma variante dela) e **reconciliação sob demanda** (`ReconcilePlanCatalogFromGatewayUseCase`, que lê `PaymentGateway.listCatalogEntries()` inteiro). A reconciliação roda no boot da aplicação (não-fatal, pulada em `test`/sem `STRIPE_SECRET_KEY`) e em `POST /billing/catalog/sync` — `adminOnly`, `allowWithoutPlatformAccess: true` porque, se a reconciliação de boot falhar contra um banco vazio, a própria conta do admin está bloqueada e precisa conseguir chamar a rota que conserta o catálogo. Sem tool MCP: opera sobre o catálogo da aplicação inteira, não sobre os dados do usuário logado.
+
+Um parser único em `infra/gateway/` (`stripe_catalog_entry_parser.ts`, compartilhado pelo verificador de webhook e por `listCatalogEntries`) decide o que é uma entrada de catálogo válida e **nunca lança**: campo semântico errado (`max_properties`, `trial_days` presente-e-inválido, moeda, intervalo) invalida a entrada inteira; campo de exibição errado (`name` longo) é normalizado. Três invariantes protegem o catálogo contra o próprio mecanismo que o alimenta — todas em `.claude/personas/arquiteto.md`: **I-1** (`code` é imutável — um typo no dashboard cria um plano-lixo, nunca renomeia um existente), **I-2** (o plano `free` nunca é aposentado por um evento de catálogo) e **I-3** (ausência nunca aposenta — um Price sem metadata é ignorado, não uma aposentadoria implícita).
+
+Lembretes operacionais permanentes para quem opera o dashboard do gateway: **aposentar um plano = arquivar o Price** (`active: false`) — um Price já usado numa assinatura não pode ser deletado, então `price.deleted`/`product.deleted` são caminhos quase mortos; **mudar o preço de um plano = criar um Price novo com o mesmo `sogio_plan_code`** — o plano local repontará sozinho (`external_price_reference` sempre aponta para o Price ativo mais recente do código), mas assinantes do preço antigo não são migrados automaticamente.
 
 ### Banco de Dados
 
@@ -123,7 +129,6 @@ Definidas em `src/core/infra/config/environments.ts`:
 - `CORS_ALLOWED_ORIGINS` — lista opcional de origens permitidas para CORS, separadas por vírgula; se ausente, cai para `[FRONT_BASE_URL]`
 - `STRIPE_SECRET_KEY` — chave secreta da API do Stripe. Obrigatória fora de `development`
 - `STRIPE_WEBHOOK_SECRET` — segredo de assinatura usado para verificar o header `Stripe-Signature` no webhook. Obrigatória fora de `development`
-- `STRIPE_PRO_PRICE_ID` — `price_id` do Stripe para o plano Pro; opcional. Quando presente, `seedPlans()` faz upsert desse valor em `plans.external_price_reference`
 
 ### Estilo de Código
 
