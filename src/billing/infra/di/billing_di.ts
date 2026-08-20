@@ -84,7 +84,8 @@ export class BillingDi {
     // Only required outside development (environments.ts) — in development,
     // exercising a Stripe call without a real key is expected to fail loudly.
     this.#paymentGateway = new StripePaymentGateway(
-      env.STRIPE_SECRET_KEY ?? ""
+      env.STRIPE_SECRET_KEY ?? "",
+      this.#logger
     );
     this.#gatewayWebhookVerifier = new StripeWebhookVerifier(
       env.STRIPE_WEBHOOK_SECRET ?? "",

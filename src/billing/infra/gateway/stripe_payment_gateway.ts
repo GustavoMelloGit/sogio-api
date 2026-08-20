@@ -1,6 +1,9 @@
 import Stripe from "stripe";
 import { IllegalStateError } from "../../../core/application/error/illegal_state_error";
+import type { Logger } from "../../../core/application/logger/logger";
 import type { PaymentGateway } from "../../application/gateway/payment_gateway";
+import type { GatewayCatalogEntry } from "../../application/gateway/gateway_catalog_entry";
+import { parseStripeCatalogEntry } from "./stripe_catalog_entry_parser";
 
 /**
  * One of only two files in this codebase that import the Stripe SDK (DA-1,
@@ -10,12 +13,14 @@ import type { PaymentGateway } from "../../application/gateway/payment_gateway";
  */
 export class StripePaymentGateway implements PaymentGateway {
   #stripe: Stripe;
+  #logger: Logger;
 
-  constructor(secretKey: string) {
+  constructor(secretKey: string, logger: Logger) {
     // Pinned explicitly to the version this SDK release was generated
     // against, rather than left to the account's dashboard default — an
     // unrelated dashboard change must never silently reshape our payloads.
     this.#stripe = new Stripe(secretKey, { apiVersion: Stripe.API_VERSION });
+    this.#logger = logger;
   }
 
   async createCustomer(input: {
@@ -71,5 +76,20 @@ export class StripePaymentGateway implements PaymentGateway {
     });
 
     return { url: session.url };
+  }
+
+  async listCatalogEntries(): Promise<GatewayCatalogEntry[]> {
+    const entries: GatewayCatalogEntry[] = [];
+
+    // No `active` filter (DA-6): Stripe's list endpoint returns both active
+    // and inactive Prices when it's omitted, and inactive is the explicit
+    // retirement signal I-3 requires. Auto-paginates via the SDK's
+    // async-iterable list.
+    for await (const price of this.#stripe.prices.list({ limit: 100 })) {
+      const entry = parseStripeCatalogEntry(price, this.#logger);
+      if (entry) entries.push(entry);
+    }
+
+    return entries;
   }
 }

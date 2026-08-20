@@ -39,6 +39,12 @@ class StubPaymentGateway implements PaymentGateway {
   async createBillingPortalSession(): Promise<{ url: string }> {
     throw new Error("not used in this test");
   }
+
+  async listCatalogEntries(): Promise<
+    Awaited<ReturnType<PaymentGateway["listCatalogEntries"]>>
+  > {
+    throw new Error("not used in this test");
+  }
 }
 
 async function setProPriceReference(): Promise<void> {

@@ -29,6 +29,12 @@ class StubPaymentGateway implements PaymentGateway {
     this.createBillingPortalSessionCalls.push(input);
     return { url: "https://billing.stripe.com/test-portal" };
   }
+
+  async listCatalogEntries(): Promise<
+    Awaited<ReturnType<PaymentGateway["listCatalogEntries"]>>
+  > {
+    throw new Error("not used in this test");
+  }
 }
 
 describe("CreateBillingPortalSessionUseCase", () => {

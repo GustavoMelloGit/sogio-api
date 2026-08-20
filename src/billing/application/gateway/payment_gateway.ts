@@ -1,3 +1,5 @@
+import type { GatewayCatalogEntry } from "./gateway_catalog_entry";
+
 type CreateCustomerInput = {
   user_id: string;
   email: string;
@@ -32,4 +34,12 @@ export interface PaymentGateway {
   createBillingPortalSession(
     input: CreateBillingPortalSessionInput
   ): Promise<{ url: string }>;
+  /**
+   * Reads the gateway's entire price catalog — active and inactive alike
+   * (DA-6): inactive is the explicit retirement signal I-3 requires.
+   * Entries that don't parse as a Sogio catalog entry are silently dropped
+   * by the same shared parser the webhook verifier uses, never surfaced
+   * here as an error (DA-4). Powers `ReconcilePlanCatalogFromGatewayUseCase`.
+   */
+  listCatalogEntries(): Promise<GatewayCatalogEntry[]>;
 }
