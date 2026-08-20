@@ -86,6 +86,16 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
     const existing = await this.planRepository.planOfCode(entry.code);
 
     if (!existing) {
+      const guarded = this.#guardFreePlan(
+        entry.code,
+        {
+          is_offered: entry.is_offered,
+          price_amount: entry.price_amount,
+          trial_days: entry.trial_days,
+        },
+        event_id
+      );
+
       // Plan.create's factory never accepts deleted_at (WithoutBaseEntity
       // excludes it) — a brand new, already-unoffered entry is created
       // active and then retired immediately via the same idempotent method
@@ -93,15 +103,15 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
       const plan = Plan.create({
         code: entry.code,
         name: entry.name,
-        price_amount: entry.price_amount,
+        price_amount: guarded.price_amount,
         billing_interval: entry.billing_interval,
         max_properties: entry.max_properties,
-        trial_days: entry.trial_days,
+        trial_days: guarded.trial_days,
         external_price_reference: entry.external_price_reference,
         external_product_reference: entry.external_product_reference,
         external_event_at: occurred_at,
       });
-      if (!entry.is_offered && entry.code !== FREE_PLAN_CODE) {
+      if (!guarded.is_offered) {
         plan.retire(occurred_at);
       }
       await this.#save(plan, event_id);
@@ -139,21 +149,25 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
       return;
     }
 
-    const isOffered = this.#guardFreeRetirement(
+    const guarded = this.#guardFreePlan(
       existing.code,
-      entry.is_offered,
+      {
+        is_offered: entry.is_offered,
+        price_amount: entry.price_amount,
+        trial_days: entry.trial_days,
+      },
       event_id
     );
 
     const sync: PlanCatalogSync = {
       name: entry.name,
-      price_amount: entry.price_amount,
+      price_amount: guarded.price_amount,
       billing_interval: entry.billing_interval,
       max_properties: entry.max_properties,
-      trial_days: entry.trial_days,
+      trial_days: guarded.trial_days,
       external_price_reference: entry.external_price_reference,
       external_product_reference: entry.external_product_reference,
-      is_offered: isOffered,
+      is_offered: guarded.is_offered,
     };
 
     existing.syncFromCatalog(sync, occurred_at);
@@ -237,15 +251,50 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
     }
   }
 
-  /** I-2: forces `is_offered: true` for the free plan and logs when a retirement was attempted — free is logged and ignored, never thrown (DA-4). */
-  #guardFreeRetirement(
+  /**
+   * I-2, widened by S-3: a catalog entry can carry more than one way to
+   * break the free plan, not just a retirement signal. `price_amount ≠ 0`
+   * flips `Plan.is_perpetual` to `false`, which routes every new signup
+   * through `activate()`'s dated `current_period_end` instead of the
+   * perpetual path — nobody ever pays it, so the account silently loses
+   * platform access a month later (`period_expired`). `trial_days > 0` on a
+   * plan nobody starts a real trial for is the same failure via
+   * `trial_expired`. Each field is independently clamped to its safe value
+   * and logged — a dashboard edit is visible but never load-bearing, the
+   * same "diverge loudly, never break" trade-off the pre-existing
+   * `is_offered` guard already made (never throws, DA-4).
+   */
+  #guardFreePlan(
     code: string,
-    is_offered: boolean,
+    entry: { is_offered: boolean; price_amount: number; trial_days: number },
     event_id: string
-  ): boolean {
-    if (code !== FREE_PLAN_CODE || is_offered) return is_offered;
-    this.#logFreeRetirementIgnored(event_id, code);
-    return true;
+  ): { is_offered: boolean; price_amount: number; trial_days: number } {
+    if (code !== FREE_PLAN_CODE) return entry;
+
+    let { is_offered, price_amount, trial_days } = entry;
+
+    if (!is_offered) {
+      this.#logFreeRetirementIgnored(event_id, code);
+      is_offered = true;
+    }
+
+    if (price_amount !== 0) {
+      this.logger.warn(
+        "Ignoring a non-zero price_amount for the free plan — it must stay perpetual (I-2/S-3)",
+        { event_id, plan: code, attempted_price_amount: price_amount }
+      );
+      price_amount = 0;
+    }
+
+    if (trial_days !== 0) {
+      this.logger.warn(
+        "Ignoring a non-zero trial_days for the free plan — it must never expire a trial (I-2/S-3)",
+        { event_id, plan: code, attempted_trial_days: trial_days }
+      );
+      trial_days = 0;
+    }
+
+    return { is_offered, price_amount, trial_days };
   }
 
   #isStale(lastAppliedAt: Date | null, occurred_at: Date): boolean {

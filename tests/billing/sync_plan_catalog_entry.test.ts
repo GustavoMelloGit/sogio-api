@@ -23,6 +23,7 @@ const silentLogger: Logger = {
 
 const planRepository = new PlanPostgresRepository();
 const useCase = new SyncPlanCatalogEntryUseCase(planRepository, silentLogger);
+const FREE_PLAN_CODE = "free";
 
 async function deletePlans(codes: string[]): Promise<void> {
   await db.delete(plansTable).where(inArray(plansTable.code, codes));
@@ -538,6 +539,63 @@ describe("SyncPlanCatalogEntryUseCase — S-1: a database data-exception is a lo
       expect(reloaded?.name).toBe("Good Name");
     } finally {
       await deletePlans([code]);
+    }
+  });
+});
+
+describe("SyncPlanCatalogEntryUseCase — S-3: the free plan's price_amount and trial_days are clamped", () => {
+  it("clamps a non-zero price_amount to 0 for the free plan instead of breaking is_perpetual", async () => {
+    const originalFree = await planRepository.planOfCode(FREE_PLAN_CODE);
+    if (!originalFree) throw new Error("test setup: free plan not seeded");
+
+    try {
+      await useCase.execute(
+        entryChangedEvent(
+          makeEntry({
+            code: FREE_PLAN_CODE,
+            name: "Free",
+            external_price_reference: "price_free_s3_amount_test",
+            price_amount: 999,
+            max_properties: 1,
+            trial_days: 0,
+            is_offered: true,
+          }),
+          new Date()
+        )
+      );
+
+      const reloaded = await planRepository.planOfCode(FREE_PLAN_CODE);
+      expect(reloaded?.price_amount).toBe(0);
+      expect(reloaded?.is_perpetual).toBe(true);
+    } finally {
+      await planRepository.save(originalFree);
+    }
+  });
+
+  it("clamps a non-zero trial_days to 0 for the free plan instead of letting it expire a trial", async () => {
+    const originalFree = await planRepository.planOfCode(FREE_PLAN_CODE);
+    if (!originalFree) throw new Error("test setup: free plan not seeded");
+
+    try {
+      await useCase.execute(
+        entryChangedEvent(
+          makeEntry({
+            code: FREE_PLAN_CODE,
+            name: "Free",
+            external_price_reference: "price_free_s3_trial_test",
+            price_amount: 0,
+            max_properties: 1,
+            trial_days: 14,
+            is_offered: true,
+          }),
+          new Date()
+        )
+      );
+
+      const reloaded = await planRepository.planOfCode(FREE_PLAN_CODE);
+      expect(reloaded?.trial_days).toBe(0);
+    } finally {
+      await planRepository.save(originalFree);
     }
   });
 });
