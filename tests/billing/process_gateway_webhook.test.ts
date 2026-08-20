@@ -6,6 +6,7 @@ import { BindGatewayCustomerUseCase } from "../../src/billing/application/use_ca
 import { SyncSubscriptionFromGatewayUseCase } from "../../src/billing/application/use_case/sync_subscription_from_gateway";
 import { CancelSubscriptionUseCase } from "../../src/billing/application/use_case/cancel_subscription";
 import { MarkSubscriptionPastDueUseCase } from "../../src/billing/application/use_case/mark_subscription_past_due";
+import { SyncPlanCatalogEntryUseCase } from "../../src/billing/application/use_case/sync_plan_catalog_entry";
 import { SubscriptionPostgresRepository } from "../../src/billing/infra/database/postgres_repository/subscription_postgres_repository";
 import { PlanPostgresRepository } from "../../src/billing/infra/database/postgres_repository/plan_postgres_repository";
 import { ProcessedGatewayEventPostgresRepository } from "../../src/billing/infra/database/postgres_repository/processed_gateway_event_postgres_repository";
@@ -75,6 +76,10 @@ function makeRealUseCase(verifier: GatewayWebhookVerifier) {
       cancelSubscriptionUseCase,
       silentLogger
     );
+  const syncPlanCatalogEntryUseCase = new SyncPlanCatalogEntryUseCase(
+    planRepository,
+    silentLogger
+  );
 
   return new ProcessGatewayWebhookUseCase(
     verifier,
@@ -84,6 +89,7 @@ function makeRealUseCase(verifier: GatewayWebhookVerifier) {
     syncSubscriptionFromGatewayUseCase,
     cancelSubscriptionUseCase,
     markSubscriptionPastDueUseCase,
+    syncPlanCatalogEntryUseCase,
     silentLogger
   );
 }
@@ -193,6 +199,10 @@ describe("ProcessGatewayWebhookUseCase — release on failure (R-6)", () => {
         cancelSubscriptionUseCase,
         silentLogger
       );
+    const syncPlanCatalogEntryUseCase = new SyncPlanCatalogEntryUseCase(
+      planRepository,
+      silentLogger
+    );
 
     const useCase = new ProcessGatewayWebhookUseCase(
       new StubVerifier(event),
@@ -202,6 +212,7 @@ describe("ProcessGatewayWebhookUseCase — release on failure (R-6)", () => {
       syncSubscriptionFromGatewayUseCase,
       cancelSubscriptionUseCase,
       markSubscriptionPastDueUseCase,
+      syncPlanCatalogEntryUseCase,
       silentLogger
     );
 

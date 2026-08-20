@@ -28,7 +28,8 @@ const financeDi = new FinanceDi();
  * dispatcher from its constructor (not idempotent) — must be instantiated
  * exactly once and this single instance reused everywhere (DA-7).
  */
-const billingDi = new BillingDi();
+/** Exported so `src/index.ts` can trigger the boot-time catalog reconciliation (DA-5) on this exact singleton — a second `new BillingDi()` would double-register its event handlers. */
+export const billingDi = new BillingDi();
 const propertyManagementDi = new PropertyManagementDi(
   billingDi.makeEntitlementService(),
   stayDi.makeStayPropertyOccupancy()
@@ -314,6 +315,16 @@ const billingControllers: Route[] = [
     // platform-access gate by construction, not by exception.
     authenticated: false,
     controller: billingDi.makeStripeWebhookController(),
+  },
+  {
+    // DA-5: reconciliation's own admin escape hatch can't sit behind the
+    // paywall it exists to unblock — if boot-time reconciliation fails
+    // against an empty plans table, the admin is blocked too without this.
+    // No MCP tool (DA-12): whole-application scope, not a user's own data.
+    authenticated: true,
+    adminOnly: true,
+    allowWithoutPlatformAccess: true,
+    controller: billingDi.makeSyncPlanCatalogController(),
   },
 ];
 

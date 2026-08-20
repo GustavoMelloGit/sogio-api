@@ -4,7 +4,7 @@ import type { PaymentGateway } from "../gateway/payment_gateway";
 import type { SyncPlanCatalogEntryUseCase } from "./sync_plan_catalog_entry";
 
 type Input = Record<string, never>;
-type Output = void;
+type Output = { entries_seen: number };
 
 /**
  * Reads the gateway's entire price catalog and applies every entry through
@@ -47,5 +47,7 @@ export class ReconcilePlanCatalogFromGatewayUseCase
     this.logger.info("Reconciled the plan catalog from the gateway", {
       entries_seen: entries.length,
     });
+
+    return { entries_seen: entries.length };
   }
 }

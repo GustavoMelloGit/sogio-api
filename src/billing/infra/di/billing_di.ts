@@ -32,6 +32,8 @@ import { CreateBillingPortalSessionUseCase } from "../../application/use_case/cr
 import { BindGatewayCustomerUseCase } from "../../application/use_case/bind_gateway_customer";
 import { SyncSubscriptionFromGatewayUseCase } from "../../application/use_case/sync_subscription_from_gateway";
 import { ProcessGatewayWebhookUseCase } from "../../application/use_case/process_gateway_webhook";
+import { SyncPlanCatalogEntryUseCase } from "../../application/use_case/sync_plan_catalog_entry";
+import { ReconcilePlanCatalogFromGatewayUseCase } from "../../application/use_case/reconcile_plan_catalog_from_gateway";
 import { StartFreeSubscriptionOnUserCreated } from "../../application/handler/start_free_subscription_on_user_created";
 import { RecordHistoryOnSubscriptionStarted } from "../../application/handler/record_history_on_subscription_started";
 import { RecordHistoryOnSubscriptionPlanChanged } from "../../application/handler/record_history_on_subscription_plan_changed";
@@ -49,6 +51,7 @@ import { GetSubscriptionHistoryController } from "../../presentation/controller/
 import { CreateCheckoutSessionController } from "../../presentation/controller/create_checkout_session.controller";
 import { CreateBillingPortalSessionController } from "../../presentation/controller/create_billing_portal_session.controller";
 import { StripeWebhookController } from "../../presentation/controller/stripe_webhook.controller";
+import { SyncPlanCatalogController } from "../../presentation/controller/sync_plan_catalog.controller";
 
 /**
  * Registers `StartFreeSubscriptionOnUserCreated` and the five subscription
@@ -260,6 +263,19 @@ export class BillingDi {
       this.makeSyncSubscriptionFromGatewayUseCase(),
       this.makeCancelSubscriptionUseCase(),
       this.makeMarkSubscriptionPastDueUseCase(),
+      this.makeSyncPlanCatalogEntryUseCase(),
+      this.#logger
+    );
+  }
+
+  makeSyncPlanCatalogEntryUseCase() {
+    return new SyncPlanCatalogEntryUseCase(this.#planRepository, this.#logger);
+  }
+
+  makeReconcilePlanCatalogFromGatewayUseCase() {
+    return new ReconcilePlanCatalogFromGatewayUseCase(
+      this.#paymentGateway,
+      this.makeSyncPlanCatalogEntryUseCase(),
       this.#logger
     );
   }
@@ -295,5 +311,11 @@ export class BillingDi {
 
   makeStripeWebhookController() {
     return new StripeWebhookController(this.makeProcessGatewayWebhookUseCase());
+  }
+
+  makeSyncPlanCatalogController() {
+    return new SyncPlanCatalogController(
+      this.makeReconcilePlanCatalogFromGatewayUseCase()
+    );
   }
 }

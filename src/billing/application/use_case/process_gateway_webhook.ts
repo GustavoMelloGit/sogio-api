@@ -13,6 +13,7 @@ import type { BindGatewayCustomerUseCase } from "./bind_gateway_customer";
 import type { SyncSubscriptionFromGatewayUseCase } from "./sync_subscription_from_gateway";
 import type { CancelSubscriptionUseCase } from "./cancel_subscription";
 import type { MarkSubscriptionPastDueUseCase } from "./mark_subscription_past_due";
+import type { SyncPlanCatalogEntryUseCase } from "./sync_plan_catalog_entry";
 import {
   resolveGatewaySubscriptionForTermination,
   isStaleGatewayEvent,
@@ -44,6 +45,7 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
     private readonly syncSubscriptionFromGatewayUseCase: SyncSubscriptionFromGatewayUseCase,
     private readonly cancelSubscriptionUseCase: CancelSubscriptionUseCase,
     private readonly markSubscriptionPastDueUseCase: MarkSubscriptionPastDueUseCase,
+    private readonly syncPlanCatalogEntryUseCase: SyncPlanCatalogEntryUseCase,
     private readonly logger: Logger
   ) {}
 
@@ -95,14 +97,11 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
     event: GatewayBillingEvent | GatewayCatalogEvent
   ): Promise<void> {
     if (this.#isCatalogEvent(event)) {
-      // Real routing to SyncPlanCatalogEntryUseCase lands with the DI/route
-      // wiring (plan task 10) — until then, a catalog event is verified,
-      // claimed for idempotency, and safely ignored rather than left
-      // unhandled by the type system.
-      this.logger.debug("Catalog event received but not yet wired", {
-        event_id: event.event_id,
-        type: event.type,
-      });
+      // DA-3: every catalog branch delegates wholesale to the single
+      // catalog writer, exactly as subscription_state_changed delegates
+      // wholesale to SyncSubscriptionFromGatewayUseCase — no catalog-
+      // specific logic lives here.
+      await this.syncPlanCatalogEntryUseCase.execute(event);
       return;
     }
 
