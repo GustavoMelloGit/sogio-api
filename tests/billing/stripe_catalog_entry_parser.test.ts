@@ -276,6 +276,21 @@ describe("parseStripeCatalogEntry — money and interval (DA-4)", () => {
     expect(parseStripeCatalogEntry(price, silentLogger)).toBeNull();
   });
 
+  it("ignores the entry when unit_amount is above the planSchema ceiling (S-5)", () => {
+    const price = makePrice({ unit_amount: 100_000_001 });
+
+    expect(() => parseStripeCatalogEntry(price, silentLogger)).not.toThrow();
+    expect(parseStripeCatalogEntry(price, silentLogger)).toBeNull();
+  });
+
+  it("accepts unit_amount exactly at the planSchema ceiling (S-5)", () => {
+    const price = makePrice({ unit_amount: 100_000_000 });
+
+    expect(parseStripeCatalogEntry(price, silentLogger)?.price_amount).toBe(
+      100_000_000
+    );
+  });
+
   it("ignores the entry when currency is not brl", () => {
     const price = makePrice({ currency: "usd" });
 

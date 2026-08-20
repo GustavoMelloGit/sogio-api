@@ -10,6 +10,12 @@ const MIN_MAX_PROPERTIES = 1;
 const MAX_MAX_PROPERTIES = 10_000;
 const MIN_TRIAL_DAYS = 0;
 const MAX_TRIAL_DAYS = 365;
+// S-5: mirrors planSchema's price_amount bound (plan.ts) — a Price above it
+// would make Plan.create/#touch throw past this parser's try/catch-free
+// boundary, in SyncPlanCatalogEntryUseCase#save, the same unhandled-throw
+// shape as S-1.
+const MIN_PRICE_AMOUNT = 0;
+const MAX_PRICE_AMOUNT = 100_000_000;
 // S-1: Postgres rejects these at the byte level (22021
 // character_not_in_repertoire, among others) — retrying an identical write
 // fails identically forever, so they must be caught here, before the value
@@ -25,9 +31,9 @@ function hasOrphanSurrogate(value: string): boolean {
 /**
  * Stripe Price -> Sogio catalog entry (DA-4's whole validation table). A
  * semantically wrong field (`sogio_max_properties`, `sogio_trial_days`
- * present-and-invalid, currency, interval, missing `unit_amount`)
- * invalidates the entry entirely (`null`); a display-only field
- * (`sogio_plan_name` too long) is normalized instead. Never throws — a
+ * present-and-invalid, currency, interval, missing or out-of-range
+ * `unit_amount`) invalidates the entry entirely (`null`); a display-only
+ * field (`sogio_plan_name` too long) is normalized instead. Never throws — a
  * malformed dashboard entry is the expected case here, not the exceptional
  * one (DA-4). The single definition of "valid catalog entry", imported by
  * both `StripeWebhookVerifier` and `StripePaymentGateway.listCatalogEntries`
@@ -102,6 +108,17 @@ export function parseStripeCatalogEntry(
     logger.warn(
       "Ignoring catalog entry: tiered/metered price has no unit_amount",
       { price_id: price.id }
+    );
+    return null;
+  }
+
+  if (
+    price.unit_amount < MIN_PRICE_AMOUNT ||
+    price.unit_amount > MAX_PRICE_AMOUNT
+  ) {
+    logger.warn(
+      "Ignoring catalog entry: unit_amount is out of the accepted range (S-5)",
+      { price_id: price.id, unit_amount: price.unit_amount }
     );
     return null;
   }
