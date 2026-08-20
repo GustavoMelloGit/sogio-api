@@ -6,6 +6,7 @@ import type {
   SubscriptionEndedEvent,
   PaymentFailedEvent,
 } from "../gateway/gateway_billing_event";
+import type { GatewayCatalogEvent } from "../gateway/gateway_catalog_event";
 import type { ProcessedGatewayEventRepository } from "../../domain/repository/processed_gateway_event_repository";
 import type { SubscriptionRepository } from "../../domain/repository/subscription_repository";
 import type { BindGatewayCustomerUseCase } from "./bind_gateway_customer";
@@ -90,7 +91,21 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
     }
   }
 
-  async #dispatch(event: GatewayBillingEvent): Promise<void> {
+  async #dispatch(
+    event: GatewayBillingEvent | GatewayCatalogEvent
+  ): Promise<void> {
+    if (this.#isCatalogEvent(event)) {
+      // Real routing to SyncPlanCatalogEntryUseCase lands with the DI/route
+      // wiring (plan task 10) — until then, a catalog event is verified,
+      // claimed for idempotency, and safely ignored rather than left
+      // unhandled by the type system.
+      this.logger.debug("Catalog event received but not yet wired", {
+        event_id: event.event_id,
+        type: event.type,
+      });
+      return;
+    }
+
     switch (event.type) {
       case "checkout_completed":
         await this.bindGatewayCustomerUseCase.execute({
@@ -191,5 +206,16 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
       reason: event.reason,
       occurred_at: event.occurred_at,
     });
+  }
+
+  #isCatalogEvent(
+    event: GatewayBillingEvent | GatewayCatalogEvent
+  ): event is GatewayCatalogEvent {
+    return (
+      event.type === "catalog_entry_changed" ||
+      event.type === "catalog_entry_retired" ||
+      event.type === "catalog_product_offering_changed" ||
+      event.type === "catalog_product_retired"
+    );
   }
 }

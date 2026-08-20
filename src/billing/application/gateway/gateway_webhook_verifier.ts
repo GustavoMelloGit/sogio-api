@@ -1,4 +1,5 @@
 import type { GatewayBillingEvent } from "./gateway_billing_event";
+import type { GatewayCatalogEvent } from "./gateway_catalog_event";
 
 type VerifyInput = {
   /** The exact bytes the gateway signed — never a reserialized object (DA-2 item 2). */
@@ -13,8 +14,11 @@ type VerifyInput = {
  *
  * Throws `UnauthorizedError` when the signature is missing or invalid.
  * Returns `null` for a verified event of a type this system doesn't act on
- * (DA-3's "200 and ignored") — that is not an authentication failure.
+ * (DA-3's "200 and ignored"), or one whose `livemode` doesn't match this
+ * environment (DA-9) — neither is an authentication failure.
  */
 export interface GatewayWebhookVerifier {
-  verify(input: VerifyInput): Promise<GatewayBillingEvent | null>;
+  verify(
+    input: VerifyInput
+  ): Promise<GatewayBillingEvent | GatewayCatalogEvent | null>;
 }
