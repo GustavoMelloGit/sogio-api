@@ -34,7 +34,7 @@ async function main() {
     billingDi.makeEnsureFreeSubscriptionUseCase();
 
   const usersWithoutSubscription = await db
-    .select({ id: usersTable.id, email: usersTable.email })
+    .select({ id: usersTable.id })
     .from(usersTable)
     .leftJoin(subscriptionsTable, eq(subscriptionsTable.user_id, usersTable.id))
     .where(isNull(subscriptionsTable.id));
@@ -50,11 +50,11 @@ async function main() {
     try {
       await ensureFreeSubscriptionUseCase.execute({ user_id: user.id });
       succeeded += 1;
-      console.log(`[backfill] Granted free plan to ${user.email} (${user.id})`);
+      console.log(`[backfill] Granted free plan to user ${user.id}`);
     } catch (error) {
       failed += 1;
       console.error(
-        `[backfill] Failed to grant free plan to ${user.email} (${user.id})`,
+        `[backfill] Failed to grant free plan to user ${user.id}`,
         error
       );
     }
