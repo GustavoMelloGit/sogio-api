@@ -5,6 +5,25 @@ import { db } from "../../../../core/infra/database/drizzle/database";
 import { plansTable } from "../../../../core/infra/database/drizzle/schema";
 import { ConflictError } from "../../../../core/application/error/conflict_error";
 
+/**
+ * Drizzle wraps the driver error in `DrizzleQueryError`, whose own `.code`
+ * is undefined — the pg error (and its `23505` code) lives one level down,
+ * in `.cause`. Checked at both levels so this survives either shape.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if ("code" in error && (error as { code?: string }).code === "23505") {
+    return true;
+  }
+  const cause = (error as { cause?: unknown }).cause;
+  return (
+    !!cause &&
+    typeof cause === "object" &&
+    "code" in cause &&
+    (cause as { code?: string }).code === "23505"
+  );
+}
+
 export class PlanPostgresRepository implements PlanRepository {
   async planOfId(id: string): Promise<Plan | null> {
     const plan = await db.query.plansTable.findFirst({
@@ -87,11 +106,7 @@ export class PlanPostgresRepository implements PlanRepository {
       // infrastructure failure — surfaced as ConflictError so the catalog
       // write path (DA-4) can catch it and log a refusal instead of
       // propagating, the same way the gateway's own retry would.
-      if (
-        error instanceof Error &&
-        "code" in error &&
-        (error as { code: string }).code === "23505"
-      ) {
+      if (isUniqueViolation(error)) {
         throw new ConflictError(
           "Plan external_price_reference already linked to another plan"
         );
