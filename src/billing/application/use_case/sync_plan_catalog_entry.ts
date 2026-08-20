@@ -1,6 +1,7 @@
 import type { UseCase } from "../../../core/application/use_case/use_case";
 import type { Logger } from "../../../core/application/logger/logger";
 import { ConflictError } from "../../../core/application/error/conflict_error";
+import { ValidationError } from "../../../core/application/error/validation_error";
 import type { PlanRepository } from "../../domain/repository/plan_repository";
 import { Plan, type PlanCatalogSync } from "../../domain/entity/plan";
 import type { GatewayCatalogEntry } from "../gateway/gateway_catalog_entry";
@@ -265,7 +266,14 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
     );
   }
 
-  /** R-11/DA-4: a unique-index collision on external_price_reference is a recognized outcome, logged and swallowed — never propagated. */
+  /**
+   * R-11/DA-4/S-1: a unique-index collision on external_price_reference and
+   * a database-level data rejection (a value that slipped past application
+   * validation but that Postgres itself refuses — S-1) are both recognized,
+   * non-retryable outcomes, logged and swallowed — never propagated. Any
+   * other error is a genuine infrastructure failure and must keep
+   * propagating, which is what makes the gateway's retry meaningful.
+   */
   async #save(plan: Plan, event_id: string): Promise<void> {
     try {
       await this.planRepository.save(plan);
@@ -278,6 +286,17 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
             plan_id: plan.id,
             plan_code: plan.code,
             external_price_reference: plan.external_price_reference,
+          }
+        );
+        return;
+      }
+      if (error instanceof ValidationError) {
+        this.logger.warn(
+          "Refusing to save a catalog plan: rejected by the database as invalid data (S-1)",
+          {
+            event_id,
+            plan_id: plan.id,
+            plan_code: plan.code,
           }
         );
         return;

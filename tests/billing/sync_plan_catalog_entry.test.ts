@@ -479,6 +479,69 @@ describe("SyncPlanCatalogEntryUseCase — R-11: unique-index collision is a logg
   });
 });
 
+describe("SyncPlanCatalogEntryUseCase — S-1: a database data-exception is a logged refusal, never a throw", () => {
+  it("does not throw and leaves the plan uncreated when the name contains a NUL byte", async () => {
+    const code = "nul_byte_test";
+    await deletePlans([code]);
+
+    try {
+      await expect(
+        useCase.execute(
+          entryChangedEvent(
+            makeEntry({
+              code,
+              name: "Bad\x00Name",
+              external_price_reference: "price_nul_byte_test",
+            }),
+            new Date()
+          )
+        )
+      ).resolves.toBeUndefined();
+
+      const plan = await planRepository.planOfCode(code);
+      expect(plan).toBeNull();
+    } finally {
+      await deletePlans([code]);
+    }
+  });
+
+  it("does not throw and leaves an existing plan untouched when an update carries a NUL byte name", async () => {
+    const code = "nul_byte_update_test";
+    await deletePlans([code]);
+
+    try {
+      await useCase.execute(
+        entryChangedEvent(
+          makeEntry({
+            code,
+            name: "Good Name",
+            external_price_reference: "price_nul_byte_update_test",
+          }),
+          new Date(Date.now() - 1000)
+        )
+      );
+
+      await expect(
+        useCase.execute(
+          entryChangedEvent(
+            makeEntry({
+              code,
+              name: "Bad\x00Name",
+              external_price_reference: "price_nul_byte_update_test",
+            }),
+            new Date()
+          )
+        )
+      ).resolves.toBeUndefined();
+
+      const reloaded = await planRepository.planOfCode(code);
+      expect(reloaded?.name).toBe("Good Name");
+    } finally {
+      await deletePlans([code]);
+    }
+  });
+});
+
 describe("SyncPlanCatalogEntryUseCase — Product-driven events carry no business fields (§2.3)", () => {
   it("retires and restores every plan linked to a Product via catalog_product_offering_changed", async () => {
     const codeA = "group_a_test";

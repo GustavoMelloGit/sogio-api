@@ -9,6 +9,17 @@ const MIN_MAX_PROPERTIES = 1;
 const MAX_MAX_PROPERTIES = 10_000;
 const MIN_TRIAL_DAYS = 0;
 const MAX_TRIAL_DAYS = 365;
+// S-1: Postgres rejects these at the byte level (22021
+// character_not_in_repertoire, among others) — retrying an identical write
+// fails identically forever, so they must be caught here, before the value
+// ever reaches a query.
+const CONTROL_CHAR_PATTERN = /[\x00-\x1F\x7F-\x9F]/;
+const SURROGATE_PATTERN = /[\ud800-\udfff]/;
+
+function hasOrphanSurrogate(value: string): boolean {
+  const withPairsRemoved = value.replace(/[\ud800-\udbff][\udc00-\udfff]/g, "");
+  return SURROGATE_PATTERN.test(withPairsRemoved);
+}
 
 /**
  * Stripe Price -> Sogio catalog entry (DA-4's whole validation table). A
@@ -36,9 +47,10 @@ export function parseStripeCatalogEntry(
 
   const name = parseName(price.metadata.sogio_plan_name);
   if (!name) {
-    logger.warn("Ignoring catalog entry: missing or empty sogio_plan_name", {
-      price_id: price.id,
-    });
+    logger.warn(
+      "Ignoring catalog entry: missing, empty, or malformed sogio_plan_name",
+      { price_id: price.id }
+    );
     return null;
   }
 
@@ -111,6 +123,13 @@ function parseName(raw: string | undefined): string | null {
   if (!raw) return null;
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
+  // S-1: a control character (including a NUL byte) or an unpaired
+  // surrogate is a semantically wrong field, not a display quirk — Postgres
+  // rejects both at the byte level (22021), and no amount of retrying
+  // changes that, so the entry is invalidated here rather than truncated.
+  if (CONTROL_CHAR_PATTERN.test(trimmed) || hasOrphanSurrogate(trimmed)) {
+    return null;
+  }
   return trimmed.length > MAX_NAME_LENGTH
     ? trimmed.slice(0, MAX_NAME_LENGTH)
     : trimmed;

@@ -4,24 +4,48 @@ import type { PlanRepository } from "../../../domain/repository/plan_repository"
 import { db } from "../../../../core/infra/database/drizzle/database";
 import { plansTable } from "../../../../core/infra/database/drizzle/schema";
 import { ConflictError } from "../../../../core/application/error/conflict_error";
+import { ValidationError } from "../../../../core/application/error/validation_error";
 
 /**
  * Drizzle wraps the driver error in `DrizzleQueryError`, whose own `.code`
- * is undefined — the pg error (and its `23505` code) lives one level down,
+ * is undefined — the pg error (and its SQLSTATE code) lives one level down,
  * in `.cause`. Checked at both levels so this survives either shape.
  */
-function isUniqueViolation(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  if ("code" in error && (error as { code?: string }).code === "23505") {
-    return true;
+function pgErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  if ("code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string") return code;
   }
   const cause = (error as { cause?: unknown }).cause;
-  return (
-    !!cause &&
-    typeof cause === "object" &&
-    "code" in cause &&
-    (cause as { code?: string }).code === "23505"
-  );
+  if (cause && typeof cause === "object" && "code" in cause) {
+    const code = (cause as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  return undefined;
+}
+
+/**
+ * S-1: the right test for "log and skip instead of propagating" was never
+ * "is this SQLSTATE 23505" — it's "would retrying this exact write fail
+ * again". Class 22 (data exception — e.g. 22021 character_not_in_repertoire,
+ * the NUL-byte/orphan-surrogate case the catalog parser now also rejects
+ * up front) plus 23502 (not_null_violation) and 23514 (check_violation) are
+ * all input the row can never satisfy, no matter how many times the
+ * gateway retries the same event. 23505 (unique_violation) is the
+ * pre-existing R-11 conflict. Anything else — a dropped connection, a
+ * timeout — is a genuine infrastructure failure and must keep propagating.
+ */
+function classifyWriteFailure(
+  error: unknown
+): "unique_violation" | "invalid_data" | null {
+  const code = pgErrorCode(error);
+  if (!code) return null;
+  if (code === "23505") return "unique_violation";
+  if (code.startsWith("22") || code === "23502" || code === "23514") {
+    return "invalid_data";
+  }
+  return null;
 }
 
 export class PlanPostgresRepository implements PlanRepository {
@@ -100,17 +124,30 @@ export class PlanPostgresRepository implements PlanRepository {
 
       await db.insert(plansTable).values(data);
     } catch (error) {
+      const classification = classifyWriteFailure(error);
+
       // R-11: a repointed/created plan colliding on external_price_reference
       // is a recognized outcome of catalog sync (two Prices declaring the
       // same code, or two plans somehow pointing at the same price), not an
       // infrastructure failure — surfaced as ConflictError so the catalog
       // write path (DA-4) can catch it and log a refusal instead of
       // propagating, the same way the gateway's own retry would.
-      if (isUniqueViolation(error)) {
+      if (classification === "unique_violation") {
         throw new ConflictError(
           "Plan external_price_reference already linked to another plan"
         );
       }
+
+      // S-1: a value that slipped past application-level validation but
+      // that Postgres itself refuses (data exception, not-null, or check
+      // violation) is the same kind of recognized, non-retryable refusal —
+      // surfaced as ValidationError for the same log-and-skip treatment.
+      if (classification === "invalid_data") {
+        throw new ValidationError(
+          "Plan write rejected by the database as invalid data"
+        );
+      }
+
       throw error;
     }
   }

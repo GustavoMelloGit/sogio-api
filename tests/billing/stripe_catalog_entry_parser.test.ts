@@ -153,6 +153,39 @@ describe("parseStripeCatalogEntry — sogio_plan_name (DA-4)", () => {
     expect(entry?.name).toHaveLength(100);
     expect(entry?.name).toBe("P".repeat(100));
   });
+
+  it("ignores the entry when the name contains a NUL byte (S-1)", () => {
+    const price = makePrice({
+      metadata: { ...VALID_METADATA, sogio_plan_name: "Bad\x00Name" },
+    });
+
+    expect(() => parseStripeCatalogEntry(price, silentLogger)).not.toThrow();
+    expect(parseStripeCatalogEntry(price, silentLogger)).toBeNull();
+  });
+
+  it("ignores the entry when the name contains another C0 control character (S-1)", () => {
+    const price = makePrice({
+      metadata: { ...VALID_METADATA, sogio_plan_name: "Bad\x1bName" },
+    });
+
+    expect(parseStripeCatalogEntry(price, silentLogger)).toBeNull();
+  });
+
+  it("ignores the entry when the name contains an unpaired surrogate (S-1)", () => {
+    const price = makePrice({
+      metadata: { ...VALID_METADATA, sogio_plan_name: "Bad\ud800Name" },
+    });
+
+    expect(parseStripeCatalogEntry(price, silentLogger)).toBeNull();
+  });
+
+  it("accepts a name containing a valid surrogate pair (a real emoji)", () => {
+    const price = makePrice({
+      metadata: { ...VALID_METADATA, sogio_plan_name: "Pro 🚀" },
+    });
+
+    expect(parseStripeCatalogEntry(price, silentLogger)?.name).toBe("Pro 🚀");
+  });
 });
 
 describe("parseStripeCatalogEntry — sogio_max_properties (DA-4)", () => {
