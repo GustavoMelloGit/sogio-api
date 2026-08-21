@@ -26,10 +26,6 @@ const outputSchema = z.object({
     .optional(),
 });
 
-/**
- * Deliberately `allowWithoutPlatformAccess: true` in routes.ts — a blocked
- * account needs a way to see why it's blocked (DA-9 remediation path).
- */
 export class GetSubscriptionStatusController implements Controller {
   path = "/billing/subscription";
   method = HttpControllerMethod.GET;

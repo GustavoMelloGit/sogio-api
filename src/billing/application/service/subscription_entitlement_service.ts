@@ -6,7 +6,6 @@ import { Entitlement } from "../../domain/value_object/entitlement";
 
 const FREE_PLAN_CODE = "free";
 
-/** No subscription and no resolvable Free plan both fail closed (R-2). */
 export class SubscriptionEntitlementService implements EntitlementService {
   constructor(
     private readonly subscriptionRepository: SubscriptionRepository,

@@ -11,11 +11,6 @@ type SubscriptionPlanChangedEventInput = {
   opens_paid_cycle: boolean;
 };
 
-/**
- * The single event for every successful plan change (§2.4) — replaces the
- * old `SubscriptionActivatedEvent`. `opens_paid_cycle` is derived inside the
- * `Subscription` aggregate (`has_paid_cycle`), never recomputed here.
- */
 export class SubscriptionPlanChangedEvent implements DomainEvent {
   static readonly NAME = "subscription_plan_changed";
   public readonly name: string;

@@ -29,7 +29,7 @@ export const subscriptionSchema = baseEntitySchema
     grace_period_ends_at: z.date().nullable().optional(),
     external_reference: z.string().nullable().optional(),
     external_customer_reference: z.string().nullable().optional(),
-    /** Instant, in the gateway's clock, of the last gateway event applied — the DA-8 out-of-order guard. */
+
     external_event_at: z.date().nullable().optional(),
   })
   .refine(data => data.status !== "trialing" || !!data.trial_ends_at, {
@@ -51,7 +51,7 @@ type ActivateInput = {
   is_perpetual: boolean;
   billing_interval?: BillingInterval;
   now?: Date;
-  /** Supplied by the gateway (§2.3): when set, used literally and `BillingCyclePolicy` is never consulted. */
+
   period_end?: Date;
   external_reference?: string | null;
   external_event_at?: Date;
@@ -64,15 +64,12 @@ type ChangePlanInput = {
   billing_interval: BillingInterval;
   now?: Date;
   period_end?: Date;
-  /** Gateway-driven trial start (DA-9's `trialing, never used` row) — routes to `startTrialUntil` instead of the locally-computed `startTrial`. */
+
   trial_ends_at?: Date;
   external_reference?: string | null;
   external_event_at?: Date;
 };
 
-/**
- * @kind Entity, Aggregate Root
- */
 export class Subscription {
   #data: SubscriptionData;
 
@@ -80,7 +77,6 @@ export class Subscription {
     this.#data = subscriptionSchema.parse(data);
   }
 
-  /** Builds the initial Subscription for a user against `plan`'s terms. */
   public static create(
     input: WithoutBaseEntity<{
       user_id: string;
@@ -126,7 +122,6 @@ export class Subscription {
     return new Subscription(data);
   }
 
-  /** Cannot be called again once a subscription has ever had a trial. */
   startTrial(trial_days: number, now: Date = new Date()): void {
     if (this.#data.trial_ends_at) {
       throw new ConflictError("Subscription has already used its trial period");
@@ -147,11 +142,6 @@ export class Subscription {
     this.#touch();
   }
 
-  /**
-   * The gateway-driven counterpart of `startTrial` (§2.3, §2.5): the trial
-   * end is the gateway's, not computed locally. Same write-once guard —
-   * a subscription that already used a trial cannot start another.
-   */
   startTrialUntil(
     trial_ends_at: Date,
     input?: { external_reference?: string | null; external_event_at?: Date }
@@ -181,8 +171,6 @@ export class Subscription {
       this.#data.current_period_start = null;
       this.#data.current_period_end = null;
     } else if (input.period_end !== undefined) {
-      // The gateway's period, taken literally (§2.3) — BillingCyclePolicy is
-      // only consulted on the internal path, never here.
       this.#data.current_period_start = now;
       this.#data.current_period_end = input.period_end;
     } else {
@@ -210,13 +198,6 @@ export class Subscription {
     this.#touch();
   }
 
-  /**
-   * Accepts `active`, `trialing` and `past_due`; only `canceled` is
-   * rejected (§2.4 rule 1) — a webhook reentry can find the subscription in
-   * any of the first three. Reentry while already `past_due` keeps the
-   * original `grace_period_ends_at`: the tolerance is anchored to the first
-   * failure, not extended by every gateway retry.
-   */
   markPastDue(
     grace_period_ends_at: Date,
     input?: { external_event_at?: Date }
@@ -238,13 +219,6 @@ export class Subscription {
     this.#touch();
   }
 
-  /**
-   * Idempotent (§2.4 rule 2): already canceled is a silent no-op, not a
-   * `ConflictError` — a webhook reentry of `customer.subscription.deleted`
-   * must resolve to 200 without publishing a second cancellation. Callers
-   * that need to know whether this call actually changed anything should
-   * read `status` before calling.
-   */
   cancel(input: {
     is_perpetual: boolean;
     now?: Date;
@@ -259,16 +233,13 @@ export class Subscription {
 
     const now = input.now ?? new Date();
 
-    // A past_due subscription already lost payment; its current_period_end
-    // still points at the original paid cycle, which would let the policy
-    // read cancellation as "still active" instead of reverting to Free.
     if (this.#data.status === "past_due") {
       this.#data.current_period_end = this.#data.grace_period_ends_at ?? now;
     }
 
     this.#data.status = "canceled";
     this.#data.canceled_at = now;
-    // Never leave current_period_end null — the policy can't revert to Free without it.
+
     if (!this.#data.current_period_end) {
       this.#data.current_period_end = this.#data.trial_ends_at ?? now;
     }
@@ -278,13 +249,6 @@ export class Subscription {
     this.#touch();
   }
 
-  /**
-   * Write-once (§2.4 rule 3): pointing the subscription at a different
-   * gateway customer is silently accepted only the first time. Once set,
-   * changing it to a *different* reference is a `ConflictError` — routing
-   * the invoice to another customer must never happen quietly. Setting the
-   * same reference again is a no-op, not an error.
-   */
   linkCustomer(reference: string): void {
     if (
       this.#data.external_customer_reference &&
@@ -302,13 +266,6 @@ export class Subscription {
     this.#touch();
   }
 
-  /**
-   * Assigns a new plan in place (DA-5) and re-derives status from its terms:
-   * a trial if the subscription never had one, otherwise straight to active.
-   * When `period_end` is supplied (gateway-driven, DA-9), it always goes
-   * straight to `active` with that literal period — trial eligibility is
-   * decided by the caller via `startTrialUntil`, not here.
-   */
   changePlan(input: ChangePlanInput): void {
     const now = input.now ?? new Date();
 
@@ -403,7 +360,6 @@ export class Subscription {
     return this.#data.external_event_at ?? null;
   }
 
-  /** True once the subscription entered a real billing cycle — not a trial, not a perpetual plan. */
   get has_paid_cycle() {
     return this.#data.status === "active" && !!this.#data.current_period_end;
   }

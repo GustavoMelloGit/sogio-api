@@ -91,8 +91,6 @@ export class SubscriptionPostgresRepository implements SubscriptionRepository {
       return updated[0].external_customer_reference;
     }
 
-    // The atomic UPDATE matched 0 rows: another writer already won the
-    // race (DA-6). The winning reference is read back, never our own.
     const existing = await db.query.subscriptionsTable.findFirst({
       where: eq(subscriptionsTable.id, subscription_id),
       columns: { external_customer_reference: true },

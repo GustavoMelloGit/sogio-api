@@ -22,18 +22,13 @@ export const plansTable = pgTable(
     max_properties: integer().notNull(),
     trial_days: integer().notNull(),
     external_price_reference: varchar({ length: 255 }),
-    // Not unique: several Prices can belong to the same Product (§2.4).
-    // Lets a product.updated/product.deleted event resolve every plan it
-    // affects without a network round-trip inside the webhook path.
+
     external_product_reference: varchar({ length: 255 }),
-    // Instant, in the gateway's clock, of the last catalog event applied —
-    // the DA-1/§2.4 out-of-order guard for the catalog (same idiom as
-    // subscriptions.external_event_at).
+
     external_event_at: timestamp({ withTimezone: true, mode: "date" }),
   },
   table => [
-    // The webhook resolves a plan by this reference (DA-9) — it must be
-    // provably unambiguous.
+
     uniqueIndex("plans_external_price_reference_idx").on(
       table.external_price_reference
     ),
@@ -62,12 +57,11 @@ export const subscriptionsTable = pgTable(
     grace_period_ends_at: timestamp({ withTimezone: true, mode: "date" }),
     external_reference: varchar({ length: 255 }),
     external_customer_reference: varchar({ length: 255 }),
-    /** Instant, in the gateway's clock, of the last gateway event applied (DA-8). */
+
     external_event_at: timestamp({ withTimezone: true, mode: "date" }),
   },
   table => [
-    // The webhook resolves a subscription by either reference (DA-9) — both
-    // must be provably unambiguous.
+
     uniqueIndex("subscriptions_external_reference_idx").on(
       table.external_reference
     ),
@@ -81,8 +75,7 @@ export const subscriptionHistoryEntriesTable = pgTable(
   "subscription_history_entries",
   {
     ...baseSchema,
-    // Both FKs of identity are `ON DELETE cascade` — LGPD account deletion
-    // (`PurgeUserDataUseCase`) must not fail on orphaned history rows.
+
     subscription_id: uuid()
       .references(() => subscriptionsTable.id, { onDelete: "cascade" })
       .notNull(),
@@ -106,12 +99,6 @@ export const subscriptionHistoryEntriesTable = pgTable(
   ]
 );
 
-/**
- * Idempotency ledger for gateway webhook events (DA-7) — not an aggregate,
- * no behavior, never surfaced in an API response. Deliberately has no
- * `user_id`: it only ever stores gateway event ids, so LGPD account
- * deletion has nothing to cascade here.
- */
 export const processedGatewayEventsTable = pgTable(
   "processed_gateway_events",
   {

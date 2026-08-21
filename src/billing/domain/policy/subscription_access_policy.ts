@@ -2,11 +2,6 @@ import type { Subscription } from "../entity/subscription";
 import type { Plan } from "../entity/plan";
 import { Entitlement } from "../value_object/entitlement";
 
-/**
- * Derives the `Entitlement` for a subscription at `now`. Never persisted —
- * see DA-2: there is no scheduler in this project, so "access" can only ever
- * be a value computed on read.
- */
 export class SubscriptionAccessPolicy {
   static resolve(
     subscription: Subscription,
@@ -95,11 +90,6 @@ export class SubscriptionAccessPolicy {
     });
   }
 
-  /**
-   * Canceled + expired period reverts to Free — see DA-2's closed decision.
-   * A null `current_period_end` is never treated as "within period": that
-   * would perpetuate paid-plan access forever instead of reverting to Free.
-   */
   static #resolveCanceled(
     subscription: Subscription,
     plan: Plan,

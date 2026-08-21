@@ -12,30 +12,11 @@ import type {
   CatalogProductRetiredEvent,
 } from "../gateway/gateway_catalog_event";
 
-/** I-2: the free plan is a hard pre-condition of user registration and the SubscriptionAccessPolicy fallback — no catalog event may ever retire it. */
 const FREE_PLAN_CODE = "free";
 
 type Input = GatewayCatalogEvent;
 type Output = void;
 
-/**
- * The catalog's single writer (DA-3). Owns I-1 (`code` is immutable — never
- * written to an existing row), I-2 (the free plan is never retired by an
- * event), I-3 (absence never retires — enforced structurally: this class
- * only ever acts on an entry/event it was explicitly handed, never on what
- * it didn't see), DA-1 (identity is `code`; a retirement signal only
- * applies when the event's reference is the one currently linked), and the
- * "never throws" rule (DA-4) — every rejection is a logged no-op, and the
- * only exception that can escape is a genuine infrastructure failure
- * (propagated as-is so the gateway's retry is the correct behavior).
- *
- * `execute` is the webhook entrypoint (DA-3, one per catalog event type).
- * `applyReconciledEntry` is the reconciliation entrypoint (DA-5): it skips
- * the staleness check and stamps `external_event_at = now` — it reads the
- * gateway's current truth, which is by definition the freshest information
- * available, and that stamp is what makes *earlier* webhook events
- * legitimately discardable afterwards.
- */
 export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
   constructor(
     private readonly planRepository: PlanRepository,
@@ -64,7 +45,6 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
     }
   }
 
-  /** Reconciliation-only entrypoint (DA-5) — see class docs. */
   async applyReconciledEntry(
     entry: GatewayCatalogEntry,
     occurred_at: Date

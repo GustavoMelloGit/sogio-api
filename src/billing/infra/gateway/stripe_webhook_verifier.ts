@@ -27,12 +27,6 @@ function isKnownSubscriptionStatus(
   return KNOWN_SUBSCRIPTION_STATUSES.includes(status);
 }
 
-/**
- * One of only two files in this codebase that import the Stripe SDK (DA-1,
- * alongside `StripePaymentGateway`). `verify` is the entire trust boundary
- * for the webhook (DA-2): nothing downstream ever sees a payload this
- * method hasn't authenticated.
- */
 export class StripeWebhookVerifier implements GatewayWebhookVerifier {
   #webhookSecret: string;
   #logger: Logger;
@@ -52,8 +46,6 @@ export class StripeWebhookVerifier implements GatewayWebhookVerifier {
 
     let event: Stripe.Event;
     try {
-      // The default tolerance (5 minutes) is left untouched (DA-2 item 3) —
-      // it is what keeps a captured, legitimate payload from being replayed.
       event = await Stripe.webhooks.constructEventAsync(
         input.raw_payload,
         input.signature,
@@ -63,11 +55,6 @@ export class StripeWebhookVerifier implements GatewayWebhookVerifier {
       throw new UnauthorizedError("Invalid Stripe webhook signature");
     }
 
-    // DA-9: a test-mode secret configured by mistake in production would
-    // otherwise let test events pass signature verification and rewrite the
-    // real catalog/subscriptions. Binary predicate, no per-environment
-    // enumeration — `sandbox` (a dead NODE_ENV value, Q-1) falls on the
-    // non-production side along with development/test.
     const expectedLivemode = env.NODE_ENV === "production";
     if (event.livemode !== expectedLivemode) {
       this.#logger.warn(
@@ -164,8 +151,6 @@ export class StripeWebhookVerifier implements GatewayWebhookVerifier {
     }
 
     if (!isKnownSubscriptionStatus(subscription.status)) {
-      // Forward-compat escape hatch (Stripe's `OtherString`): a status this
-      // SDK release doesn't know about is safer ignored than guessed at.
       this.#logger.debug("Ignoring subscription event with unknown status", {
         event_id: event.id,
         status: subscription.status,

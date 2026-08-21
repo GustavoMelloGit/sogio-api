@@ -9,14 +9,6 @@ type Input = {
 
 type Output = void;
 
-/**
- * Handles the `checkout_completed` path (DA-9) — `client_reference_id` is
- * our own `user_id`, used only to link identity, never to grant anything by
- * itself. In the normal flow `CreateCheckoutSessionUseCase` already linked
- * the customer atomically (DA-6) before the session existed, so this call
- * is usually a no-op; it exists as the safety net the design calls for
- * (DA-2 item 5).
- */
 export class BindGatewayCustomerUseCase implements UseCase<Input, Output> {
   constructor(
     private readonly subscriptionRepository: SubscriptionRepository,
@@ -38,9 +30,6 @@ export class BindGatewayCustomerUseCase implements UseCase<Input, Output> {
     try {
       subscription.linkCustomer(input.external_customer_reference);
     } catch (error) {
-      // DA-3: no ConflictError may escape the webhook path. A genuine
-      // conflict here is a data-integrity signal for a human, not something
-      // a gateway retry could ever fix.
       this.logger.error(
         "checkout_completed customer reference conflicts with an already-linked one",
         {

@@ -10,16 +10,10 @@ const MIN_MAX_PROPERTIES = 1;
 const MAX_MAX_PROPERTIES = 10_000;
 const MIN_TRIAL_DAYS = 0;
 const MAX_TRIAL_DAYS = 365;
-// S-5: mirrors planSchema's price_amount bound (plan.ts) — a Price above it
-// would make Plan.create/#touch throw past this parser's try/catch-free
-// boundary, in SyncPlanCatalogEntryUseCase#save, the same unhandled-throw
-// shape as S-1.
+
 const MIN_PRICE_AMOUNT = 0;
 const MAX_PRICE_AMOUNT = 100_000_000;
-// S-1: Postgres rejects these at the byte level (22021
-// character_not_in_repertoire, among others) — retrying an identical write
-// fails identically forever, so they must be caught here, before the value
-// ever reaches a query.
+
 const CONTROL_CHAR_PATTERN = /[\x00-\x1F\x7F-\x9F]/;
 const SURROGATE_PATTERN = /[\ud800-\udfff]/;
 
@@ -28,25 +22,6 @@ function hasOrphanSurrogate(value: string): boolean {
   return SURROGATE_PATTERN.test(withPairsRemoved);
 }
 
-/**
- * Stripe Price -> Sogio catalog entry (DA-4's whole validation table). A
- * semantically wrong field (`sogio_max_properties`, `sogio_trial_days`
- * present-and-invalid, currency, interval, missing or out-of-range
- * `unit_amount`) invalidates the entry entirely (`null`); a display-only
- * field (`sogio_plan_name` too long) is normalized instead. Never throws — a
- * malformed dashboard entry is the expected case here, not the exceptional
- * one (DA-4). The single definition of "valid catalog entry", imported by
- * both `StripeWebhookVerifier` and `StripePaymentGateway.listCatalogEntries`
- * so the two paths can never disagree about the catalog.
- *
- * S-2: also the one place that can close the `livemode` gap for both
- * callers at once. `StripeWebhookVerifier` already rejects a mismatched
- * `Event.livemode` before dispatch (DA-9), but `listCatalogEntries()` reads
- * `Stripe.Price` objects directly, with no equivalent check — a test-mode
- * `STRIPE_SECRET_KEY` configured by mistake in production would otherwise
- * let boot/admin reconciliation read the sandbox catalog and overwrite
- * `plans` with it.
- */
 export function parseStripeCatalogEntry(
   price: Stripe.Price,
   logger: Logger
@@ -162,10 +137,7 @@ function parseName(raw: string | undefined): string | null {
   if (!raw) return null;
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
-  // S-1: a control character (including a NUL byte) or an unpaired
-  // surrogate is a semantically wrong field, not a display quirk — Postgres
-  // rejects both at the byte level (22021), and no amount of retrying
-  // changes that, so the entry is invalidated here rather than truncated.
+
   if (CONTROL_CHAR_PATTERN.test(trimmed) || hasOrphanSurrogate(trimmed)) {
     return null;
   }
@@ -182,7 +154,6 @@ function parseMaxProperties(raw: string | undefined): number | null {
   return value;
 }
 
-/** Absence means `0` — an explicit statement of "no trial" (DA-4). Presence-and-wrong invalidates the whole entry rather than falling back to a default. */
 function parseTrialDays(raw: string | undefined): number | null {
   if (raw === undefined) return 0;
   const value = Number(raw);

@@ -24,11 +24,6 @@ type Output = PaginatedResult<{
   reason: string | null;
 }>;
 
-/**
- * The account to read is always `user.id` from the authenticated context —
- * `Input` has no `user_id` field, so there is no request parameter that
- * could scope this read to someone else's history (DA-3).
- */
 export class GetSubscriptionHistoryUseCase implements UseCase<Input, Output> {
   constructor(
     private readonly subscriptionHistoryRepository: SubscriptionHistoryRepository

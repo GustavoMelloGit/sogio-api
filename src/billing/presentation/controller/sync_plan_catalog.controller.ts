@@ -14,17 +14,6 @@ const outputSchema = z.object({
   entries_seen: z.int(),
 });
 
-/**
- * Admin-only, whole-application scope — operates on the catalog every
- * user shares, never a single user's own data, so per CLAUDE.md/
- * architecture.md it deliberately carries no MCP tool (DA-12).
- *
- * `allowWithoutPlatformAccess: true` is load-bearing, not decorative
- * (DA-5): if the boot-time reconciliation ever fails against an empty
- * `plans` table, the admin's own account is blocked by the very gate this
- * route exists to unblock everyone from — the fix can't sit behind the
- * lock it fixes.
- */
 export class SyncPlanCatalogController implements Controller {
   path = "/billing/catalog/sync";
   method = HttpControllerMethod.POST;

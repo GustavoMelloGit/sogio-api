@@ -52,13 +52,6 @@ import { CreateBillingPortalSessionController } from "../../presentation/control
 import { StripeWebhookController } from "../../presentation/controller/stripe_webhook.controller";
 import { SyncPlanCatalogController } from "../../presentation/controller/sync_plan_catalog.controller";
 
-/**
- * Registers `StartFreeSubscriptionOnUserCreated` and the five subscription
- * history handlers on the shared in-memory event dispatcher from the
- * constructor — not idempotent, so this class must be instantiated exactly
- * once (mirrors `FinanceDi`, DA-7). A second instance would double every
- * history entry.
- */
 export class BillingDi {
   #logger: Logger;
   #eventDispatcher: EventDispatcher;
@@ -83,8 +76,7 @@ export class BillingDi {
       this.#subscriptionRepository,
       this.#planRepository
     );
-    // Only required outside development (environments.ts) — in development,
-    // exercising a Stripe call without a real key is expected to fail loudly.
+
     this.#paymentGateway = new StripePaymentGateway(
       env.STRIPE_SECRET_KEY ?? "",
       this.#logger
@@ -124,7 +116,6 @@ export class BillingDi {
     return this.#entitlementService;
   }
 
-  // Handlers
   makeStartFreeSubscriptionOnUserCreatedHandler() {
     return new StartFreeSubscriptionOnUserCreated(
       this.#logger,
@@ -162,7 +153,6 @@ export class BillingDi {
     );
   }
 
-  // Use Cases
   makeListPlansUseCase() {
     return new ListPlansUseCase(this.#planRepository);
   }
@@ -275,7 +265,6 @@ export class BillingDi {
     );
   }
 
-  // Controllers
   makeGetSubscriptionStatusController() {
     return new GetSubscriptionStatusController(
       this.makeGetSubscriptionStatusUseCase()

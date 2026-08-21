@@ -59,11 +59,6 @@ const outputSchema = z.object({
 
 type Input = z.infer<typeof inputSchema>;
 
-/**
- * Deliberately `allowWithoutPlatformAccess: true` in routes.ts — same
- * reasoning as `GET /billing/subscription` (DA-4): a blocked account still
- * needs to see the timeline that explains why it's blocked.
- */
 export class GetSubscriptionHistoryController implements Controller {
   path = "/billing/subscription/history";
   method = HttpControllerMethod.GET;

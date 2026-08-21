@@ -16,20 +16,14 @@ export const planSchema = baseEntitySchema.extend({
   max_properties: z.int().min(1).max(10_000),
   trial_days: z.int().min(0).max(365),
   external_price_reference: z.string().max(255).nullable().optional(),
-  // Not unique: several Prices can belong to the same Product (§2.4).
+
   external_product_reference: z.string().max(255).nullable().optional(),
-  /** Instant, in the gateway's clock, of the last catalog event applied — the DA-1/§2.4 out-of-order guard for the catalog. */
+
   external_event_at: z.date().nullable().optional(),
 });
 
 export type PlanData = z.infer<typeof planSchema>;
 
-/**
- * The fields a gateway catalog entry contributes to a `Plan` (DA-7).
- * Deliberately mirrors `GatewayCatalogEntry`'s shape without importing it —
- * domain never depends on application (mirrors `Subscription`'s
- * `ActivateInput`, filled in by the use case from `GatewayBillingEvent`).
- */
 export type PlanCatalogSync = {
   name: string;
   price_amount: number;
@@ -38,13 +32,10 @@ export type PlanCatalogSync = {
   trial_days: number;
   external_price_reference: string;
   external_product_reference: string | null;
-  /** Whether the gateway currently offers this entry — the explicit signal I-3 requires before retiring or restoring. */
+
   is_offered: boolean;
 };
 
-/**
- * @kind Entity, Aggregate Root
- */
 export class Plan {
   #data: PlanData;
 
@@ -65,16 +56,6 @@ export class Plan {
     return new Plan(data);
   }
 
-  /**
-   * Applies a gateway catalog entry to this plan (DA-7). Never writes
-   * `code` (I-1) — the caller has already matched on it, and the identity
-   * of a catalog plan never moves. Idempotent and total: never throws
-   * (DA-4). Un-retires (`deleted_at = null`) when `is_offered` is true;
-   * retires it (once, keeping the original instant) when false. Staleness
-   * against `external_event_at` must be checked by the caller before
-   * calling this — the entity has no notion of "now" beyond its own
-   * last-applied stamp (mirrors `isStaleGatewayEvent` for subscriptions).
-   */
   syncFromCatalog(entry: PlanCatalogSync, external_event_at: Date): void {
     this.#data.name = entry.name;
     this.#data.price_amount = entry.price_amount;
@@ -90,23 +71,12 @@ export class Plan {
     this.#touch();
   }
 
-  /**
-   * Retires the plan (DA-7): fills `deleted_at`. Idempotent — already
-   * retired is a silent no-op that keeps the original instant, never a
-   * `ConflictError` (DA-4). Never touches `code` (I-1).
-   */
   retire(external_event_at: Date): void {
     this.#data.deleted_at = this.#data.deleted_at ?? external_event_at;
     this.#data.external_event_at = external_event_at;
     this.#touch();
   }
 
-  /**
-   * The inverse of `retire` (DA-7's "des-aposenta"): clears `deleted_at`.
-   * Idempotent — already offered is a silent no-op. Used by the
-   * Product-driven path (`catalog_product_offering_changed`), which carries
-   * no business fields (§2.3) to route through `syncFromCatalog`.
-   */
   restore(external_event_at: Date): void {
     this.#data.deleted_at = null;
     this.#data.external_event_at = external_event_at;
@@ -158,7 +128,6 @@ export class Plan {
     return this.#data.external_event_at ?? null;
   }
 
-  /** `price_amount = 0` marks a perpetual plan — no billing cycle. */
   get is_perpetual() {
     return this.#data.price_amount === 0;
   }

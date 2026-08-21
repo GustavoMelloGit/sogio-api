@@ -5,20 +5,11 @@ import type { PaymentGateway } from "../../application/gateway/payment_gateway";
 import type { GatewayCatalogEntry } from "../../application/gateway/gateway_catalog_entry";
 import { parseStripeCatalogEntry } from "./stripe_catalog_entry_parser";
 
-/**
- * One of only two files in this codebase that import the Stripe SDK (DA-1,
- * alongside `StripeWebhookVerifier`). Every method speaks the
- * `PaymentGateway` port's vocabulary in, opaque references and URLs out —
- * no `Stripe.*` type ever crosses back into `application`.
- */
 export class StripePaymentGateway implements PaymentGateway {
   #stripe: Stripe;
   #logger: Logger;
 
   constructor(secretKey: string, logger: Logger) {
-    // Pinned explicitly to the version this SDK release was generated
-    // against, rather than left to the account's dashboard default — an
-    // unrelated dashboard change must never silently reshape our payloads.
     this.#stripe = new Stripe(secretKey, { apiVersion: Stripe.API_VERSION });
     this.#logger = logger;
   }
@@ -81,10 +72,6 @@ export class StripePaymentGateway implements PaymentGateway {
   async listCatalogEntries(): Promise<GatewayCatalogEntry[]> {
     const entries: GatewayCatalogEntry[] = [];
 
-    // No `active` filter (DA-6): Stripe's list endpoint returns both active
-    // and inactive Prices when it's omitted, and inactive is the explicit
-    // retirement signal I-3 requires. Auto-paginates via the SDK's
-    // async-iterable list.
     for await (const price of this.#stripe.prices.list({ limit: 100 })) {
       const entry = parseStripeCatalogEntry(price, this.#logger);
       if (entry) entries.push(entry);

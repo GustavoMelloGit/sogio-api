@@ -70,9 +70,6 @@ export type SubscriptionHistoryEntryData = z.infer<
   typeof subscriptionHistoryEntrySchema
 >;
 
-/**
- * @kind Entity
- */
 export class SubscriptionHistoryEntry {
   readonly #data: SubscriptionHistoryEntryData;
 
@@ -80,7 +77,6 @@ export class SubscriptionHistoryEntry {
     this.#data = subscriptionHistoryEntrySchema.parse(data);
   }
 
-  /** The only factory for new entries — this record is append-only, never mutated. */
   public static record(
     data: WithoutBaseEntity<SubscriptionHistoryEntryData>
   ): SubscriptionHistoryEntry {

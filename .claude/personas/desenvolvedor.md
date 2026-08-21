@@ -84,7 +84,19 @@ O Desenvolvedor é responsável por traduzir as diretrizes arquiteturais em cód
 - Arquivos: `snake_case.ts`
 - Classes: `PascalCase`
 - Campos privados: `#fieldName` (private class fields do TypeScript)
-- Sem comentários, exceto quando o motivo não for óbvio pelo código
+
+### Comentários — proibidos
+
+**Nunca adicione comentário ao código.** Nem `//`, nem `/* */`, nem docblock `/** */`. A única exceção é o usuário pedir explicitamente, naquela tarefa.
+
+Isso vale inclusive para:
+
+- explicar decisão de arquitetura ou o "porquê" de uma escolha
+- aviso anti-armadilha que uma revisão de segurança tenha sugerido
+- docblock de contrato em interface, porta ou função pública
+- referência a item de plano (`DA-5`, `R-2`, `S-1`)
+
+O código e os testes carregam a intenção. Se algo precisa ser registrado para o futuro, o lugar é o arquivo de plano em `.claude/plans/` ou um teste que trave o comportamento — nunca o código.
 
 ---
 

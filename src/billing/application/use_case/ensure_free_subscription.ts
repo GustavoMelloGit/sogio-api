@@ -14,13 +14,6 @@ type Input = {
 
 type Output = void;
 
-/**
- * Idempotent: safe to call again for a user who already has a subscription.
- * `SubscriptionStartedEvent` is only dispatched inside the branch that
- * actually creates the subscription — never before the early return — so
- * every caller (handler, future backfill, test) inherits exactly-once
- * semantics for free (§2.4).
- */
 export class EnsureFreeSubscriptionUseCase implements UseCase<Input, Output> {
   constructor(
     private readonly subscriptionRepository: SubscriptionRepository,
