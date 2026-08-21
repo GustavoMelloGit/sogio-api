@@ -74,10 +74,6 @@ jobs:
 
             bun install
 
-            # One-time cutover from `db:push` to `db:migrate`: marks the
-            # migrations already applied via `push` as done, so `migrate`
-            # doesn't try to replay them. No-op on every deploy after the
-            # first (see scripts/baseline_drizzle_migrations.ts).
             bun run db:baseline-migrations
 
             bun run db:migrate
