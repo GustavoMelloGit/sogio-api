@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { eq } from "drizzle-orm";
-import { seedPlans } from "../../src/billing/infra/database/seed_plans";
+import { seedPlans } from "../helpers/fixtures/plan";
 import { db } from "../../src/core/infra/database/drizzle/database";
 import { plansTable } from "../../src/core/infra/database/drizzle/schema";
 import { PlanPostgresRepository } from "../../src/billing/infra/database/postgres_repository/plan_postgres_repository";

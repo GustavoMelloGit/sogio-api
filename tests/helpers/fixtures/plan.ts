@@ -1,5 +1,5 @@
-import { db } from "../../../core/infra/database/drizzle/database";
-import { plansTable } from "../../../core/infra/database/drizzle/schema";
+import { db } from "../../../src/core/infra/database/drizzle/database";
+import { plansTable } from "../../../src/core/infra/database/drizzle/schema";
 
 export const FREE_PLAN_ID = "00000000-0000-4000-8000-000000000001";
 export const PRO_PLAN_ID = "00000000-0000-4000-8000-000000000002";
