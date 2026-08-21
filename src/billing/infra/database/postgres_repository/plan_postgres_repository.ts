@@ -5,32 +5,10 @@ import { db } from "../../../../core/infra/database/drizzle/database";
 import { plansTable } from "../../../../core/infra/database/drizzle/schema";
 import { ConflictError } from "../../../../core/application/error/conflict_error";
 import { ValidationError } from "../../../../core/application/error/validation_error";
-
-function pgErrorCode(error: unknown): string | undefined {
-  if (!(error instanceof Error)) return undefined;
-  if ("code" in error) {
-    const code = (error as { code?: unknown }).code;
-    if (typeof code === "string") return code;
-  }
-  const cause = (error as { cause?: unknown }).cause;
-  if (cause && typeof cause === "object" && "code" in cause) {
-    const code = (cause as { code?: unknown }).code;
-    if (typeof code === "string") return code;
-  }
-  return undefined;
-}
-
-function classifyWriteFailure(
-  error: unknown
-): "unique_violation" | "invalid_data" | null {
-  const code = pgErrorCode(error);
-  if (!code) return null;
-  if (code === "23505") return "unique_violation";
-  if (code.startsWith("22") || code === "23502" || code === "23514") {
-    return "invalid_data";
-  }
-  return null;
-}
+import {
+  isInvalidDataError,
+  isUniqueViolationError,
+} from "../../../../core/infra/database/postgres_error";
 
 export class PlanPostgresRepository implements PlanRepository {
   async planOfId(id: string): Promise<Plan | null> {
@@ -108,15 +86,13 @@ export class PlanPostgresRepository implements PlanRepository {
 
       await db.insert(plansTable).values(data);
     } catch (error) {
-      const classification = classifyWriteFailure(error);
-
-      if (classification === "unique_violation") {
+      if (isUniqueViolationError(error)) {
         throw new ConflictError(
           "Plan external_price_reference already linked to another plan"
         );
       }
 
-      if (classification === "invalid_data") {
+      if (isInvalidDataError(error)) {
         throw new ValidationError(
           "Plan write rejected by the database as invalid data"
         );
