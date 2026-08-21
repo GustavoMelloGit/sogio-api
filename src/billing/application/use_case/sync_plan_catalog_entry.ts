@@ -76,10 +76,6 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
         event_id
       );
 
-      // Plan.create's factory never accepts deleted_at (WithoutBaseEntity
-      // excludes it) — a brand new, already-unoffered entry is created
-      // active and then retired immediately via the same idempotent method
-      // the rest of this class uses.
       const plan = Plan.create({
         code: entry.code,
         name: entry.name,
@@ -106,11 +102,6 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
       return;
     }
 
-    // DA-1: a retirement signal only applies to the price reference
-    // currently linked to this plan — an old, superseded price going
-    // inactive must never retire the plan a newer price has since taken
-    // over. A non-retirement update (including a legitimate repoint) is
-    // always allowed, last-write-wins (R-11).
     const isRetirementSignal = !entry.is_offered;
     const referenceCurrentlyLinked =
       existing.external_price_reference === entry.external_price_reference;
@@ -231,19 +222,6 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
     }
   }
 
-  /**
-   * I-2, widened by S-3: a catalog entry can carry more than one way to
-   * break the free plan, not just a retirement signal. `price_amount ≠ 0`
-   * flips `Plan.is_perpetual` to `false`, which routes every new signup
-   * through `activate()`'s dated `current_period_end` instead of the
-   * perpetual path — nobody ever pays it, so the account silently loses
-   * platform access a month later (`period_expired`). `trial_days > 0` on a
-   * plan nobody starts a real trial for is the same failure via
-   * `trial_expired`. Each field is independently clamped to its safe value
-   * and logged — a dashboard edit is visible but never load-bearing, the
-   * same "diverge loudly, never break" trade-off the pre-existing
-   * `is_offered` guard already made (never throws, DA-4).
-   */
   #guardFreePlan(
     code: string,
     entry: { is_offered: boolean; price_amount: number; trial_days: number },
@@ -295,14 +273,6 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
     );
   }
 
-  /**
-   * R-11/DA-4/S-1: a unique-index collision on external_price_reference and
-   * a database-level data rejection (a value that slipped past application
-   * validation but that Postgres itself refuses — S-1) are both recognized,
-   * non-retryable outcomes, logged and swallowed — never propagated. Any
-   * other error is a genuine infrastructure failure and must keep
-   * propagating, which is what makes the gateway's retry meaningful.
-   */
   async #save(plan: Plan, event_id: string): Promise<void> {
     try {
       await this.planRepository.save(plan);
