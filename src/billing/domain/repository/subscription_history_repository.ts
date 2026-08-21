@@ -10,7 +10,6 @@ export type SubscriptionHistoryEntryWithPlan = {
   plan_name: string;
 };
 
-/** Append-only by design (§2.5): no update, no delete — only insert and read. */
 export interface SubscriptionHistoryRepository {
   append(entry: SubscriptionHistoryEntry): Promise<void>;
   historyOfUser(

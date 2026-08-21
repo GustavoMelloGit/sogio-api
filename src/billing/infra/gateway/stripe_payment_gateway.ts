@@ -1,21 +1,17 @@
 import Stripe from "stripe";
 import { IllegalStateError } from "../../../core/application/error/illegal_state_error";
+import type { Logger } from "../../../core/application/logger/logger";
 import type { PaymentGateway } from "../../application/gateway/payment_gateway";
+import type { GatewayCatalogEntry } from "../../application/gateway/gateway_catalog_entry";
+import { parseStripeCatalogEntry } from "./stripe_catalog_entry_parser";
 
-/**
- * One of only two files in this codebase that import the Stripe SDK (DA-1,
- * alongside `StripeWebhookVerifier`). Every method speaks the
- * `PaymentGateway` port's vocabulary in, opaque references and URLs out —
- * no `Stripe.*` type ever crosses back into `application`.
- */
 export class StripePaymentGateway implements PaymentGateway {
   #stripe: Stripe;
+  #logger: Logger;
 
-  constructor(secretKey: string) {
-    // Pinned explicitly to the version this SDK release was generated
-    // against, rather than left to the account's dashboard default — an
-    // unrelated dashboard change must never silently reshape our payloads.
+  constructor(secretKey: string, logger: Logger) {
     this.#stripe = new Stripe(secretKey, { apiVersion: Stripe.API_VERSION });
+    this.#logger = logger;
   }
 
   async createCustomer(input: {
@@ -71,5 +67,16 @@ export class StripePaymentGateway implements PaymentGateway {
     });
 
     return { url: session.url };
+  }
+
+  async listCatalogEntries(): Promise<GatewayCatalogEntry[]> {
+    const entries: GatewayCatalogEntry[] = [];
+
+    for await (const price of this.#stripe.prices.list({ limit: 100 })) {
+      const entry = parseStripeCatalogEntry(price, this.#logger);
+      if (entry) entries.push(entry);
+    }
+
+    return entries;
   }
 }

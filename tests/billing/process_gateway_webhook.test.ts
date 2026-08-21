@@ -1,4 +1,6 @@
 import { describe, it, expect } from "bun:test";
+import Stripe from "stripe";
+import { inArray } from "drizzle-orm";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { ProcessGatewayWebhookUseCase } from "../../src/billing/application/use_case/process_gateway_webhook";
@@ -6,17 +8,24 @@ import { BindGatewayCustomerUseCase } from "../../src/billing/application/use_ca
 import { SyncSubscriptionFromGatewayUseCase } from "../../src/billing/application/use_case/sync_subscription_from_gateway";
 import { CancelSubscriptionUseCase } from "../../src/billing/application/use_case/cancel_subscription";
 import { MarkSubscriptionPastDueUseCase } from "../../src/billing/application/use_case/mark_subscription_past_due";
+import { SyncPlanCatalogEntryUseCase } from "../../src/billing/application/use_case/sync_plan_catalog_entry";
 import { SubscriptionPostgresRepository } from "../../src/billing/infra/database/postgres_repository/subscription_postgres_repository";
 import { PlanPostgresRepository } from "../../src/billing/infra/database/postgres_repository/plan_postgres_repository";
 import { ProcessedGatewayEventPostgresRepository } from "../../src/billing/infra/database/postgres_repository/processed_gateway_event_postgres_repository";
 import { SubscriptionHistoryPostgresRepository } from "../../src/billing/infra/database/postgres_repository/subscription_history_postgres_repository";
 import { inMemoryEventDispatcher } from "../../src/core/infra/event/in_memory_event_dispatcher";
 import { UnauthorizedError } from "../../src/core/application/error/unauthorized_error";
+import { StripeWebhookVerifier } from "../../src/billing/infra/gateway/stripe_webhook_verifier";
+import { env } from "../../src/core/infra/config/environments";
+import { db } from "../../src/core/infra/database/drizzle/database";
+import { plansTable } from "../../src/core/infra/database/drizzle/schema";
 import type { Logger } from "../../src/core/application/logger/logger";
 import type { GatewayWebhookVerifier } from "../../src/billing/application/gateway/gateway_webhook_verifier";
 import type { GatewayBillingEvent } from "../../src/billing/application/gateway/gateway_billing_event";
 
 const TABLES = ["properties", "addresses", "users"];
+// Matches STRIPE_WEBHOOK_SECRET in .env.test.
+const WEBHOOK_SECRET = "whsec_test_fake";
 
 const subscriptionRepository = new SubscriptionPostgresRepository();
 const planRepository = new PlanPostgresRepository();
@@ -75,6 +84,10 @@ function makeRealUseCase(verifier: GatewayWebhookVerifier) {
       cancelSubscriptionUseCase,
       silentLogger
     );
+  const syncPlanCatalogEntryUseCase = new SyncPlanCatalogEntryUseCase(
+    planRepository,
+    silentLogger
+  );
 
   return new ProcessGatewayWebhookUseCase(
     verifier,
@@ -84,6 +97,7 @@ function makeRealUseCase(verifier: GatewayWebhookVerifier) {
     syncSubscriptionFromGatewayUseCase,
     cancelSubscriptionUseCase,
     markSubscriptionPastDueUseCase,
+    syncPlanCatalogEntryUseCase,
     silentLogger
   );
 }
@@ -193,6 +207,10 @@ describe("ProcessGatewayWebhookUseCase — release on failure (R-6)", () => {
         cancelSubscriptionUseCase,
         silentLogger
       );
+    const syncPlanCatalogEntryUseCase = new SyncPlanCatalogEntryUseCase(
+      planRepository,
+      silentLogger
+    );
 
     const useCase = new ProcessGatewayWebhookUseCase(
       new StubVerifier(event),
@@ -202,6 +220,7 @@ describe("ProcessGatewayWebhookUseCase — release on failure (R-6)", () => {
       syncSubscriptionFromGatewayUseCase,
       cancelSubscriptionUseCase,
       markSubscriptionPastDueUseCase,
+      syncPlanCatalogEntryUseCase,
       silentLogger
     );
 
@@ -722,5 +741,207 @@ describe("ProcessGatewayWebhookUseCase — payment_failed reference mismatch (se
       row => row.entry.type === "payment_failed"
     );
     expect(paymentFailedEntries).toHaveLength(0);
+  });
+});
+
+async function sign(payload: string, secret = WEBHOOK_SECRET): Promise<string> {
+  return Stripe.webhooks.generateTestHeaderStringAsync({ payload, secret });
+}
+
+async function deletePlans(codes: string[]): Promise<void> {
+  await db.delete(plansTable).where(inArray(plansTable.code, codes));
+}
+
+function priceCreatedPayload(overrides: {
+  id?: string;
+  livemode?: boolean;
+  active?: boolean;
+  currency?: string;
+  unit_amount?: number | null;
+  metadata?: Record<string, string>;
+  recurring?: { interval: string; interval_count: number } | null;
+  product?: string;
+}): string {
+  return JSON.stringify({
+    id: `evt_${crypto.randomUUID()}`,
+    object: "event",
+    api_version: "2026-07-29.dahlia",
+    created: Math.floor(Date.now() / 1000),
+    livemode: overrides.livemode ?? false,
+    pending_webhooks: 0,
+    request: { id: null, idempotency_key: null },
+    type: "price.created",
+    data: {
+      object: {
+        id: overrides.id ?? `price_test_${crypto.randomUUID()}`,
+        object: "price",
+        // S-2: a real Stripe Price embedded in an event always carries its
+        // own `livemode`, matching the event's — mirrored here so the
+        // parser's own livemode guard doesn't reject these fixtures.
+        livemode: overrides.livemode ?? false,
+        active: overrides.active ?? true,
+        currency: overrides.currency ?? "brl",
+        metadata: overrides.metadata ?? {},
+        product: overrides.product ?? "prod_process_webhook_test",
+        recurring:
+          overrides.recurring === undefined
+            ? { interval: "month", interval_count: 1 }
+            : overrides.recurring,
+        unit_amount:
+          overrides.unit_amount === undefined ? 2500 : overrides.unit_amount,
+      },
+    },
+  });
+}
+
+function makeRealVerifierUseCase() {
+  const verifier = new StripeWebhookVerifier(WEBHOOK_SECRET, silentLogger);
+  return makeRealUseCase(verifier);
+}
+
+describe("ProcessGatewayWebhookUseCase — catalog events malformed entry (DA-4)", () => {
+  it("resolves without throwing and creates nothing for a price.created with no sogio_ metadata", async () => {
+    const useCase = makeRealVerifierUseCase();
+    const payload = priceCreatedPayload({ metadata: {} });
+    const signature = await sign(payload);
+
+    await expect(
+      useCase.execute({ raw_payload: payload, signature })
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("ProcessGatewayWebhookUseCase — catalog events idempotency (DA-7)", () => {
+  it("applies a catalog_entry_changed event once; a reentry with the same event_id is a no-op", async () => {
+    const code = "webhook_catalog_idempotent_test";
+    await deletePlans([code]);
+
+    try {
+      const payload = priceCreatedPayload({
+        id: "price_webhook_idempotent_test",
+        metadata: {
+          sogio_plan_code: code,
+          sogio_plan_name: "Idempotent Test",
+          sogio_max_properties: "3",
+          sogio_trial_days: "0",
+        },
+      });
+      const signature = await sign(payload);
+
+      await makeRealVerifierUseCase().execute({
+        raw_payload: payload,
+        signature,
+      });
+
+      const planRepository = new PlanPostgresRepository();
+      const firstPlan = await planRepository.planOfCode(code);
+      expect(firstPlan).not.toBeNull();
+      const firstUpdatedAt = firstPlan?.updated_at.getTime();
+
+      // Same event_id (embedded in the signed payload) — reentry must be a
+      // pure no-op, short-circuited by the claim before dispatch runs again.
+      await makeRealVerifierUseCase().execute({
+        raw_payload: payload,
+        signature,
+      });
+
+      const secondPlan = await planRepository.planOfCode(code);
+      expect(secondPlan?.updated_at.getTime()).toBe(firstUpdatedAt);
+    } finally {
+      await deletePlans([code]);
+    }
+  });
+});
+
+describe("ProcessGatewayWebhookUseCase — livemode guard (DA-9)", () => {
+  it("rejects (200, no write) a livemode:true event while NODE_ENV is test", async () => {
+    const code = "webhook_livemode_mismatch_test";
+    await deletePlans([code]);
+
+    try {
+      const payload = priceCreatedPayload({
+        livemode: true,
+        metadata: {
+          sogio_plan_code: code,
+          sogio_plan_name: "Livemode Mismatch",
+          sogio_max_properties: "3",
+          sogio_trial_days: "0",
+        },
+      });
+      const signature = await sign(payload);
+
+      await expect(
+        makeRealVerifierUseCase().execute({ raw_payload: payload, signature })
+      ).resolves.toBeUndefined();
+
+      const planRepository = new PlanPostgresRepository();
+      const plan = await planRepository.planOfCode(code);
+      expect(plan).toBeNull();
+    } finally {
+      await deletePlans([code]);
+    }
+  });
+
+  it("accepts a livemode:true event once NODE_ENV is mutated to production", async () => {
+    const code = "webhook_livemode_production_test";
+    await deletePlans([code]);
+    const originalNodeEnv = env.NODE_ENV;
+
+    try {
+      env.NODE_ENV = "production";
+      const payload = priceCreatedPayload({
+        livemode: true,
+        metadata: {
+          sogio_plan_code: code,
+          sogio_plan_name: "Livemode Production",
+          sogio_max_properties: "3",
+          sogio_trial_days: "0",
+        },
+      });
+      const signature = await sign(payload);
+
+      await makeRealVerifierUseCase().execute({
+        raw_payload: payload,
+        signature,
+      });
+
+      const planRepository = new PlanPostgresRepository();
+      const plan = await planRepository.planOfCode(code);
+      expect(plan).not.toBeNull();
+    } finally {
+      env.NODE_ENV = originalNodeEnv;
+      await deletePlans([code]);
+    }
+  });
+
+  it("rejects (200, no write) a livemode:false event once NODE_ENV is mutated to production", async () => {
+    const code = "webhook_livemode_production_mismatch_test";
+    await deletePlans([code]);
+    const originalNodeEnv = env.NODE_ENV;
+
+    try {
+      env.NODE_ENV = "production";
+      const payload = priceCreatedPayload({
+        livemode: false,
+        metadata: {
+          sogio_plan_code: code,
+          sogio_plan_name: "Livemode Production Mismatch",
+          sogio_max_properties: "3",
+          sogio_trial_days: "0",
+        },
+      });
+      const signature = await sign(payload);
+
+      await expect(
+        makeRealVerifierUseCase().execute({ raw_payload: payload, signature })
+      ).resolves.toBeUndefined();
+
+      const planRepository = new PlanPostgresRepository();
+      const plan = await planRepository.planOfCode(code);
+      expect(plan).toBeNull();
+    } finally {
+      env.NODE_ENV = originalNodeEnv;
+      await deletePlans([code]);
+    }
   });
 });

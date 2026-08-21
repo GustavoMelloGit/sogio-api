@@ -23,11 +23,6 @@ const RATE_LIMIT_POLICY: RateLimitPolicy = {
   maxAttempts: 10,
 };
 
-/**
- * Deliberately `allowWithoutPlatformAccess: true` in routes.ts (DA-5) — same
- * reasoning as `CreateCheckoutSessionController`: a blocked account still
- * needs a way to manage its billing to get unblocked.
- */
 export class CreateBillingPortalSessionController implements Controller {
   path = "/billing/portal-session";
   method = HttpControllerMethod.POST;

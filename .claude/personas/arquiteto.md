@@ -56,7 +56,7 @@ Plataforma de gestão de alugueis de curta duração. Proprietários cadastram i
 - **Tenant** (Booking) — o hóspede; identificado naturalmente pelo telefone
 - **Property** (Property Management) — catálogo do imóvel com detalhes completos
 - **LedgerEntry** (Finance) — registro financeiro; receita (positivo) ou despesa (negativo)
-- **Plan** (Billing) — item do catálogo comercial do Sogio (nome, preço, intervalo de cobrança, limites); nunca um enum em código
+- **Plan** (Billing) — item do catálogo comercial do Sogio (nome, preço, intervalo de cobrança, limites); nunca um enum em código. Escrito exclusivamente pelo gateway de pagamento (`SyncPlanCatalogEntryUseCase`, `ReconcilePlanCatalogFromGatewayUseCase`), nunca por um seed ou endpoint administrativo direto
 - **Subscription** (Billing) — vínculo 1:1 entre um `User` e um `Plan`; muda de plano in-place (não gera uma nova assinatura por troca)
 - **SubscriptionHistoryEntry** (Billing) — registro append-only de cada transição do ciclo de vida da assinatura; agregado próprio, não faz parte de `Subscription`
 
@@ -73,13 +73,22 @@ Plataforma de gestão de alugueis de curta duração. Proprietários cadastram i
 - Cancelar uma assinatura de plano perpétuo (Free) é proibido — não há ciclo a encerrar
 - Uma assinatura que já teve `trial_ends_at` preenchido nunca reentra em `trialing`, mesmo trocando de plano
 - O período (`current_period_end`) e a referência (`external_reference`) de uma assinatura paga são fornecidos pelo gateway de pagamento, não calculados localmente — `BillingCyclePolicy` continua existindo apenas para o caminho interno (Free, `GrantPlanUseCase`, testes). As transições dirigidas por webhook (`activate`, `changePlan`, `startTrialUntil`, `markPastDue`, `cancel`) são idempotentes por construção: nunca lançam `ConflictError` quando o estado já é o alvo, porque isso viraria um loop de retentativa do gateway
+- **I-1 — O `code` de um `Plan` é imutável.** Nenhum evento de catálogo altera o `code` de uma linha já existente — é a chave natural que identifica o plano (`planOfCode`, checkout, API pública). Um `sogio_plan_code` digitado errado no dashboard do gateway cria um plano-lixo novo, nunca renomeia/quebra um plano existente
+- **I-2 — O plano `free` nunca é aposentado por um evento de catálogo.** É pré-condição de todo cadastro de usuário e o piso do fallback de `SubscriptionAccessPolicy`. Uma tentativa de aposentar `free` (via `catalog_entry_changed`, `catalog_entry_retired`, `catalog_product_offering_changed` ou `catalog_product_retired`) é logada e ignorada, nunca lançada
+- **I-3 — Ausência nunca aposenta.** Um plano que a reconciliação simplesmente não viu (Price sem metadata, listagem que falhou no meio) permanece intacto — aposentadoria exige um sinal explícito (`is_offered: false`, `price.deleted`, `product.deleted`). "Sincronizar" nunca significa "fazer o banco espelhar o gateway"
 
 ### Vocabulário do Gateway de Pagamento
 
 - **Gateway de pagamento** — sistema externo que cobra. O domínio nunca diz "Stripe", só `billing/infra/gateway/` conhece o fornecedor
 - **Checkout** — sessão hospedada em que o proprietário assina pela primeira vez; produz só uma URL
 - **Portal de cobrança** — sessão hospedada para gerenciar uma assinatura existente; produz só uma URL
-- **Evento do gateway** (`GatewayBillingEvent`) — um fato que o gateway afirma, normalizado no vocabulário da Sogio antes de chegar em `application`; pode chegar repetido ou fora de ordem
+- **Evento do gateway** (`GatewayBillingEvent`) — um fato que o gateway afirma sobre uma assinatura, normalizado no vocabulário da Sogio antes de chegar em `application`; pode chegar repetido ou fora de ordem
+- **Catálogo de planos** — o conjunto de `Plan` oferecidos (`allOffered()`), de propriedade do gateway de pagamento
+- **Entrada de catálogo** (`GatewayCatalogEntry`) — um Price do gateway já normalizado no vocabulário da Sogio; não é um `Plan`, é a matéria-prima da qual um é derivado
+- **Evento de catálogo** (`GatewayCatalogEvent`) — família irmã de `GatewayBillingEvent`, não uma variante dela: um fato sobre o catálogo (preço criado/alterado/aposentado), nunca sobre a assinatura de um usuário específico
+- **Sincronização de catálogo** — aplicar uma entrada/aposentadoria ao catálogo local, dirigida por webhook (`SyncPlanCatalogEntryUseCase`)
+- **Reconciliação de catálogo** — ler o catálogo inteiro do gateway e aplicá-lo, sob demanda (`ReconcilePlanCatalogFromGatewayUseCase`); roda no boot da aplicação e via `POST /billing/catalog/sync` (`adminOnly`)
+- **Plano aposentado** — `Plan` com `deleted_at` preenchido: some da vitrine (`allOffered`), continua resolvível para quem já assina. Nunca "deletado"
 
 ### Eventos de Domínio
 

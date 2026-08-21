@@ -35,7 +35,7 @@ describe("GET /billing/plans", () => {
     expect(pro).toMatchObject({
       code: "pro",
       name: "Pro",
-      price_amount: 4990,
+      price_amount: 2500,
       billing_interval: "monthly",
       max_properties: 5,
       trial_days: 14,

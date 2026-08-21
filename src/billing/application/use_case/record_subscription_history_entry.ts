@@ -18,12 +18,6 @@ type Input = {
 
 type Output = void;
 
-/**
- * The single writer of the subscription history (DA-2). Deliberately does
- * NOT propagate a failure to append: the business transition it audits has
- * already been committed by the time this runs, so a broken write here must
- * not turn a successful signup/plan-change/cancellation into a 500.
- */
 export class RecordSubscriptionHistoryEntryUseCase
   implements UseCase<Input, Output>
 {

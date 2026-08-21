@@ -19,16 +19,8 @@ type Output = {
 const SUCCESS_PATH = "/settings/billing?checkout=success";
 const CANCEL_PATH = "/settings/billing?checkout=canceled";
 
-/** A gateway subscription in any of these states means a checkout is already live — a second one would double-charge (R-4). */
 const LIVE_GATEWAY_STATUSES = new Set(["trialing", "active", "past_due"]);
 
-/**
- * Implements the eight steps of DA-4. The only writer of
- * `external_customer_reference` outside a webhook — and even here it goes
- * through the atomic `linkCustomerReferenceIfAbsent` (DA-6), never a
- * load-mutate-save cycle, so two concurrent "Subscribe" clicks can't create
- * two gateway customers.
- */
 export class CreateCheckoutSessionUseCase implements UseCase<Input, Output> {
   constructor(
     private readonly subscriptionRepository: SubscriptionRepository,
@@ -79,10 +71,6 @@ export class CreateCheckoutSessionUseCase implements UseCase<Input, Output> {
       client_reference_id: user.id,
       success_url: `${this.frontBaseUrl}${SUCCESS_PATH}`,
       cancel_url: `${this.frontBaseUrl}${CANCEL_PATH}`,
-      // Only offered to a subscription that has never used a trial (§2.5,
-      // R-5) — the invariant Subscription.startTrial enforces on its own
-      // isn't enough by itself, since the gateway would grant the trial
-      // before our sync ever sees it.
       trial_period_days:
         subscription.trial_ends_at === null && plan.trial_days > 0
           ? plan.trial_days

@@ -11,7 +11,6 @@ type SubscriptionStartedEventInput = {
   opens_paid_cycle: boolean;
 };
 
-/** Dispatched only when a Subscription is created for the first time — never on an idempotent no-op. */
 export class SubscriptionStartedEvent implements DomainEvent {
   static readonly NAME = "subscription_started";
   public readonly name: string;

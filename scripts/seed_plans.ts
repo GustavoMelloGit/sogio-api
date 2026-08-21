@@ -1,4 +1,4 @@
-import { seedPlans } from "../src/billing/infra/database/seed_plans";
+import { seedPlans } from "../tests/helpers/fixtures/plan";
 
 seedPlans()
   .then(() => {

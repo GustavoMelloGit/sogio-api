@@ -10,13 +10,12 @@ import { SubscriptionPaymentFailedEvent } from "../../domain/event/subscription_
 
 type Input = {
   user_id: string;
-  /** Opaque gateway decline code (snake_case) — never free text or an error message. */
+
   reason?: string | null;
-  /** The gateway event's own timestamp (DA-8) — recorded as external_event_at so a later out-of-order event can be compared against it. */
+
   occurred_at?: Date;
 };
 
-/** Opaque snake_case decline code from the payment gateway, e.g. `card_declined`. */
 const reasonSchema = z
   .string()
   .max(120)
@@ -28,11 +27,6 @@ type Output = {
   grace_period_ends_at: Date | null;
 };
 
-/**
- * The real caller `markPastDue` was missing (DA-5) — this is the shape the
- * payment gateway's payment-failure webhook invokes. No HTTP route: marking
- * an account past due by hand is an operational lever, not a product surface.
- */
 export class MarkSubscriptionPastDueUseCase implements UseCase<Input, Output> {
   constructor(
     private readonly subscriptionRepository: SubscriptionRepository,

@@ -6,12 +6,14 @@ import type {
   SubscriptionEndedEvent,
   PaymentFailedEvent,
 } from "../gateway/gateway_billing_event";
+import type { GatewayCatalogEvent } from "../gateway/gateway_catalog_event";
 import type { ProcessedGatewayEventRepository } from "../../domain/repository/processed_gateway_event_repository";
 import type { SubscriptionRepository } from "../../domain/repository/subscription_repository";
 import type { BindGatewayCustomerUseCase } from "./bind_gateway_customer";
 import type { SyncSubscriptionFromGatewayUseCase } from "./sync_subscription_from_gateway";
 import type { CancelSubscriptionUseCase } from "./cancel_subscription";
 import type { MarkSubscriptionPastDueUseCase } from "./mark_subscription_past_due";
+import type { SyncPlanCatalogEntryUseCase } from "./sync_plan_catalog_entry";
 import {
   resolveGatewaySubscriptionForTermination,
   isStaleGatewayEvent,
@@ -24,16 +26,6 @@ type Input = {
 
 type Output = void;
 
-/**
- * The webhook's whole trust boundary and idempotency machine in one place
- * (DA-2, DA-7). Verification is the very first instruction — there is no
- * path from here into a domain transition with an unverified event.
- *
- * The HTTP adapter's existing error-code map does the rest of DA-3 for
- * free: `UnauthorizedError` from the verifier becomes 401, an unmapped
- * exception becomes 500 (triggering the gateway's retry), and returning
- * normally becomes 200 — this use case never computes a status code itself.
- */
 export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
   constructor(
     private readonly verifier: GatewayWebhookVerifier,
@@ -43,6 +35,7 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
     private readonly syncSubscriptionFromGatewayUseCase: SyncSubscriptionFromGatewayUseCase,
     private readonly cancelSubscriptionUseCase: CancelSubscriptionUseCase,
     private readonly markSubscriptionPastDueUseCase: MarkSubscriptionPastDueUseCase,
+    private readonly syncPlanCatalogEntryUseCase: SyncPlanCatalogEntryUseCase,
     private readonly logger: Logger
   ) {}
 
@@ -53,7 +46,6 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
     });
 
     if (!event) {
-      // Verified, but a type this system doesn't act on (DA-3): 200, no write.
       return;
     }
 
@@ -63,17 +55,12 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
       event.occurred_at
     );
     if (!claimed) {
-      // Reentry of an already-processed event (DA-7): 200, no-op.
       return;
     }
 
     try {
       await this.#dispatch(event);
     } catch (error) {
-      // R-6: release so the gateway's own retry can claim again. A
-      // ConflictError must never reach here (DA-3) — if it does, it's a bug
-      // in the plan being followed incorrectly, not a legitimate retry
-      // signal, and it will surface as a 409 the gateway loops forever on.
       this.logger.error(
         "Failed to process gateway webhook event; releasing claim",
         {
@@ -90,7 +77,14 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
     }
   }
 
-  async #dispatch(event: GatewayBillingEvent): Promise<void> {
+  async #dispatch(
+    event: GatewayBillingEvent | GatewayCatalogEvent
+  ): Promise<void> {
+    if (this.#isCatalogEvent(event)) {
+      await this.syncPlanCatalogEntryUseCase.execute(event);
+      return;
+    }
+
     switch (event.type) {
       case "checkout_completed":
         await this.bindGatewayCustomerUseCase.execute({
@@ -113,10 +107,6 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
   async #dispatchSubscriptionEnded(
     event: SubscriptionEndedEvent
   ): Promise<void> {
-    // resolveGatewaySubscriptionForTermination (security review B-3/B-5)
-    // never falls back to a customer-reference match, so a null here means
-    // either a truly unknown gateway subscription or one this local row
-    // isn't linked to by reference — either way, nothing to cancel.
     const subscription = await resolveGatewaySubscriptionForTermination(
       this.subscriptionRepository,
       event
@@ -147,10 +137,6 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
   }
 
   async #dispatchPaymentFailed(event: PaymentFailedEvent): Promise<void> {
-    // Same fallback hazard as #dispatchSubscriptionEnded (security review
-    // B-4/B-5) — resolveGatewaySubscriptionForTermination never falls back
-    // to a customer-reference match, so marking a wrong/unrelated local
-    // subscription past_due is structurally impossible here.
     const subscription = await resolveGatewaySubscriptionForTermination(
       this.subscriptionRepository,
       event
@@ -174,10 +160,6 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
       return;
     }
 
-    // Dunning's final payment_failed can be delivered after the
-    // subscription was already canceled (delivery order isn't guaranteed).
-    // markPastDue rejects `canceled` with a ConflictError, so short-circuit
-    // here rather than let that escape as a 409 the gateway retries forever.
     if (subscription.status === "canceled") {
       this.logger.info(
         "payment_failed for an already-canceled subscription — nothing to do",
@@ -191,5 +173,16 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
       reason: event.reason,
       occurred_at: event.occurred_at,
     });
+  }
+
+  #isCatalogEvent(
+    event: GatewayBillingEvent | GatewayCatalogEvent
+  ): event is GatewayCatalogEvent {
+    return (
+      event.type === "catalog_entry_changed" ||
+      event.type === "catalog_entry_retired" ||
+      event.type === "catalog_product_offering_changed" ||
+      event.type === "catalog_product_retired"
+    );
   }
 }

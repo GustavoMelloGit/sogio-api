@@ -7,11 +7,6 @@ type SubscriptionRenewedEventInput = {
   current_period_end: Date | null;
 };
 
-/**
- * A new paid cycle opened without a plan switch (§2.6, the R-7 follow-up
- * from the previous entry). Only `SyncSubscriptionFromGatewayUseCase`
- * dispatches this — the internal path never renews on its own.
- */
 export class SubscriptionRenewedEvent implements DomainEvent {
   static readonly NAME = "subscription_renewed";
   public readonly name: string;

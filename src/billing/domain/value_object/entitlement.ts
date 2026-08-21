@@ -11,10 +11,6 @@ export type EntitlementData = {
   blocked_reason?: BlockedReason;
 };
 
-/**
- * Read-only value object: the access decision for a user at a given instant.
- * Always derived on the fly by `SubscriptionAccessPolicy`, never persisted.
- */
 export class Entitlement {
   readonly #data: EntitlementData;
 

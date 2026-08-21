@@ -1,11 +1,14 @@
 import Stripe from "stripe";
 import { UnauthorizedError } from "../../../core/application/error/unauthorized_error";
 import type { Logger } from "../../../core/application/logger/logger";
+import { env } from "../../../core/infra/config/environments";
 import type { GatewayWebhookVerifier } from "../../application/gateway/gateway_webhook_verifier";
 import type {
   GatewayBillingEvent,
   GatewaySubscriptionStatus,
 } from "../../application/gateway/gateway_billing_event";
+import type { GatewayCatalogEvent } from "../../application/gateway/gateway_catalog_event";
+import { parseStripeCatalogEntry } from "./stripe_catalog_entry_parser";
 
 const KNOWN_SUBSCRIPTION_STATUSES: readonly string[] = [
   "trialing",
@@ -24,12 +27,6 @@ function isKnownSubscriptionStatus(
   return KNOWN_SUBSCRIPTION_STATUSES.includes(status);
 }
 
-/**
- * One of only two files in this codebase that import the Stripe SDK (DA-1,
- * alongside `StripePaymentGateway`). `verify` is the entire trust boundary
- * for the webhook (DA-2): nothing downstream ever sees a payload this
- * method hasn't authenticated.
- */
 export class StripeWebhookVerifier implements GatewayWebhookVerifier {
   #webhookSecret: string;
   #logger: Logger;
@@ -42,15 +39,13 @@ export class StripeWebhookVerifier implements GatewayWebhookVerifier {
   async verify(input: {
     raw_payload: string;
     signature: string | null;
-  }): Promise<GatewayBillingEvent | null> {
+  }): Promise<GatewayBillingEvent | GatewayCatalogEvent | null> {
     if (!input.signature) {
       throw new UnauthorizedError("Missing Stripe-Signature header");
     }
 
     let event: Stripe.Event;
     try {
-      // The default tolerance (5 minutes) is left untouched (DA-2 item 3) —
-      // it is what keeps a captured, legitimate payload from being replayed.
       event = await Stripe.webhooks.constructEventAsync(
         input.raw_payload,
         input.signature,
@@ -60,10 +55,26 @@ export class StripeWebhookVerifier implements GatewayWebhookVerifier {
       throw new UnauthorizedError("Invalid Stripe webhook signature");
     }
 
+    const expectedLivemode = env.NODE_ENV === "production";
+    if (event.livemode !== expectedLivemode) {
+      this.#logger.warn(
+        "Rejecting a Stripe event whose livemode does not match this environment (DA-9)",
+        {
+          event_id: event.id,
+          type: event.type,
+          livemode: event.livemode,
+          expected_livemode: expectedLivemode,
+        }
+      );
+      return null;
+    }
+
     return this.#normalize(event);
   }
 
-  #normalize(event: Stripe.Event): GatewayBillingEvent | null {
+  #normalize(
+    event: Stripe.Event
+  ): GatewayBillingEvent | GatewayCatalogEvent | null {
     const occurred_at = new Date(event.created * 1000);
 
     switch (event.type) {
@@ -76,6 +87,16 @@ export class StripeWebhookVerifier implements GatewayWebhookVerifier {
         return this.#normalizeSubscriptionEnded(event, occurred_at);
       case "invoice.payment_failed":
         return this.#normalizePaymentFailed(event, occurred_at);
+      case "price.created":
+      case "price.updated":
+        return this.#normalizeCatalogEntryChanged(event, occurred_at);
+      case "price.deleted":
+        return this.#normalizeCatalogEntryRetired(event, occurred_at);
+      case "product.created":
+      case "product.updated":
+        return this.#normalizeCatalogProductOfferingChanged(event, occurred_at);
+      case "product.deleted":
+        return this.#normalizeCatalogProductRetired(event, occurred_at);
       default:
         this.#logger.debug("Ignoring unhandled Stripe event type", {
           event_id: event.id,
@@ -130,8 +151,6 @@ export class StripeWebhookVerifier implements GatewayWebhookVerifier {
     }
 
     if (!isKnownSubscriptionStatus(subscription.status)) {
-      // Forward-compat escape hatch (Stripe's `OtherString`): a status this
-      // SDK release doesn't know about is safer ignored than guessed at.
       this.#logger.debug("Ignoring subscription event with unknown status", {
         event_id: event.id,
         status: subscription.status,
@@ -206,6 +225,58 @@ export class StripeWebhookVerifier implements GatewayWebhookVerifier {
         invoice.last_finalization_error?.decline_code ??
         invoice.last_finalization_error?.code ??
         null,
+    };
+  }
+
+  #normalizeCatalogEntryChanged(
+    event: Stripe.PriceCreatedEvent | Stripe.PriceUpdatedEvent,
+    occurred_at: Date
+  ): GatewayCatalogEvent | null {
+    const entry = parseStripeCatalogEntry(event.data.object, this.#logger);
+    if (!entry) return null;
+
+    return {
+      type: "catalog_entry_changed",
+      event_id: event.id,
+      occurred_at,
+      entry,
+    };
+  }
+
+  #normalizeCatalogEntryRetired(
+    event: Stripe.PriceDeletedEvent,
+    occurred_at: Date
+  ): GatewayCatalogEvent {
+    return {
+      type: "catalog_entry_retired",
+      event_id: event.id,
+      occurred_at,
+      external_price_reference: event.data.object.id,
+    };
+  }
+
+  #normalizeCatalogProductOfferingChanged(
+    event: Stripe.ProductCreatedEvent | Stripe.ProductUpdatedEvent,
+    occurred_at: Date
+  ): GatewayCatalogEvent {
+    return {
+      type: "catalog_product_offering_changed",
+      event_id: event.id,
+      occurred_at,
+      external_product_reference: event.data.object.id,
+      is_offered: event.data.object.active,
+    };
+  }
+
+  #normalizeCatalogProductRetired(
+    event: Stripe.ProductDeletedEvent,
+    occurred_at: Date
+  ): GatewayCatalogEvent {
+    return {
+      type: "catalog_product_retired",
+      event_id: event.id,
+      occurred_at,
+      external_product_reference: event.data.object.id,
     };
   }
 

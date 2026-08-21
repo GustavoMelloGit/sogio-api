@@ -13,11 +13,6 @@ type Output = {
 
 const RETURN_PATH = "/settings/billing?portal=return";
 
-/**
- * The customer reference is resolved from the caller's own subscription —
- * never from the request — so this route can never hand back a portal URL
- * scoped to someone else's invoices and payment methods.
- */
 export class CreateBillingPortalSessionUseCase
   implements UseCase<Input, Output>
 {

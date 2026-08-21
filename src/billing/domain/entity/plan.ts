@@ -16,15 +16,28 @@ export const planSchema = baseEntitySchema.extend({
   max_properties: z.int().min(1).max(10_000),
   trial_days: z.int().min(0).max(365),
   external_price_reference: z.string().max(255).nullable().optional(),
+
+  external_product_reference: z.string().max(255).nullable().optional(),
+
+  external_event_at: z.date().nullable().optional(),
 });
 
 export type PlanData = z.infer<typeof planSchema>;
 
-/**
- * @kind Entity, Aggregate Root
- */
+export type PlanCatalogSync = {
+  name: string;
+  price_amount: number;
+  billing_interval: BillingInterval;
+  max_properties: number;
+  trial_days: number;
+  external_price_reference: string;
+  external_product_reference: string | null;
+
+  is_offered: boolean;
+};
+
 export class Plan {
-  readonly #data: PlanData;
+  #data: PlanData;
 
   private constructor(data: PlanData) {
     this.#data = planSchema.parse(data);
@@ -41,6 +54,38 @@ export class Plan {
 
   public static reconstitute(data: PlanData): Plan {
     return new Plan(data);
+  }
+
+  syncFromCatalog(entry: PlanCatalogSync, external_event_at: Date): void {
+    this.#data.name = entry.name;
+    this.#data.price_amount = entry.price_amount;
+    this.#data.billing_interval = entry.billing_interval;
+    this.#data.max_properties = entry.max_properties;
+    this.#data.trial_days = entry.trial_days;
+    this.#data.external_price_reference = entry.external_price_reference;
+    this.#data.external_product_reference = entry.external_product_reference;
+    this.#data.deleted_at = entry.is_offered
+      ? null
+      : (this.#data.deleted_at ?? external_event_at);
+    this.#data.external_event_at = external_event_at;
+    this.#touch();
+  }
+
+  retire(external_event_at: Date): void {
+    this.#data.deleted_at = this.#data.deleted_at ?? external_event_at;
+    this.#data.external_event_at = external_event_at;
+    this.#touch();
+  }
+
+  restore(external_event_at: Date): void {
+    this.#data.deleted_at = null;
+    this.#data.external_event_at = external_event_at;
+    this.#touch();
+  }
+
+  #touch(): void {
+    this.#data.updated_at = new Date();
+    this.#data = planSchema.parse(this.#data);
   }
 
   get id() {
@@ -75,7 +120,14 @@ export class Plan {
     return this.#data.external_price_reference ?? null;
   }
 
-  /** `price_amount = 0` marks a perpetual plan — no billing cycle. */
+  get external_product_reference() {
+    return this.#data.external_product_reference ?? null;
+  }
+
+  get external_event_at() {
+    return this.#data.external_event_at ?? null;
+  }
+
   get is_perpetual() {
     return this.#data.price_amount === 0;
   }

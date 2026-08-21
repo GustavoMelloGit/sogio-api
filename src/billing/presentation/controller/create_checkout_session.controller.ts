@@ -29,11 +29,6 @@ const RATE_LIMIT_POLICY: RateLimitPolicy = {
   maxAttempts: 10,
 };
 
-/**
- * Deliberately `allowWithoutPlatformAccess: true` in routes.ts (DA-5): a
- * blocked account needs a way to pay to get unblocked, or the only exit
- * from the paywall sits behind the paywall (R-2).
- */
 export class CreateCheckoutSessionController implements Controller {
   path = "/billing/checkout-session";
   method = HttpControllerMethod.POST;

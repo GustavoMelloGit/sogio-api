@@ -1,6 +1,6 @@
 import { afterAll } from "bun:test";
 import { bunRoutes } from "../src/core/infra/http/routes/routes";
-import { seedPlans } from "../src/billing/infra/database/seed_plans";
+import { seedPlans } from "./helpers/fixtures/plan";
 
 /** `db:push:test` applies the schema but never migration SQL (DA-12). */
 await seedPlans();

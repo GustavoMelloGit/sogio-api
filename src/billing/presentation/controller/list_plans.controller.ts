@@ -19,13 +19,6 @@ const outputSchema = z.array(
   })
 );
 
-/**
- * Public endpoint — no `user` param, so the frontend pricing page can list
- * plans before the visitor signs up. `external_price_reference` (the Stripe
- * price id) is deliberately left out of the mapping: internal gateway detail
- * with no reason to leave the API, same caution the rest of the module
- * already applies to infra details.
- */
 export class ListPlansController implements Controller {
   path = "/billing/plans";
   method = HttpControllerMethod.GET;

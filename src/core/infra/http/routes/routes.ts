@@ -28,7 +28,7 @@ const financeDi = new FinanceDi();
  * dispatcher from its constructor (not idempotent) — must be instantiated
  * exactly once and this single instance reused everywhere (DA-7).
  */
-const billingDi = new BillingDi();
+export const billingDi = new BillingDi();
 const propertyManagementDi = new PropertyManagementDi(
   billingDi.makeEntitlementService(),
   stayDi.makeStayPropertyOccupancy()
@@ -314,6 +314,12 @@ const billingControllers: Route[] = [
     // platform-access gate by construction, not by exception.
     authenticated: false,
     controller: billingDi.makeStripeWebhookController(),
+  },
+  {
+    authenticated: true,
+    adminOnly: true,
+    allowWithoutPlatformAccess: true,
+    controller: billingDi.makeSyncPlanCatalogController(),
   },
 ];
 

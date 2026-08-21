@@ -12,6 +12,7 @@ import type {
 } from "../../../../core/application/dto/pagination";
 import { calculatePaginationMetadata } from "../../../../core/application/dto/pagination";
 import { ConflictError } from "../../../../core/application/error/conflict_error";
+import { isUniqueViolationError } from "../../../../core/infra/database/postgres_error";
 
 export class PropertySettingPostgresRepository
   implements PropertySettingRepository
@@ -74,11 +75,7 @@ export class PropertySettingPostgresRepository
           throw new Error("Failed to save property setting");
         }
       } catch (error) {
-        if (
-          error instanceof Error &&
-          "code" in error &&
-          (error as { code: string }).code === "23505"
-        ) {
+        if (isUniqueViolationError(error)) {
           throw new ConflictError("Property setting key already exists");
         }
         throw error;

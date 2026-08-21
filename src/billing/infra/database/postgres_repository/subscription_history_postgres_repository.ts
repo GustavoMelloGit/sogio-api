@@ -20,7 +20,6 @@ import { calculatePaginationMetadata } from "../../../../core/application/dto/pa
 export class SubscriptionHistoryPostgresRepository
   implements SubscriptionHistoryRepository
 {
-  /** Pure INSERT — never an upsert. The entry is immutable once written (§2.5). */
   async append(entry: SubscriptionHistoryEntry): Promise<void> {
     const data: SubscriptionHistoryEntryData = {
       id: entry.id,

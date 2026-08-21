@@ -21,7 +21,6 @@ import {
   isStaleGatewayEvent,
 } from "../gateway/resolve_gateway_subscription";
 
-/** `canceled`/`incomplete_expired` are the only statuses this use case treats as a termination transition (security review B-5). */
 function isTerminationStatus(status: GatewaySubscriptionStatus): boolean {
   return status === "canceled" || status === "incomplete_expired";
 }
@@ -34,13 +33,6 @@ type StateSnapshot = {
   current_period_end: number | null;
 };
 
-/**
- * Implements the DA-9 status mapping — the workhorse of the webhook:
- * activation, renewal, plan switch from the portal, recovery. Never touches
- * `ConflictError`-throwing code paths itself, since `canceled` /
- * `incomplete_expired` delegate wholesale to `CancelSubscriptionUseCase`,
- * which is already idempotent (§2.4).
- */
 export class SyncSubscriptionFromGatewayUseCase
   implements UseCase<SubscriptionStateChangedEvent, Output>
 {
@@ -53,10 +45,6 @@ export class SyncSubscriptionFromGatewayUseCase
   ) {}
 
   async execute(event: SubscriptionStateChangedEvent): Promise<Output> {
-    // canceled/incomplete_expired are termination transitions (security
-    // review B-5): resolveGatewaySubscriptionForTermination never falls back
-    // to a customer-reference match, so a fallback landing on a different
-    // (possibly still-paying) local subscription can't cancel it by mistake.
     const isTermination = isTerminationStatus(event.status);
     const subscription = isTermination
       ? await resolveGatewaySubscriptionForTermination(
@@ -104,8 +92,6 @@ export class SyncSubscriptionFromGatewayUseCase
         return;
       case "past_due":
       case "unpaid":
-        // Sourced only from invoice.payment_failed (DA-9) — consuming both
-        // would double-write the history for a single real-world failure.
         return;
       case "incomplete":
       case "paused":
@@ -128,8 +114,6 @@ export class SyncSubscriptionFromGatewayUseCase
     event: SubscriptionStateChangedEvent
   ): Promise<void> {
     if (subscription.trial_ends_at !== null) {
-      // §2.5: the invariant against re-trialing is honored — the period the
-      // gateway reports is still trusted, just not labeled a trial.
       this.logger.error(
         "Gateway reported trialing for a subscription that already used its trial — treating as active",
         { subscription_id: subscription.id }
@@ -243,8 +227,6 @@ export class SyncSubscriptionFromGatewayUseCase
       event.external_price_reference
     );
     if (!plan) {
-      // A price created in the dashboard and never mapped locally must not
-      // be able to drop a paying customer's entitlement (DA-9).
       this.logger.error(
         "No local plan matches the gateway's price reference — syncing period only",
         { external_price_reference: event.external_price_reference }
@@ -261,7 +243,6 @@ export class SyncSubscriptionFromGatewayUseCase
     };
   }
 
-  /** §2.6's anti-noise rule: only plan_id, status or current_period_end changing counts as a real change. */
   #changed(previous: StateSnapshot, subscription: Subscription): boolean {
     return (
       previous.plan_id !== subscription.plan_id ||
