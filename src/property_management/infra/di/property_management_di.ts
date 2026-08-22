@@ -23,9 +23,11 @@ import { DeletePropertySettingUseCase } from "../../application/use_case/delete_
 import { DeletePropertySettingController } from "../../presentation/controller/delete_property_setting.controller";
 import { DeletePropertyUseCase } from "../../application/use_case/delete_property";
 import { DeletePropertyController } from "../../presentation/controller/delete_property.controller";
+import { ImportPropertiesUseCase } from "../../application/use_case/import_properties";
 import type { PropertyOccupancy } from "../../domain/service/property_occupancy";
 import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
 import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
+import { ImportRunner } from "../../../core/application/import/import_runner";
 import { makeListPropertiesTool } from "../../presentation/mcp_tool/list_properties.mcp_tool";
 import { makeDeletePropertyTool } from "../../presentation/mcp_tool/delete_property.mcp_tool";
 import { makeCreatePropertySettingTool } from "../../presentation/mcp_tool/create_property_setting.mcp_tool";
@@ -40,6 +42,7 @@ export class PropertyManagementDi {
   #entitlementService: EntitlementService;
   #propertyOccupancy: PropertyOccupancy;
   #transactionRunner: TransactionRunner;
+  #importRunner: ImportRunner;
 
   constructor(
     entitlementService: EntitlementService,
@@ -50,6 +53,7 @@ export class PropertyManagementDi {
     this.#entitlementService = entitlementService;
     this.#propertyOccupancy = propertyOccupancy;
     this.#transactionRunner = new DrizzleTransactionRunner();
+    this.#importRunner = new ImportRunner(this.#transactionRunner);
   }
 
   // Use Cases
@@ -103,6 +107,13 @@ export class PropertyManagementDi {
       this.#propertyRepository,
       this.#propertyOccupancy,
       this.#transactionRunner
+    );
+  }
+  makeImportPropertiesUseCase() {
+    return new ImportPropertiesUseCase(
+      this.#propertyRepository,
+      this.#entitlementService,
+      this.#importRunner
     );
   }
 
