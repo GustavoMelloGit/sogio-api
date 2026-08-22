@@ -13,6 +13,7 @@ import { FinanceDi } from "../../../../finance/infra/di/finance_di";
 import { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
 import { BackofficeDi } from "../../../../backoffice/infra/di/backoffice_di";
 import { BillingDi } from "../../../../billing/infra/di/billing_di";
+import { NotificationDi } from "../../../../notification/infra/di/notification_di";
 import type { AccessCapabilityKey } from "../../../../billing/domain/capability/capability_registry";
 import { OpenApiBuilder } from "../swagger/open_api_builder";
 import { scalarUiHtml } from "../swagger/scalar_ui";
@@ -30,10 +31,12 @@ const propertyManagementDi = new PropertyManagementDi(
   stayDi.makeStayPropertyOccupancy()
 );
 const backofficeDi = new BackofficeDi();
+const notificationDi = new NotificationDi();
 
 stayDi.registerEventHandlers();
 financeDi.registerEventHandlers();
 billingDi.registerEventHandlers();
+notificationDi.registerEventHandlers();
 
 type Route = {
   controller: Controller;
@@ -324,6 +327,17 @@ const billingControllers: Route[] = [
   },
 ];
 
+const notificationControllers: Route[] = [
+  {
+    authenticated: true,
+    controller: notificationDi.makeGetNotificationPreferencesController(),
+  },
+  {
+    authenticated: true,
+    controller: notificationDi.makeUpdateNotificationPreferencesController(),
+  },
+];
+
 const controllers = [
   ...tenantControllers,
   ...propertyControllers,
@@ -335,6 +349,7 @@ const controllers = [
   ...propertyManagementControllers,
   ...backofficeControllers,
   ...billingControllers,
+  ...notificationControllers,
   healthController,
 ];
 
@@ -393,6 +408,7 @@ const handleMcpRequest = makeMcpRequestHandler({
   financeDi,
   billingDi,
   propertyManagementDi,
+  notificationDi,
 });
 
 routeMap.set("/mcp", {
