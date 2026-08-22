@@ -8,6 +8,7 @@ import type { StayDi } from "../../../booking/infra/di/stay_di";
 import type { FinanceDi } from "../../../finance/infra/di/finance_di";
 import type { PropertyManagementDi } from "../../../property_management/infra/di/property_management_di";
 import type { BillingDi } from "../../../billing/infra/di/billing_di";
+import type { NotificationDi } from "../../../notification/infra/di/notification_di";
 import { CapabilitySet } from "../../../billing/domain/capability/capability_set";
 import { ForbiddenError } from "../../application/error/forbidden_error";
 import { UnauthorizedError } from "../../application/error/unauthorized_error";
@@ -39,6 +40,7 @@ export type McpRouteDependencies = {
   financeDi: FinanceDi;
   propertyManagementDi: PropertyManagementDi;
   billingDi: BillingDi;
+  notificationDi: NotificationDi;
 };
 
 /**
@@ -114,6 +116,8 @@ export function makeMcpRequestHandler(
     dependencies.propertyManagementDi.makeDeletePropertySettingTool(),
     dependencies.propertyManagementDi.makeDeletePropertyTool(),
     dependencies.billingDi.makeGetSubscriptionStatusTool(),
+    dependencies.notificationDi.makeGetNotificationPreferencesTool(),
+    dependencies.notificationDi.makeUpdateNotificationPreferencesTool(),
   ];
 
   return async function handleMcpRequest(request: Request): Promise<Response> {

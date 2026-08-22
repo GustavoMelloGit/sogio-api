@@ -4,6 +4,7 @@ import { env } from "./core/infra/config/environments";
 import { bunRoutes } from "./core/infra/http/routes/routes";
 import { CoreDi } from "./core/infra/di/core_di";
 import type { Logger } from "./core/application/logger/logger";
+import { NotificationDi } from "./notification/infra/di/notification_di";
 
 async function checkDatabaseConnection(logger: Logger) {
   try {
@@ -43,6 +44,48 @@ async function main() {
   );
   logger.info(`📖 API docs: ${baseUrl}/docs`);
   logger.info(`📄 OpenAPI JSON: ${baseUrl}/docs/spec`);
+
+  startNotificationDelivery(logger);
+}
+
+function startNotificationDelivery(logger: Logger) {
+  const notificationDi = new NotificationDi();
+  const useCase = notificationDi.makeDeliverPendingNotificationsUseCase();
+  const intervalMs = env.NOTIFICATION_DELIVERY_INTERVAL_SECONDS * 1000;
+  let running = false;
+
+  const timer = setInterval(async () => {
+    if (running) {
+      return;
+    }
+
+    running = true;
+    try {
+      const result = await useCase.execute({
+        limit: env.NOTIFICATION_DELIVERY_BATCH_SIZE,
+      });
+
+      if (result.delivered > 0 || result.failed > 0) {
+        logger.info("Notification delivery run finished", result);
+      }
+    } catch (error) {
+      logger.error("Notification delivery run crashed", {
+        error:
+          error instanceof Error
+            ? { name: error.name, message: error.message }
+            : String(error),
+      });
+    } finally {
+      running = false;
+    }
+  }, intervalMs);
+
+  timer.unref();
+
+  logger.info("🔔 Notification delivery scheduled", {
+    interval_seconds: env.NOTIFICATION_DELIVERY_INTERVAL_SECONDS,
+    batch_size: env.NOTIFICATION_DELIVERY_BATCH_SIZE,
+  });
 }
 
 main();

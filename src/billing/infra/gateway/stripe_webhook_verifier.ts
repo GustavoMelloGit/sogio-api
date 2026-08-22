@@ -85,6 +85,8 @@ export class StripeWebhookVerifier implements GatewayWebhookVerifier {
         return this.#normalizeSubscriptionStateChanged(event, occurred_at);
       case "customer.subscription.deleted":
         return this.#normalizeSubscriptionEnded(event, occurred_at);
+      case "customer.subscription.trial_will_end":
+        return this.#normalizeTrialWillEnd(event, occurred_at);
       case "invoice.payment_failed":
         return this.#normalizePaymentFailed(event, occurred_at);
       case "price.created":
@@ -167,6 +169,33 @@ export class StripeWebhookVerifier implements GatewayWebhookVerifier {
       external_price_reference: item.price.id,
       status: subscription.status,
       current_period_end: new Date(item.current_period_end * 1000),
+      trial_end: subscription.trial_end
+        ? new Date(subscription.trial_end * 1000)
+        : null,
+    };
+  }
+
+  #normalizeTrialWillEnd(
+    event: Stripe.CustomerSubscriptionTrialWillEndEvent,
+    occurred_at: Date
+  ): GatewayBillingEvent | null {
+    const subscription = event.data.object;
+    const external_customer_reference = this.#idOf(subscription.customer);
+
+    if (!external_customer_reference) {
+      this.#logger.debug(
+        "Ignoring customer.subscription.trial_will_end without a customer",
+        { event_id: event.id }
+      );
+      return null;
+    }
+
+    return {
+      type: "subscription_trial_will_end",
+      event_id: event.id,
+      occurred_at,
+      external_reference: subscription.id,
+      external_customer_reference,
       trial_end: subscription.trial_end
         ? new Date(subscription.trial_end * 1000)
         : null,

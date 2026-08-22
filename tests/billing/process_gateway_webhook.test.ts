@@ -9,6 +9,7 @@ import { SyncSubscriptionFromGatewayUseCase } from "../../src/billing/applicatio
 import { CancelSubscriptionUseCase } from "../../src/billing/application/use_case/cancel_subscription";
 import { MarkSubscriptionPastDueUseCase } from "../../src/billing/application/use_case/mark_subscription_past_due";
 import { SyncPlanCatalogEntryUseCase } from "../../src/billing/application/use_case/sync_plan_catalog_entry";
+import { AnnounceTrialEndingUseCase } from "../../src/billing/application/use_case/announce_trial_ending";
 import { SubscriptionPostgresRepository } from "../../src/billing/infra/database/postgres_repository/subscription_postgres_repository";
 import { PlanPostgresRepository } from "../../src/billing/infra/database/postgres_repository/plan_postgres_repository";
 import { ProcessedGatewayEventPostgresRepository } from "../../src/billing/infra/database/postgres_repository/processed_gateway_event_postgres_repository";
@@ -88,6 +89,11 @@ function makeRealUseCase(verifier: GatewayWebhookVerifier) {
     planRepository,
     silentLogger
   );
+  const announceTrialEndingUseCase = new AnnounceTrialEndingUseCase(
+    subscriptionRepository,
+    inMemoryEventDispatcher,
+    silentLogger
+  );
 
   return new ProcessGatewayWebhookUseCase(
     verifier,
@@ -98,6 +104,7 @@ function makeRealUseCase(verifier: GatewayWebhookVerifier) {
     cancelSubscriptionUseCase,
     markSubscriptionPastDueUseCase,
     syncPlanCatalogEntryUseCase,
+    announceTrialEndingUseCase,
     silentLogger
   );
 }
@@ -211,6 +218,11 @@ describe("ProcessGatewayWebhookUseCase — release on failure (R-6)", () => {
       planRepository,
       silentLogger
     );
+    const announceTrialEndingUseCase = new AnnounceTrialEndingUseCase(
+      subscriptionRepository,
+      inMemoryEventDispatcher,
+      silentLogger
+    );
 
     const useCase = new ProcessGatewayWebhookUseCase(
       new StubVerifier(event),
@@ -221,6 +233,7 @@ describe("ProcessGatewayWebhookUseCase — release on failure (R-6)", () => {
       cancelSubscriptionUseCase,
       markSubscriptionPastDueUseCase,
       syncPlanCatalogEntryUseCase,
+      announceTrialEndingUseCase,
       silentLogger
     );
 

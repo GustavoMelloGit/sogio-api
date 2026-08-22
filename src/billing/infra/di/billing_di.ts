@@ -31,6 +31,7 @@ import { CreateBillingPortalSessionUseCase } from "../../application/use_case/cr
 import { BindGatewayCustomerUseCase } from "../../application/use_case/bind_gateway_customer";
 import { SyncSubscriptionFromGatewayUseCase } from "../../application/use_case/sync_subscription_from_gateway";
 import { ProcessGatewayWebhookUseCase } from "../../application/use_case/process_gateway_webhook";
+import { AnnounceTrialEndingUseCase } from "../../application/use_case/announce_trial_ending";
 import { SyncPlanCatalogEntryUseCase } from "../../application/use_case/sync_plan_catalog_entry";
 import { ReconcilePlanCatalogFromGatewayUseCase } from "../../application/use_case/reconcile_plan_catalog_from_gateway";
 import { StartFreeSubscriptionOnUserCreated } from "../../application/handler/start_free_subscription_on_user_created";
@@ -252,6 +253,15 @@ export class BillingDi {
       this.makeCancelSubscriptionUseCase(),
       this.makeMarkSubscriptionPastDueUseCase(),
       this.makeSyncPlanCatalogEntryUseCase(),
+      this.makeAnnounceTrialEndingUseCase(),
+      this.#logger
+    );
+  }
+
+  makeAnnounceTrialEndingUseCase() {
+    return new AnnounceTrialEndingUseCase(
+      this.#subscriptionRepository,
+      this.#eventDispatcher,
       this.#logger
     );
   }

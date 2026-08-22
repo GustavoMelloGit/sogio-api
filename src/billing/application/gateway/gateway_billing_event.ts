@@ -44,8 +44,16 @@ export type PaymentFailedEvent = GatewayBillingEventBase & {
   reason: string | null;
 };
 
+export type SubscriptionTrialWillEndEvent = GatewayBillingEventBase & {
+  type: "subscription_trial_will_end";
+  external_reference: string;
+  external_customer_reference: string;
+  trial_end: Date | null;
+};
+
 export type GatewayBillingEvent =
   | CheckoutCompletedEvent
   | SubscriptionStateChangedEvent
   | SubscriptionEndedEvent
+  | SubscriptionTrialWillEndEvent
   | PaymentFailedEvent;

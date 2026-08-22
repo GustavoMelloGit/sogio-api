@@ -4,9 +4,16 @@ import { StayDi } from "../../src/booking/infra/di/stay_di";
 import { FinanceDi } from "../../src/finance/infra/di/finance_di";
 import { BillingDi } from "../../src/billing/infra/di/billing_di";
 import { PropertyDi } from "../../src/booking/infra/di/property_di";
+import { NotificationDi } from "../../src/notification/infra/di/notification_di";
 import "../helpers/server";
 
-const WIRED_EVENTS = ["stay_booked", "stay_canceled", "user_created"];
+const WIRED_EVENTS = [
+  "stay_booked",
+  "stay_canceled",
+  "user_created",
+  "subscription_payment_failed",
+  "subscription_trial_ending",
+];
 
 function handlerCounts(): Record<string, number> {
   return Object.fromEntries(
@@ -23,6 +30,8 @@ describe("Event handler registration", () => {
       stay_booked: 2,
       stay_canceled: 1,
       user_created: 1,
+      subscription_payment_failed: 2,
+      subscription_trial_ending: 1,
     });
   });
 
@@ -33,6 +42,7 @@ describe("Event handler registration", () => {
     new FinanceDi();
     new BillingDi();
     new PropertyDi();
+    new NotificationDi();
 
     expect(handlerCounts()).toEqual(before);
   });

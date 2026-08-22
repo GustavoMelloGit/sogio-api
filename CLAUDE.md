@@ -52,7 +52,7 @@ Os testes ficam em `tests/<bounded context>/<test name>.test.ts`.
 
 ### Estrutura de Camadas
 
-Cada módulo de negócio (`auth`, `booking`, `property_management`, `finance`, `billing`) possui quatro camadas:
+Cada módulo de negócio (`auth`, `booking`, `property_management`, `finance`, `billing`, `notification`) possui quatro camadas:
 
 ```
 src/[modulo]/
@@ -124,6 +124,22 @@ Uma **capacidade** (`billing/domain/capability/`) é uma alavanca comercial: alg
 
 `GET /billing/subscription` e `GET /billing/plans` expõem `capabilities` (o registro inteiro já resolvido) e **não expõem mais `max_properties` no topo da resposta** — quebra deliberada de contrato com o frontend. A tool MCP `get_subscription_status` existe para que uma IA que bateu numa trava consiga dizer ao usuário qual plano cobre o quê.
 
+### Bounded Context `notification`
+
+O mecanismo genérico de notificação proativa. Um BC de origem publica um evento de domínio que já existe; um handler em `notification/application/handler/` chama `NotificationService.notify()` e **nada mais acontece de forma síncrona** — o serviço resolve as preferências do usuário, renderiza título e corpo e grava uma linha `pending` por canal habilitado. A entrega efetiva é feita depois, por `DeliverPendingNotificationsUseCase`.
+
+**São duas portas, e a separação é o ponto do desenho.** `NotificationService` (`application/service/`) é o Open Host Service que os outros BCs consomem — mesmo padrão de `EntitlementService` — e **não conhece canal nenhum**. `NotificationChannel` (`domain/service/`) tem uma implementação por canal; hoje só `EmailNotificationChannel`. Se o caso de uso escolhesse o canal, preferência de usuário seria impossível (quem decide o canal é a preferência, em runtime) e todo canal novo obrigaria a editar todo caso de uso. `EmailService` **não foi alterado**: continua sendo transporte burro, e o channel é quem sabe compor assunto e corpo — o mesmo princípio que o docblock de `EmailService` já declarava.
+
+**A tabela `notifications` é a fila.** Não há Redis nem lib de fila: o volume é de dezenas/dia e a VPS é pequena, então uma dependência que custaria 30-50MB ociosos para reimplementar o que o Postgres já faz não se paga. `claimDue` **arrenda** o lote em vez de só lê-lo — `FOR UPDATE SKIP LOCKED` mais um empurrão em `next_attempt_at` dentro da mesma transação —, de modo que uma segunda drenagem concorrente passa direto em vez de entregar duas vezes; o arrendamento expira sozinho, então um processo que morre no meio da entrega não deixa a linha presa para sempre. Falha de entrega nunca propaga: `markFailed` conta a tentativa, agenda backoff exponencial (1, 2, 4, 8 min) e desiste em `MAX_DELIVERY_ATTEMPTS`, virando `failed` — terminal, nunca mais retentado.
+
+**O timer mora em `src/index.ts` e em nenhum outro lugar.** A suíte de testes importa `routes.ts` para montar o servidor; um `setInterval` iniciado ali dispararia entre arquivos de teste, batendo no banco fora do controle de qualquer teste. O use case é testado direto, nunca esperando o timer.
+
+`NOTIFICATION_TYPE_REGISTRY` (`domain/notification_type/`) é a declaração em código dos tipos que existem — `key`, `label`, canais padrão e `optional`. Um tipo com `optional: false` é sempre entregue e `PUT /notifications/preferences` recusa desligá-lo com 422. Preferência ausente **nunca é erro**: cai no default, mesmo idioma de `CapabilitySet.of()` (I-4). Tipo desconhecido chegando em `notify()` é logado e descartado, nunca lançado — uma notificação mal declarada não pode derrubar a operação de negócio que a originou.
+
+Os eventos ligados hoje são `SubscriptionPaymentFailedEvent` e `SubscriptionTrialEndingEvent` — este último nasce do webhook `customer.subscription.trial_will_end` do Stripe, normalizado como `subscription_trial_will_end` e traduzido em evento de domínio por `AnnounceTrialEndingUseCase`; o gateway avisa sozinho, então não é preciso varrer assinaturas atrás de trials vencendo. Deliberadamente **não** foram ligados os eventos de estadia: `StayCanceledEvent` está sob a invariante DA-13/R-15 e travado por teste, e mexer nela merece PR própria. `notifications.user_id` e `notification_preferences.user_id` referenciam `users` com `ON DELETE cascade`, então o purge LGPD já leva tudo junto — há teste travando isso.
+
+As duas rotas de preferência (`GET`/`PUT /notifications/preferences`) têm as tools MCP correspondentes: são dados do próprio usuário. A caixa de entrada in-app fica para entrega seguinte — o modelo já persiste `read_at`, só a superfície de leitura é que não existe ainda.
+
 ### Banco de Dados
 
 Os schemas do Drizzle ORM ficam em `src/core/infra/database/drizzle/schemas/`. Repositórios usam `db.query` e DML do Drizzle. Registros são mapeados para entidades via `reconstitute()`.
@@ -143,6 +159,8 @@ Definidas em `src/core/infra/config/environments.ts`:
 - `CORS_ALLOWED_ORIGINS` — lista opcional de origens permitidas para CORS, separadas por vírgula; se ausente, cai para `[FRONT_BASE_URL]`
 - `STRIPE_SECRET_KEY` — chave secreta da API do Stripe. Obrigatória fora de `development`
 - `STRIPE_WEBHOOK_SECRET` — segredo de assinatura usado para verificar o header `Stripe-Signature` no webhook. Obrigatória fora de `development`
+- `NOTIFICATION_DELIVERY_INTERVAL_SECONDS` — intervalo do timer que drena a fila de notificações, em segundos; default 30
+- `NOTIFICATION_DELIVERY_BATCH_SIZE` — quantas notificações cada rodada de drenagem arrenda; default 20
 
 ### Estilo de Código
 

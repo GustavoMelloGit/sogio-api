@@ -5,6 +5,7 @@ import type {
   GatewayBillingEvent,
   SubscriptionEndedEvent,
   PaymentFailedEvent,
+  SubscriptionTrialWillEndEvent,
 } from "../gateway/gateway_billing_event";
 import type { GatewayCatalogEvent } from "../gateway/gateway_catalog_event";
 import type { ProcessedGatewayEventRepository } from "../../domain/repository/processed_gateway_event_repository";
@@ -14,7 +15,9 @@ import type { SyncSubscriptionFromGatewayUseCase } from "./sync_subscription_fro
 import type { CancelSubscriptionUseCase } from "./cancel_subscription";
 import type { MarkSubscriptionPastDueUseCase } from "./mark_subscription_past_due";
 import type { SyncPlanCatalogEntryUseCase } from "./sync_plan_catalog_entry";
+import type { AnnounceTrialEndingUseCase } from "./announce_trial_ending";
 import {
+  resolveGatewaySubscription,
   resolveGatewaySubscriptionForTermination,
   isStaleGatewayEvent,
 } from "../gateway/resolve_gateway_subscription";
@@ -36,6 +39,7 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
     private readonly cancelSubscriptionUseCase: CancelSubscriptionUseCase,
     private readonly markSubscriptionPastDueUseCase: MarkSubscriptionPastDueUseCase,
     private readonly syncPlanCatalogEntryUseCase: SyncPlanCatalogEntryUseCase,
+    private readonly announceTrialEndingUseCase: AnnounceTrialEndingUseCase,
     private readonly logger: Logger
   ) {}
 
@@ -98,6 +102,9 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
       case "subscription_ended":
         await this.#dispatchSubscriptionEnded(event);
         return;
+      case "subscription_trial_will_end":
+        await this.#dispatchTrialWillEnd(event);
+        return;
       case "payment_failed":
         await this.#dispatchPaymentFailed(event);
         return;
@@ -133,6 +140,31 @@ export class ProcessGatewayWebhookUseCase implements UseCase<Input, Output> {
     await this.cancelSubscriptionUseCase.execute({
       user_id: subscription.user_id,
       external_event_at: event.occurred_at,
+    });
+  }
+
+  async #dispatchTrialWillEnd(
+    event: SubscriptionTrialWillEndEvent
+  ): Promise<void> {
+    const subscription = await resolveGatewaySubscription(
+      this.subscriptionRepository,
+      event
+    );
+
+    if (!subscription) {
+      this.logger.info(
+        "subscription_trial_will_end for a gateway subscription with no local match — discarding",
+        {
+          external_reference: event.external_reference,
+          external_customer_reference: event.external_customer_reference,
+        }
+      );
+      return;
+    }
+
+    await this.announceTrialEndingUseCase.execute({
+      user_id: subscription.user_id,
+      trial_ends_at: event.trial_end,
     });
   }
 
