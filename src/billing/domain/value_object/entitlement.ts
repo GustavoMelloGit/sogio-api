@@ -4,10 +4,17 @@ export type BlockedReason =
   | "payment_failed"
   | "no_subscription";
 
+export type EntitlementPlan = {
+  id: string;
+  code: string;
+  name: string;
+};
+
 export type EntitlementData = {
   has_platform_access: boolean;
   status: string;
   max_properties: number;
+  plan: EntitlementPlan | null;
   blocked_reason?: BlockedReason;
 };
 
@@ -32,6 +39,10 @@ export class Entitlement {
 
   get max_properties() {
     return this.#data.max_properties;
+  }
+
+  get plan() {
+    return this.#data.plan;
   }
 
   get blocked_reason() {

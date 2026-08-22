@@ -34,7 +34,9 @@ export class CreateBillingPortalSessionController implements Controller {
       "Creates a hosted billing portal session for the authenticated user's own gateway customer and returns its URL.",
     tags: ["Billing"],
     responses: {
-      "200": responseFromZod("Billing portal session URL", outputSchema),
+      "200": responseFromZod("Billing portal session URL", outputSchema, {
+        url: "https://billing.stripe.com/p/session/test_YWNjdF8xTjRkQmZLLA",
+      }),
       "401": errorResponse("Unauthorized"),
       "404": errorResponse("Subscription not found"),
       "409": errorResponse("No gateway customer yet"),

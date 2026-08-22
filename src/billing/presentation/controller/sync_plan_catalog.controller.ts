@@ -26,7 +26,8 @@ export class SyncPlanCatalogController implements Controller {
     responses: {
       "200": responseFromZod(
         "Reconciliation applied — number of catalog entries read",
-        outputSchema
+        outputSchema,
+        { entries_seen: 2 }
       ),
       "401": errorResponse("Unauthorized"),
       "403": errorResponse("Forbidden — admin role required"),

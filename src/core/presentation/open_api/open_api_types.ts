@@ -22,6 +22,7 @@ export type OpenApiResponse = {
   content?: {
     "application/json": {
       schema: Record<string, unknown>;
+      example?: unknown;
     };
   };
 };

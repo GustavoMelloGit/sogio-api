@@ -9,6 +9,7 @@ import type { CreateCheckoutSessionUseCase } from "../../application/use_case/cr
 import type { RateLimitPolicy } from "../../../core/application/rate_limit/rate_limit_policy";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
 import {
+  bodyFromZod,
   errorResponse,
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
@@ -40,8 +41,15 @@ export class CreateCheckoutSessionController implements Controller {
     description:
       "Creates a hosted checkout session for the given plan and returns its URL. The caller only ever gets redirected — no card data ever reaches this API.",
     tags: ["Billing"],
+    requestBody: bodyFromZod(inputSchema, {
+      example: {
+        plan_code: "pro",
+      },
+    }),
     responses: {
-      "200": responseFromZod("Checkout session URL", outputSchema),
+      "200": responseFromZod("Checkout session URL", outputSchema, {
+        url: "https://checkout.stripe.com/c/pay/cs_test_a1FpQ8xKZ2mWvL9nY3bR7dJ6",
+      }),
       "401": errorResponse("Unauthorized"),
       "404": errorResponse("Plan or subscription not found"),
       "409": errorResponse("A gateway subscription is already live"),

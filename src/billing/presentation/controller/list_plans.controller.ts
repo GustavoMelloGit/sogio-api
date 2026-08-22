@@ -29,7 +29,26 @@ export class ListPlansController implements Controller {
       "Returns every plan currently offered, for the public pricing page. No authentication required.",
     tags: ["Billing"],
     responses: {
-      "200": responseFromZod("Plans currently offered", outputSchema),
+      "200": responseFromZod("Plans currently offered", outputSchema, [
+        {
+          id: "3f1c6a92-8f4c-4a1a-9b0e-2d6b7c1f4a10",
+          code: "free",
+          name: "Free",
+          price_amount: 0,
+          billing_interval: "monthly",
+          max_properties: 1,
+          trial_days: 0,
+        },
+        {
+          id: "7b2d9e04-1c5f-4e83-8a77-9f0c3b5d2e64",
+          code: "pro",
+          name: "Pro",
+          price_amount: 2500,
+          billing_interval: "monthly",
+          max_properties: 5,
+          trial_days: 14,
+        },
+      ]),
     },
   };
 
