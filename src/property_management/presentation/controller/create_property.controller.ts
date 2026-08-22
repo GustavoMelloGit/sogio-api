@@ -55,9 +55,9 @@ const inputSchema = z.object({
     .min(1, "Name is required")
     .max(100, "Name must be at most 100 characters"),
   address: addressSchema,
-  images: z
-    .array(z.string().max(2048, "Image URL must be at most 2048 characters"))
-    .min(1, "At least one image is required"),
+  images: z.array(
+    z.string().max(2048, "Image URL must be at most 2048 characters")
+  ),
   capacity: z
     .number()
     .int()
