@@ -113,6 +113,7 @@ export function makeMcpRequestHandler(
     dependencies.propertyManagementDi.makeUpdatePropertySettingTool(),
     dependencies.propertyManagementDi.makeDeletePropertySettingTool(),
     dependencies.propertyManagementDi.makeDeletePropertyTool(),
+    dependencies.billingDi.makeGetSubscriptionStatusTool(),
   ];
 
   return async function handleMcpRequest(request: Request): Promise<Response> {
