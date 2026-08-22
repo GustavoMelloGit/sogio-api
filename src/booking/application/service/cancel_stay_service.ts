@@ -1,5 +1,6 @@
 import type { EventDispatcher } from "../../../core/application/event/event_dispatcher";
 import type { Stay } from "../../domain/entity/stay";
+import type { Tenant } from "../../domain/entity/tenant";
 import { StayCanceledEvent } from "../../domain/event/stay_canceled_event";
 import type { StayRepository } from "../../domain/repository/stay_repository";
 
@@ -18,11 +19,18 @@ export class CancelStayService {
     private readonly eventDispatcher: EventDispatcher
   ) {}
 
-  async cancel(stay: Stay, propertyId: string): Promise<void> {
+  async cancel(stay: Stay, tenant: Tenant, propertyId: string): Promise<void> {
     stay.cancel();
     await this.stayRepository.saveStay(stay);
 
-    const event = new StayCanceledEvent(stay.id, propertyId, stay.price);
+    const event = new StayCanceledEvent(
+      stay.id,
+      propertyId,
+      stay.price,
+      tenant.name,
+      stay.check_in,
+      stay.check_out
+    );
     await this.eventDispatcher.dispatch(event);
   }
 }

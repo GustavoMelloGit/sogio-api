@@ -3,6 +3,7 @@ import type { EventHandler } from "../../../core/application/event/event_handler
 import type { Logger } from "../../../core/application/logger/logger";
 import { LedgerEntry } from "../../domain/entity/ledger_entry";
 import type { LedgerEntryRepository } from "../../domain/repository/ledger_entry_repository";
+import { describeStayRevenue } from "./stay_ledger_description";
 
 export class RecordRevenueOnStayPaymentConfirmed
   implements EventHandler<StayBookedEvent>
@@ -21,7 +22,7 @@ export class RecordRevenueOnStayPaymentConfirmed
 
     const ledgerEntry = LedgerEntry.newRevenue({
       amount: event.paid_amount,
-      description: `Pagamento de estadia: ${event.stay_id}`,
+      description: describeStayRevenue(event),
       category: "ESTADIA",
       property_id: event.property_id,
     });

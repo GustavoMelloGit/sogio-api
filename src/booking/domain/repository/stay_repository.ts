@@ -29,6 +29,7 @@ export type DashboardStatsResult = {
 
 export interface StayRepository {
   stayOfId(id: string): Promise<Stay | null>;
+  stayWithTenantOfId(id: string): Promise<StayWithTenant | null>;
   saveStay(stay: Stay): Promise<void>;
   allFutureFromProperty(propertyId: string): Promise<Array<StayWithTenant>>;
   allFromProperty(

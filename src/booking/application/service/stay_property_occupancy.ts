@@ -33,7 +33,7 @@ export class StayPropertyOccupancy implements PropertyOccupancy {
     ensureNoStayInProgress(inProgress.length);
 
     let canceledCount = 0;
-    for (const { stay } of future) {
+    for (const { stay, tenant } of future) {
       /**
        * Rechecks the race between the query above and this cancellation
        * (§8.2): a stay classified as future here may have started in the
@@ -45,7 +45,7 @@ export class StayPropertyOccupancy implements PropertyOccupancy {
         ensureNoStayInProgress(1);
       }
 
-      await this.cancelStayService.cancel(stay, propertyId);
+      await this.cancelStayService.cancel(stay, tenant, propertyId);
       canceledCount++;
     }
 
