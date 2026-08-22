@@ -119,7 +119,7 @@ Desenvolvedor encontra bloqueio técnico que exige decisão do Arquiteto
 - **`persona-identification.md`**: toda mensagem emitida pelo Orquestrador deve começar com `[Orquestrador]`.
 - **`worktree-workflow.md`**: toda feature deve ser desenvolvida dentro de uma worktree isolada em `.claude/worktrees/<nome-da-branch>`, nunca diretamente no diretório de trabalho principal.
 - **Fluxo de branch e PR obrigatório**: toda alteração de código deve seguir este fluxo:
-  1. Criar a worktree e a branch a partir de `main` antes de qualquer modificação (`git worktree add .claude/worktrees/<nome-da-branch> -b <nome-da-branch> main`) — ver `worktree-workflow.md`.
+  1. Sincronizar com o remoto e criar a worktree e a branch a partir de `origin/main` antes de qualquer modificação (`git fetch origin && git worktree add .claude/worktrees/<nome-da-branch> -b <nome-da-branch> origin/main`), atualizando também a `main` local com `git merge --ff-only origin/main`. Nunca partir da `main` local sem fetch: ela fica desatualizada assim que uma PR é mergeada no GitHub — ver `worktree-workflow.md`.
   2. Todas as personas despachadas operam dentro dessa worktree; o diretório raiz permanece intocado.
   3. Todos os commits da tarefa vão nessa branch, executados a partir da worktree.
   4. Ao finalizar, criar uma PR apontando para `main` via `gh pr create`.
