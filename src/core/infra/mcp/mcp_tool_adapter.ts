@@ -63,6 +63,5 @@ export function registerMcpTool(
 
 function capabilityDeniedMessage(key: CapabilityKey): string {
   const { label } = capabilityRegistryEntryOf(key);
-  const capitalizedLabel = `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
-  return `${capitalizedLabel} is not included in your plan. Upgrade to unlock it.`;
+  return `Your current plan doesn't include ${label}. Upgrade your plan to unlock it.`;
 }

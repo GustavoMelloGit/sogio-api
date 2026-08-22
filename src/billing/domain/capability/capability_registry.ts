@@ -32,6 +32,14 @@ export const CAPABILITY_REGISTRY: readonly CapabilityRegistryEntry[] = [
     label: "properties",
     metadata_key: "sogio_max_properties",
   },
+  {
+    key: "export_reports",
+    kind: "access",
+    default: false,
+    required: false,
+    label: "report exports",
+    metadata_key: "sogio_export_reports",
+  },
 ];
 
 export function capabilityRegistryEntryOf(

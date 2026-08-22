@@ -1,1 +1,1 @@
-export type CapabilityKey = "max_properties";
+export type CapabilityKey = "max_properties" | "export_reports";
