@@ -56,7 +56,7 @@ Plataforma de gestão de alugueis de curta duração. Proprietários cadastram i
 - **Tenant** (Booking) — o hóspede; identificado naturalmente pelo telefone
 - **Property** (Property Management) — catálogo do imóvel com detalhes completos
 - **LedgerEntry** (Finance) — registro financeiro; receita (positivo) ou despesa (negativo)
-- **Plan** (Billing) — item do catálogo comercial do Sogio (nome, preço, intervalo de cobrança, limites); nunca um enum em código. Escrito exclusivamente pelo gateway de pagamento (`SyncPlanCatalogEntryUseCase`, `ReconcilePlanCatalogFromGatewayUseCase`), nunca por um seed ou endpoint administrativo direto
+- **Plan** (Billing) — item do catálogo comercial do Sogio (nome, preço, intervalo de cobrança, capacidades); nunca um enum em código. Escrito exclusivamente pelo gateway de pagamento (`SyncPlanCatalogEntryUseCase`, `ReconcilePlanCatalogFromGatewayUseCase`), nunca por um seed ou endpoint administrativo direto
 - **Subscription** (Billing) — vínculo 1:1 entre um `User` e um `Plan`; muda de plano in-place (não gera uma nova assinatura por troca)
 - **SubscriptionHistoryEntry** (Billing) — registro append-only de cada transição do ciclo de vida da assinatura; agregado próprio, não faz parte de `Subscription`
 
@@ -68,7 +68,7 @@ Plataforma de gestão de alugueis de curta duração. Proprietários cadastram i
 - Estadias iniciadas não podem ser canceladas
 - Estadias já canceladas não podem ser alteradas
 - O código de entrada deve ter um número mínimo de caracteres, mas o tamanho exato pode variar conforme o modelo da fechadura inteligente
-- Entitlement (acesso à plataforma + limite de propriedades) é sempre **derivado** de `Subscription` + `Plan` no momento da leitura, nunca uma coluna persistida — não há scheduler no projeto para mantê-la correta ao longo do tempo
+- Entitlement (acesso à plataforma + o conjunto de capacidades do plano) é sempre **derivado** de `Subscription` + `Plan` no momento da leitura, nunca uma coluna persistida — não há scheduler no projeto para mantê-la correta ao longo do tempo
 - O plano `Free` é perpétuo (`price_amount = 0`): nunca tem `current_period_end`, senão toda conta gratuita seria bloqueada ~30 dias após o cadastro
 - Cancelar uma assinatura de plano perpétuo (Free) é proibido — não há ciclo a encerrar
 - Uma assinatura que já teve `trial_ends_at` preenchido nunca reentra em `trialing`, mesmo trocando de plano
@@ -76,6 +76,17 @@ Plataforma de gestão de alugueis de curta duração. Proprietários cadastram i
 - **I-1 — O `code` de um `Plan` é imutável.** Nenhum evento de catálogo altera o `code` de uma linha já existente — é a chave natural que identifica o plano (`planOfCode`, checkout, API pública). Um `sogio_plan_code` digitado errado no dashboard do gateway cria um plano-lixo novo, nunca renomeia/quebra um plano existente
 - **I-2 — O plano `free` nunca é aposentado por um evento de catálogo.** É pré-condição de todo cadastro de usuário e o piso do fallback de `SubscriptionAccessPolicy`. Uma tentativa de aposentar `free` (via `catalog_entry_changed`, `catalog_entry_retired`, `catalog_product_offering_changed` ou `catalog_product_retired`) é logada e ignorada, nunca lançada
 - **I-3 — Ausência nunca aposenta.** Um plano que a reconciliação simplesmente não viu (Price sem metadata, listagem que falhou no meio) permanece intacto — aposentadoria exige um sinal explícito (`is_offered: false`, `price.deleted`, `product.deleted`). "Sincronizar" nunca significa "fazer o banco espelhar o gateway"
+- **I-4 — Ausência usa o padrão do registro, nunca bloqueia.** É I-3 um nível abaixo: um Price que não declara uma capacidade recebe o `default` do registro, não "não tem". A exceção é `required: true`, em que a ausência invalida a **entrada de catálogo inteira** — é o caso de `max_properties`, para que um Price de Pro com a chave digitada errada seja rejeitado em vez de virar silenciosamente um plano de 1 imóvel. O fail-open é deliberado: a reconciliação de catálogo do boot é não-fatal, e sob fail-closed uma falha de rede no boot faria todo plano perder toda capacidade de uma vez, escurecendo o produto inteiro para todos os pagantes. Entregar recurso pago de graça até alguém notar é recuperável; indisponibilidade total disparada por falha de rede não é. Toda queda no padrão por ausência é logada em `warn` — esse log é o único sinal de que está acontecendo
+- **I-5 — O `key` de uma capacidade é imutável.** Mesmo espírito de I-1: renomear não migra nada — cria uma capacidade nova que nenhum use case consulta e abandona a antiga, já gravada no `jsonb` de todo plano do banco. A `metadata_key` existe separada justamente para que o nome no dashboard do gateway possa divergir do `key` sem que nenhum dos dois precise ser renomeado
+
+### Vocabulário de Capacidades
+
+- **Capacidade** (`Capability`) — alavanca comercial: algo que um plano permite ou limita, identificada por uma chave estável. Existe porque o negócio cobraria por ela; se a resposta a "eu venderia isso separado?" for não, é feature flag e fica fora do registro — senão `billing` vira o catálogo de todas as funcionalidades do produto
+- **Capacidade de acesso** — booleana: tem ou não tem. Aplicada declarativamente no adaptador (`requiredCapability` em `routes.ts` e em `McpToolDefinition`), fora do use case
+- **Capacidade de limite** — numérica: tem, até um teto. Aplicada imperativamente no use case (`CapabilityLimitPolicy`), porque só ele sabe quantos itens existem e a contagem precisa da atomicidade da transação. `max_properties` é a primeira
+- **Registro de capacidades** (`CAPABILITY_REGISTRY`) — a declaração **em código** de quais capacidades existem: chave, tipo, valor padrão, obrigatoriedade no gateway, rótulo humano e chave de metadata. O que uma capacidade vale por plano é dado do gateway; que ela exista é código, porque algum use case a consulta
+- **Conjunto de capacidades** (`CapabilitySet`) — os valores já resolvidos para uma assinatura concreta; vive dentro do `Entitlement`, ao lado de `has_platform_access`. O conjunto **vazio** (conta sem assinatura) não é o conjunto padrão: padrão é o nível gratuito, vazio é nada
+- Variação qualitativa entre planos se modela como **várias capacidades de acesso** (`export_csv` + `export_pdf`), nunca como um tipo com valor de conjunto ou enum — isso exigiria inventar um formato de serialização em metadata antes de existir um caso real
 
 ### Vocabulário do Gateway de Pagamento
 
@@ -89,6 +100,7 @@ Plataforma de gestão de alugueis de curta duração. Proprietários cadastram i
 - **Sincronização de catálogo** — aplicar uma entrada/aposentadoria ao catálogo local, dirigida por webhook (`SyncPlanCatalogEntryUseCase`)
 - **Reconciliação de catálogo** — ler o catálogo inteiro do gateway e aplicá-lo, sob demanda (`ReconcilePlanCatalogFromGatewayUseCase`); roda no boot da aplicação e via `POST /billing/catalog/sync` (`adminOnly`)
 - **Plano aposentado** — `Plan` com `deleted_at` preenchido: some da vitrine (`allOffered`), continua resolvível para quem já assina. Nunca "deletado"
+- **Chave de metadata** (`metadata_key`) — o nome sob o qual uma capacidade é declarada no `metadata` do Price. Declarada por entrada do registro e deliberadamente distinta da **chave interna** (`key`) que os use cases consultam: é o que permite `max_properties` no código conviver com `sogio_max_properties` no dashboard sem que renomear um obrigue a renomear o outro
 
 ### Eventos de Domínio
 
