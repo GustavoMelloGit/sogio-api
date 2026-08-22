@@ -468,4 +468,62 @@ describe("SubscriptionAccessPolicy", () => {
       );
     });
   });
+
+  describe("canceled — full capability set, not just max_properties (D-8)", () => {
+    const proPlanWithReports = Plan.create({
+      code: "pro",
+      name: "Pro",
+      price_amount: 4990,
+      billing_interval: "monthly",
+      capabilities: { max_properties: 5, export_reports: true },
+      trial_days: 14,
+    });
+
+    const freePlanWithoutReports = Plan.create({
+      code: "free",
+      name: "Free",
+      price_amount: 0,
+      billing_interval: "monthly",
+      capabilities: { max_properties: 1, export_reports: false },
+      trial_days: 0,
+    });
+
+    it("keeps the Pro plan's export_reports access while the canceled period hasn't ended yet", () => {
+      const subscription = makeSubscription({
+        plan_id: proPlanWithReports.id,
+        status: "canceled",
+        canceled_at: PAST,
+        current_period_start: PAST,
+        current_period_end: FUTURE,
+      });
+
+      const entitlement = SubscriptionAccessPolicy.resolve(
+        subscription,
+        proPlanWithReports,
+        freePlanWithoutReports,
+        NOW
+      );
+
+      expect(entitlement.capabilities.allows("export_reports")).toBe(true);
+    });
+
+    it("drops export_reports access once the canceled period has ended, falling back to the Free plan's capability set", () => {
+      const subscription = makeSubscription({
+        plan_id: proPlanWithReports.id,
+        status: "canceled",
+        canceled_at: PAST,
+        current_period_start: PAST,
+        current_period_end: PAST,
+      });
+
+      const entitlement = SubscriptionAccessPolicy.resolve(
+        subscription,
+        proPlanWithReports,
+        freePlanWithoutReports,
+        NOW
+      );
+
+      expect(entitlement.capabilities.allows("export_reports")).toBe(false);
+    });
+  });
 });

@@ -163,3 +163,86 @@ describe("registerMcpTool", () => {
     });
   });
 });
+
+describe("registerMcpTool — requiredCapability gate (D-5, D-6)", () => {
+  it("rejects the call with a tool error when the resolved capability set lacks the required access capability", async () => {
+    const server = new McpServer({ name: "test-server", version: "1.0.0" });
+    let handlerCalled = false;
+
+    const registeredTool = registerMcpTool(
+      server,
+      fakeUser,
+      CapabilitySet.of({}),
+      {
+        name: "export_reports",
+        description: "Exports a report",
+        inputSchema: {},
+        requiredCapability: "export_reports",
+        handler: async () => {
+          handlerCalled = true;
+          return { ok: true };
+        },
+      }
+    );
+
+    const result = await callTool(registeredTool, {}, makeExtra());
+
+    expect(result).toEqual({
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: "Your current plan doesn't include report exports. Upgrade your plan to unlock it.",
+        },
+      ],
+    });
+    expect(handlerCalled).toBe(false);
+  });
+
+  it("lets the call through when the resolved capability set grants the required access capability", async () => {
+    const server = new McpServer({ name: "test-server", version: "1.0.0" });
+
+    const registeredTool = registerMcpTool(
+      server,
+      fakeUser,
+      CapabilitySet.of({ export_reports: true }),
+      {
+        name: "export_reports",
+        description: "Exports a report",
+        inputSchema: {},
+        requiredCapability: "export_reports",
+        handler: async () => ({ ok: true }),
+      }
+    );
+
+    const result = await callTool(registeredTool, {}, makeExtra());
+
+    expect(result).toEqual({
+      content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
+    });
+  });
+
+  it("lets an admin through regardless of the resolved capability set", async () => {
+    const server = new McpServer({ name: "test-server", version: "1.0.0" });
+    const adminUser = { ...fakeUser, role: "admin" } as User;
+
+    const registeredTool = registerMcpTool(
+      server,
+      adminUser,
+      CapabilitySet.of({}),
+      {
+        name: "export_reports",
+        description: "Exports a report",
+        inputSchema: {},
+        requiredCapability: "export_reports",
+        handler: async () => ({ ok: true }),
+      }
+    );
+
+    const result = await callTool(registeredTool, {}, makeExtra());
+
+    expect(result).toEqual({
+      content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
+    });
+  });
+});
