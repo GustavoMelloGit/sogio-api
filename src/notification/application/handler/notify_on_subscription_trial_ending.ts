@@ -3,13 +3,6 @@ import type { EventHandler } from "../../../core/application/event/event_handler
 import type { Logger } from "../../../core/application/logger/logger";
 import type { NotificationService } from "../service/notification_service";
 
-const DATE_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
-  timeZone: "America/Sao_Paulo",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
-
 export class NotifyOnSubscriptionTrialEnding
   implements EventHandler<SubscriptionTrialEndingEvent>
 {
@@ -23,8 +16,7 @@ export class NotifyOnSubscriptionTrialEnding
       await this.notificationService.notify({
         user_id: event.user_id,
         type: "subscription_trial_ending",
-        title: "Seu período de teste está acabando",
-        body: `Seu período de teste termina em ${DATE_FORMATTER.format(event.trial_ends_at)}. Escolha um plano para continuar com acesso à plataforma.`,
+        payload: { trial_ends_at: event.trial_ends_at },
       });
     } catch (error) {
       this.logger.error("Failed to enqueue trial ending notification", {

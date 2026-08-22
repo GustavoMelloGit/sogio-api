@@ -184,6 +184,16 @@ const authControllers: Route[] = [
   {
     authenticated: true,
     allowWithoutPlatformAccess: true,
+    controller: authDi.makeGetUserPreferencesController(),
+  },
+  {
+    authenticated: true,
+    allowWithoutPlatformAccess: true,
+    controller: authDi.makeUpdateUserPreferencesController(),
+  },
+  {
+    authenticated: true,
+    allowWithoutPlatformAccess: true,
     controller: authDi.makePurgeUserDataController(),
   },
   {
@@ -403,6 +413,7 @@ controllers.forEach(
 );
 
 const handleMcpRequest = makeMcpRequestHandler({
+  authDi,
   propertyDi,
   stayDi,
   financeDi,

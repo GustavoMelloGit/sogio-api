@@ -9,23 +9,23 @@ Hoje todo texto de notificação nasce em português dentro do handler, e toda d
 1. **A preferência vive em `auth`, no perfil do usuário** — não em `notification`. Idioma serve à aplicação inteira (email de recuperação de senha, descrição de ledger, mensagens futuras), não só a notificações.
 2. **`locale` e `time_zone` são dois campos separados**, na mesma entrega, expostos pela mesma rota. São ortogonais: um brasileiro morando em Portugal quer português com fuso de Lisboa.
 3. **O texto mora em código, por tipo de notificação** — no mesmo registro que já declara os tipos, no idioma do `CAPABILITY_REGISTRY`. Criar um tipo de notificação já é deploy; quem cria o tipo escreve o texto, revisado em PR.
-4. **A renderização acontece na entrega, não na criação.** A notificação passa a persistir os *fatos* do evento; o texto é produzido no idioma corrente do usuário quando a notificação sai.
+4. **A renderização acontece na entrega, não na criação.** A notificação passa a persistir os _fatos_ do evento; o texto é produzido no idioma corrente do usuário quando a notificação sai.
 
 ## Personas
 
 - **Arquiteto** (`arquiteto.md`, opus) — este documento.
 - **Desenvolvedor** (`desenvolvedor.md`, sonnet) — implementação.
-- **Analista de Segurança** (`analista_seguranca.md`, opus) — o `data` da notificação passa a guardar fatos do evento em `jsonb`; é dado pessoal e precisa continuar caindo no purge LGPD, e o payload não pode virar depósito de dado sensível.
+- **Analista de Segurança** (`analista_seguranca.md`, opus) — o `payload` da notificação passa a guardar fatos do evento em `jsonb`; é dado pessoal e precisa continuar caindo no purge LGPD, e o payload não pode virar depósito de dado sensível.
 
 ## Linguagem ubíqua
 
-| Termo | Significado |
-| --- | --- |
-| **Locale** | O idioma escolhido pelo usuário (`pt-BR`, `en-US`). Preferência de perfil, não de notificação. |
-| **TimeZone** | Fuso IANA escolhido pelo usuário (`America/Sao_Paulo`, `Europe/Lisbon`). Preferência de perfil. |
-| **NotificationPayload** (`data`) | Os fatos do evento que originou a notificação, persistidos e **independentes de idioma** (ex.: `grace_period_ends_at`). |
-| **NotificationContent** | O par título/corpo já renderizado, em um idioma concreto. Nunca é persistido. |
-| **NotificationContentRenderer** | O serviço de domínio que resolve `NotificationContent` a partir de `(type, payload, locale, time_zone)`. |
+| Termo                               | Significado                                                                                                                                                                                                             |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Locale**                          | O idioma escolhido pelo usuário (`pt-BR`, `en-US`). Preferência de perfil, não de notificação.                                                                                                                          |
+| **TimeZone**                        | Fuso IANA escolhido pelo usuário (`America/Sao_Paulo`, `Europe/Lisbon`). Preferência de perfil.                                                                                                                         |
+| **NotificationPayload** (`payload`) | Os fatos do evento que originou a notificação, persistidos e **independentes de idioma** (ex.: `grace_period_ends_at`). Chama-se `payload`, não `data`, porque `Notification.data` já é o registro inteiro da entidade. |
+| **NotificationContent**             | O par título/corpo já renderizado, em um idioma concreto. Nunca é persistido.                                                                                                                                           |
+| **NotificationContentRenderer**     | O serviço de domínio que resolve `NotificationContent` a partir de `(type, payload, locale, time_zone)`.                                                                                                                |
 
 ## Desenho
 
@@ -33,15 +33,15 @@ Hoje todo texto de notificação nasce em português dentro do handler, e toda d
 Handler (NotifyOn<Evento>)
    │  publica FATOS, nunca texto
    ▼
-NotificationService.notify({ user_id, type, data })
+NotificationService.notify({ user_id, type, payload })
    │
    ▼
-[ notifications ]   type + data (jsonb)   ← sem title/body
+[ notifications ]   type + payload (jsonb)   ← sem title/body
    ▲
    │  claimDue() — já faz JOIN com users
    │  o JOIN passa a trazer locale e time_zone junto de name/email
 DeliverPendingNotificationsUseCase
-   │  NotificationContentRenderer.render(notification, recipient.locale, recipient.time_zone)
+   │  NotificationContentRenderer.render(type, payload, recipient.locale, recipient.time_zone)
    ▼
 NotificationChannel.deliver(notification, recipient, content)
 ```
@@ -66,7 +66,7 @@ Ficam no mesmo arquivo porque são a mesma decisão: adicionar um tipo de notifi
 
 ### D4 — Renderizar na entrega
 
-`notifications.title` e `notifications.body` saem; entra `notifications.data` (`jsonb`). O texto é produzido em `DeliverPendingNotificationsUseCase`, imediatamente antes de chamar o canal, e entregue ao canal como argumento — o canal continua burro e não conhece idioma.
+`notifications.title` e `notifications.body` saem; entra `notifications.payload` (`jsonb`). O texto é produzido em `DeliverPendingNotificationsUseCase`, imediatamente antes de chamar o canal, e entregue ao canal como argumento — o canal continua burro e não conhece idioma.
 
 Consequência aceita: se o usuário trocar de idioma entre a criação e a entrega, **vale o idioma novo**. É o comportamento correto para uma fila cuja latência normal é de segundos, e é o que permite a caixa de entrada in-app futura renderizar no idioma do momento da leitura.
 
@@ -74,17 +74,21 @@ Consequência aceita: se o usuário trocar de idioma entre a criação e a entre
 
 `NotificationRecipient` ganha `locale` e `time_zone`. `claimDue` já faz `innerJoin` com `usersTable` para montar o destinatário — basta selecionar duas colunas a mais. Nenhuma porta cross-BC nova, nenhuma ida extra ao banco no caminho de entrega.
 
-### D6 — Notificação irrenderizável falha sozinha
+### D6 — Notificação irrenderizável falha sozinha; idioma sem tradução não existe
 
-Tipo fora do registro, payload que não passa no schema: a notificação vira `failed` com `last_error`, e o lote continua. É a mesma decisão de fail-safe que `DeliverPendingNotificationsUseCase` já toma para canal inexistente — um tipo quebrado nunca pode travar a fila dos outros. Locale sem tradução declarada cai para `pt-BR` (o locale-âncora), com `warn`, em vez de falhar: mesma assimetria do I-4 — entregar em português é degradação, não entregar é perda.
+Tipo fora do registro, payload que não passa no schema: a notificação vira `failed` com `last_error`, e o lote continua. É a mesma decisão de fail-safe que `DeliverPendingNotificationsUseCase` já toma para canal inexistente — um tipo quebrado nunca pode travar a fila dos outros.
+
+Idioma sem tradução, por outro lado, **não é um caso de runtime**: `label` e `content` são `Record<Locale, ...>` totais, então acrescentar um idioma a `SUPPORTED_LOCALES` sem traduzir um tipo existente não compila. Escolha deliberada sobre um fallback com `warn`: um idioma em que a plataforma não consegue escrever não é um idioma suportado, e o compilador é um lugar melhor para descobrir isso do que a caixa de entrada de um usuário. O payload também é validado **na criação** (`PersistingNotificationService`), não só na entrega, para que um handler quebrado apareça no log no momento do evento em vez de 30 segundos depois.
 
 ### I-N1 (invariante nova) — Nenhum texto voltado ao usuário nasce em um handler
 
 Handler de notificação publica fatos, nunca strings de conteúdo. É o que impede o problema desta issue de voltar na próxima notificação criada. Travado por teste sobre os handlers.
 
-### Risco: a migration é destrutiva
+### Risco: a migration — resolvido, mas com um achado
 
-`title`/`body` são dropadas. As colunas foram criadas na PR #51 (mergeada hoje) e uma notificação pendente vive segundos até ser drenada, então não há histórico a preservar. Registrado explicitamente porque a decisão só é barata **agora**.
+O risco previsto era dropar `title`/`body`. Ao gerar a migration descobriu-se que **a PR #51 não gerou migration nenhuma** para `notifications` e `notification_preferences` — as tabelas existem só em bancos que rodaram `db:push`. O deploy roda `bun run db:migrate` (`.github/workflows/deploy.yml`), então em produção essas tabelas ainda não existem e o BC `notification` está inerte lá.
+
+Resultado: `drizzle/0012` **cria** as duas tabelas — já com `payload` no lugar de `title`/`body` — em vez de alterá-las, e nada é dropado. A migration fecha a lacuna da PR #51 e entrega esta issue no mesmo passo. A ressalva é para um banco em que alguém tenha rodado `db:push` manualmente: lá o `CREATE TABLE` falha e as colunas legadas precisam sair à mão.
 
 ## Fora de escopo (dívida registrada, não paga aqui)
 
@@ -98,7 +102,7 @@ Handler de notificação publica fatos, nunca strings de conteúdo. É o que imp
 
 - **`src/core/domain/locale/locale.ts`** (novo) — `SUPPORTED_LOCALES` (`pt-BR`, `en-US`), tipo `Locale`, `DEFAULT_LOCALE`, `DEFAULT_TIME_ZONE`, schema Zod de locale e de time zone (fuso IANA validado contra `Intl`).
 - **`src/core/infra/database/drizzle/schemas/auth_schemas.ts`** — colunas `locale` e `time_zone` em `usersTable`, `notNull` com default.
-- **`src/core/infra/database/drizzle/schemas/notification_schemas.ts`** — remove `title`/`body`, adiciona `data` (`jsonb`, `notNull`).
+- **`src/core/infra/database/drizzle/schemas/notification_schemas.ts`** — remove `title`/`body`, adiciona `payload` (`jsonb`, `notNull`).
 - **`src/core/infra/http/routes/routes.ts`** — registrar as rotas de preferência de perfil (`authenticated: true`, `allowWithoutPlatformAccess: true` — é conta própria, mesmo tratamento de `/auth/me`).
 - **`src/core/infra/mcp/routes.ts`** — registrar as duas tools novas.
 - **migration** — `bun run db:migration`.
@@ -116,11 +120,11 @@ Handler de notificação publica fatos, nunca strings de conteúdo. É o que imp
 ### `notification`
 
 - **`src/notification/domain/notification_type/notification_type_registry.ts`** — cada entrada ganha `payload` (schema Zod), `label` por locale e `content` por locale.
-- **`src/notification/domain/service/notification_content_renderer.ts`** (novo) — resolve `NotificationContent` a partir de `(type, data, locale, time_zone)`; formatação de data via `Intl` com o locale e o fuso recebidos.
-- **`src/notification/domain/entity/notification.ts`** — `title`/`body` saem, entra `data`.
+- **`src/notification/domain/service/notification_content_renderer.ts`** (novo) — resolve `NotificationContent` a partir de `(type, payload, locale, time_zone)`; formatação de data via `Intl` com o locale e o fuso recebidos.
+- **`src/notification/domain/entity/notification.ts`** — `title`/`body` saem, entra `payload`.
 - **`src/notification/domain/service/notification_channel.ts`** — `NotificationRecipient` ganha `locale` e `time_zone`; `deliver` passa a receber `NotificationContent`.
-- **`src/notification/application/service/notification_service.ts`** — `NotifyInput` passa a ser `{ user_id, type, data, scheduled_for? }`.
-- **`src/notification/application/service/persisting_notification_service.ts`** — valida `data` contra o schema do tipo e persiste.
+- **`src/notification/application/service/notification_service.ts`** — `NotifyInput` passa a ser `{ user_id, type, payload, scheduled_for? }`.
+- **`src/notification/application/service/persisting_notification_service.ts`** — valida `payload` contra o schema do tipo e persiste.
 - **`src/notification/application/use_case/deliver_pending_notifications.ts`** — renderiza antes de entregar; falha isolada quando irrenderizável.
 - **`src/notification/application/use_case/get_notification_preferences.ts`** — `label` resolvido pelo locale do usuário.
 - **`src/notification/application/handler/notify_on_subscription_payment_failed.ts`** e **`notify_on_subscription_trial_ending.ts`** — perdem as strings e o `Intl.DateTimeFormat`; passam a publicar fatos.
@@ -137,7 +141,7 @@ Handler de notificação publica fatos, nunca strings de conteúdo. É o que imp
 
 1. **Shared kernel de locale** — `core/domain/locale/`: locales suportados, defaults, schemas.
    - Dependencies: none
-2. **Schema e migration** — `locale`/`time_zone` em `users`; `title`/`body` → `data` em `notifications`.
+2. **Schema e migration** — `locale`/`time_zone` em `users`; `title`/`body` → `payload` em `notifications`.
    - Dependencies: task 1
 3. **`User` + repositório de `auth`** — campos na entidade, mutador dedicado, método de escrita segregado no repositório.
    - Dependencies: tasks 1, 2
@@ -147,13 +151,13 @@ Handler de notificação publica fatos, nunca strings de conteúdo. É o que imp
    - Dependencies: task 4
 6. **Registro de tipos com payload e conteúdo por locale** — `payload`, `label` por locale, `content` por locale para os dois tipos existentes.
    - Dependencies: task 1
-7. **`NotificationContentRenderer`** — renderização e formatação de data por locale/fuso, fallback para o locale-âncora.
+7. **`NotificationContentRenderer`** — renderização e formatação de data por locale/fuso; devolve `null`, nunca lança, quando o tipo ou o payload não permitem renderizar.
    - Dependencies: task 6
-8. **`Notification` + `NotificationRecipient` + porta do canal** — `data` no lugar de `title`/`body`; destinatário com locale/fuso; `deliver` recebendo conteúdo.
+8. **`Notification` + `NotificationRecipient` + porta do canal** — `payload` no lugar de `title`/`body`; destinatário com locale/fuso; `deliver` recebendo conteúdo.
    - Dependencies: tasks 2, 6
-9. **`NotificationService` e implementação** — `NotifyInput` com `data`, validação contra o schema do tipo.
+9. **`NotificationService` e implementação** — `NotifyInput` com `payload`, validação contra o schema do tipo.
    - Dependencies: task 8
-10. **Repositório de notificação** — `claimDue` trazendo locale/fuso; persistência de `data`.
+10. **Repositório de notificação** — `claimDue` trazendo locale/fuso; persistência de `payload`.
     - Dependencies: tasks 2, 8
 11. **`DeliverPendingNotificationsUseCase`** — renderizar antes de entregar, isolar falha de renderização.
     - Dependencies: tasks 7, 10
@@ -165,7 +169,7 @@ Handler de notificação publica fatos, nunca strings de conteúdo. É o que imp
     - Dependencies: tasks 3, 6
 15. **DI + wiring de `notification`** — renderizador injetado.
     - Dependencies: tasks 11, 12, 13, 14
-16. **Testes** — entrega em `pt-BR` e em `en-US` com data no fuso escolhido; default de quem nunca configurou; troca de idioma entre criação e entrega valendo o novo; payload inválido não derruba o lote; locale sem tradução cai no âncora; I-N1 (handlers sem string de conteúdo); rota e tool de preferência; purge LGPD continuando verde.
+16. **Testes** — entrega em `pt-BR` e em `en-US` com data no fuso escolhido; default de quem nunca configurou; troca de idioma entre criação e entrega valendo o novo; payload inválido não derruba o lote; I-N1 (handlers sem string de conteúdo); rota e tool de preferência; purge LGPD continuando verde.
     - Dependencies: tasks 5, 15
 17. **Documentação** — `CLAUDE.md` e I-N1 no `arquiteto.md`.
     - Dependencies: task 16

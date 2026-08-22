@@ -3,6 +3,13 @@ import {
   type WithoutBaseEntity,
 } from "../../../core/domain/entity/base_entity";
 import { z } from "zod";
+import {
+  DEFAULT_LOCALE,
+  DEFAULT_TIME_ZONE,
+  localeSchema,
+  timeZoneSchema,
+  type Locale,
+} from "../../../core/domain/locale/locale";
 
 export type UserRole = "user" | "admin";
 
@@ -14,6 +21,8 @@ export const userSchema = baseEntitySchema.extend({
   email: z.string().email().max(255),
   password: passwordSchema,
   role: z.enum(["user", "admin"]).optional().default("user"),
+  locale: localeSchema.optional().default(DEFAULT_LOCALE),
+  time_zone: timeZoneSchema.optional().default(DEFAULT_TIME_ZONE),
 });
 
 export type UserData = z.infer<typeof userSchema>;
@@ -52,6 +61,13 @@ export class User {
     this.#data.updated_at = new Date();
   }
 
+  /** Restrito a idioma e fuso (R10/R12) — nunca um setter genérico, para que `role` e `email` não virem vetor de mass assignment. */
+  public changePreferences(input: { locale: Locale; time_zone: string }): void {
+    this.#data.locale = localeSchema.parse(input.locale);
+    this.#data.time_zone = timeZoneSchema.parse(input.time_zone);
+    this.#data.updated_at = new Date();
+  }
+
   get id() {
     return this.#data.id;
   }
@@ -82,5 +98,13 @@ export class User {
 
   get role(): UserRole {
     return this.#data.role;
+  }
+
+  get locale(): Locale {
+    return this.#data.locale;
+  }
+
+  get time_zone(): string {
+    return this.#data.time_zone;
   }
 }

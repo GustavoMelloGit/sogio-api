@@ -19,6 +19,8 @@ import type {
   NotificationRecipient,
 } from "../../src/notification/domain/service/notification_channel";
 import type { Notification } from "../../src/notification/domain/entity/notification";
+import { NotificationContentRenderer } from "../../src/notification/domain/service/notification_content_renderer";
+import type { NotificationContent } from "../../src/notification/domain/notification_type/notification_type_registry";
 import type { NotificationTypeKey } from "../../src/notification/domain/notification_type/notification_type_registry";
 import "../helpers/server";
 
@@ -30,19 +32,21 @@ class RecordingChannel implements NotificationChannel {
   readonly delivered: Array<{
     notification: Notification;
     recipient: NotificationRecipient;
+    content: NotificationContent;
   }> = [];
 
   constructor(private readonly failWith?: string) {}
 
   async deliver(
     notification: Notification,
-    recipient: NotificationRecipient
+    recipient: NotificationRecipient,
+    content: NotificationContent
   ): Promise<void> {
     if (this.failWith) {
       throw new Error(this.failWith);
     }
 
-    this.delivered.push({ notification, recipient });
+    this.delivered.push({ notification, recipient, content });
   }
 }
 
@@ -61,6 +65,7 @@ function makeDelivery(channel: NotificationChannel) {
   return new DeliverPendingNotificationsUseCase(
     new ConsoleLogger(),
     notificationRepository,
+    new NotificationContentRenderer(),
     [channel]
   );
 }
@@ -93,8 +98,7 @@ describe("Notification delivery", () => {
     await makeService().notify({
       user_id: user.id,
       type: TYPE,
-      title: "Falha no pagamento",
-      body: "Regularize sua assinatura.",
+      payload: { grace_period_ends_at: new Date("2040-06-10T12:00:00Z") },
     });
 
     const rows = await rowsOf(user.id);
@@ -109,8 +113,7 @@ describe("Notification delivery", () => {
     await makeService().notify({
       user_id: user.id,
       type: TYPE,
-      title: "Falha no pagamento",
-      body: "Regularize sua assinatura.",
+      payload: { grace_period_ends_at: new Date("2040-06-10T12:00:00Z") },
     });
 
     const channel = new RecordingChannel();
@@ -131,8 +134,7 @@ describe("Notification delivery", () => {
     await makeService().notify({
       user_id: user.id,
       type: TYPE,
-      title: "Falha no pagamento",
-      body: "Regularize sua assinatura.",
+      payload: { grace_period_ends_at: new Date("2040-06-10T12:00:00Z") },
     });
 
     const channel = new RecordingChannel();
@@ -150,8 +152,7 @@ describe("Notification delivery", () => {
     await makeService().notify({
       user_id: user.id,
       type: TYPE,
-      title: "Falha no pagamento",
-      body: "Regularize sua assinatura.",
+      payload: { grace_period_ends_at: new Date("2040-06-10T12:00:00Z") },
     });
 
     const result = await makeDelivery(
@@ -172,8 +173,7 @@ describe("Notification delivery", () => {
     await makeService().notify({
       user_id: user.id,
       type: TYPE,
-      title: "Falha no pagamento",
-      body: "Regularize sua assinatura.",
+      payload: { grace_period_ends_at: new Date("2040-06-10T12:00:00Z") },
     });
 
     const delivery = makeDelivery(new RecordingChannel("smtp is down"));
@@ -201,8 +201,7 @@ describe("Notification delivery", () => {
     await makeService().notify({
       user_id: user.id,
       type: TYPE,
-      title: "Falha no pagamento",
-      body: "Regularize sua assinatura.",
+      payload: { grace_period_ends_at: new Date("2040-06-10T12:00:00Z") },
       scheduled_for: new Date(Date.now() + 60 * 60 * 1000),
     });
 
@@ -222,8 +221,7 @@ describe("Notification delivery", () => {
     await makeService().notify({
       user_id: user.id,
       type: "does_not_exist" as NotificationTypeKey,
-      title: "Nada",
-      body: "Nada",
+      payload: { grace_period_ends_at: new Date("2040-06-10T12:00:00Z") },
     });
 
     expect(await rowsOf(user.id)).toHaveLength(0);
@@ -234,8 +232,7 @@ describe("Notification delivery", () => {
     await makeService().notify({
       user_id: user.id,
       type: TYPE,
-      title: "Falha no pagamento",
-      body: "Regularize sua assinatura.",
+      payload: { grace_period_ends_at: new Date("2040-06-10T12:00:00Z") },
     });
 
     await db.insert(notificationPreferencesTable).values({
