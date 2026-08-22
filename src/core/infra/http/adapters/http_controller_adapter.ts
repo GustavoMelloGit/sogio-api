@@ -305,6 +305,18 @@ export function BunHttpControllerAdapter(
   allowWithoutPlatformAccess: boolean = false,
   requiredCapability?: CapabilityKey
 ) {
+  if (requiredCapability && !authenticated && !adminOnly) {
+    throw new Error(
+      `Route ${controller.method} ${controller.path} declares requiredCapability but is neither authenticated nor adminOnly, so the check would never run`
+    );
+  }
+
+  if (requiredCapability && adminOnly) {
+    throw new Error(
+      `Route ${controller.method} ${controller.path} declares requiredCapability together with adminOnly, which bypasses the check entirely`
+    );
+  }
+
   return async function (
     request: Request,
     server?: Server<unknown>
@@ -427,7 +439,12 @@ export function BunHttpControllerAdapter(
 
       if (Error.isError(e)) {
         const errorCode = errorCodeMap[e.name];
-        if (errorCode) {
+        if (errorCode && e.name === IllegalStateError.name) {
+          errorResponse = Response.json(
+            { message: "Internal server error" },
+            { status: errorCode }
+          );
+        } else if (errorCode) {
           errorResponse = Response.json(
             { message: e.message },
             { status: errorCode }

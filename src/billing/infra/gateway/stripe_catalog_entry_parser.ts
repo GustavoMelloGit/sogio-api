@@ -59,10 +59,11 @@ export function parseStripeCatalogEntry(
     return null;
   }
 
-  const capabilities = parseCapabilities(price, logger);
-  if (capabilities === null) {
+  const parsedCapabilities = parseCapabilities(price, logger);
+  if (parsedCapabilities === null) {
     return null;
   }
+  const { capabilities, fallbackKeys } = parsedCapabilities;
 
   const trial_days = parseTrialDays(price.metadata.sogio_trial_days);
   if (trial_days === null) {
@@ -110,6 +111,13 @@ export function parseStripeCatalogEntry(
     return null;
   }
 
+  if (fallbackKeys.length > 0) {
+    logger.warn(
+      "Capability metadata absent for one or more capabilities; falling back to registry defaults (D-3)",
+      { price_id: price.id, capabilities: fallbackKeys }
+    );
+  }
+
   return {
     external_price_reference: price.id,
     external_product_reference: idOf(price.product),
@@ -145,8 +153,12 @@ function parseName(raw: string | undefined): string | null {
 function parseCapabilities(
   price: Stripe.Price,
   logger: Logger
-): Record<CapabilityKey, boolean | number> | null {
+): {
+  capabilities: Record<CapabilityKey, boolean | number>;
+  fallbackKeys: CapabilityKey[];
+} | null {
   const capabilities = {} as Record<CapabilityKey, boolean | number>;
+  const fallbackKeys: CapabilityKey[] = [];
 
   for (const entry of CAPABILITY_REGISTRY) {
     const raw = price.metadata[entry.metadata_key];
@@ -163,15 +175,7 @@ function parseCapabilities(
         );
         return null;
       }
-      logger.warn(
-        "Capability metadata absent; falling back to registry default (D-3)",
-        {
-          price_id: price.id,
-          capability: entry.key,
-          metadata_key: entry.metadata_key,
-          default: entry.default,
-        }
-      );
+      fallbackKeys.push(entry.key);
       capabilities[entry.key] = entry.default;
       continue;
     }
@@ -193,7 +197,7 @@ function parseCapabilities(
     capabilities[entry.key] = value;
   }
 
-  return capabilities;
+  return { capabilities, fallbackKeys };
 }
 
 function parseAccessCapabilityValue(raw: string): boolean | null {

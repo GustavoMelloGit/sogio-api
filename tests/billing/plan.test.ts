@@ -42,3 +42,24 @@ describe("Plan — capabilities schema tolerates an unknown key (D-7)", () => {
     });
   });
 });
+
+describe("Plan.capabilities — getter never leaks a mutable reference (C-3)", () => {
+  it("does not let a caller mutate the entity's internal state through the returned object", () => {
+    const plan = reconstituteLegacyPlan();
+
+    const capabilities = plan.capabilities;
+    capabilities.max_properties = 999;
+    capabilities.injected_key = "attacker controlled";
+
+    expect(plan.capabilities).toEqual({
+      max_properties: 3,
+      chave_que_nao_existe: 99,
+    });
+  });
+
+  it("returns a fresh object on every call", () => {
+    const plan = reconstituteLegacyPlan();
+
+    expect(plan.capabilities).not.toBe(plan.capabilities);
+  });
+});

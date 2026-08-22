@@ -7,27 +7,43 @@ import {
 
 export type CapabilityValues = Record<string, unknown>;
 
+export type CapabilityFallback = {
+  key: CapabilityKey;
+  reason: "absent" | "wrong_type";
+};
+
 export class CapabilitySet {
   readonly #values: Record<CapabilityKey, boolean | number>;
+  readonly #fallbacks: readonly CapabilityFallback[];
 
-  private constructor(values: Record<CapabilityKey, boolean | number>) {
+  private constructor(
+    values: Record<CapabilityKey, boolean | number>,
+    fallbacks: readonly CapabilityFallback[]
+  ) {
     this.#values = values;
+    this.#fallbacks = fallbacks;
   }
 
   public static of(values: CapabilityValues): CapabilitySet {
+    const fallbacks: CapabilityFallback[] = [];
     const resolved = CAPABILITY_REGISTRY.reduce(
       (acc, entry) => {
         const value = values[entry.key];
-        if (entry.kind === "access") {
-          acc[entry.key] = typeof value === "boolean" ? value : entry.default;
+        const expectedType = entry.kind === "access" ? "boolean" : "number";
+        if (typeof value === expectedType) {
+          acc[entry.key] = value as boolean | number;
         } else {
-          acc[entry.key] = typeof value === "number" ? value : entry.default;
+          fallbacks.push({
+            key: entry.key,
+            reason: value === undefined ? "absent" : "wrong_type",
+          });
+          acc[entry.key] = entry.default;
         }
         return acc;
       },
       {} as Record<CapabilityKey, boolean | number>
     );
-    return new CapabilitySet(resolved);
+    return new CapabilitySet(resolved, fallbacks);
   }
 
   public static empty(): CapabilitySet {
@@ -38,7 +54,11 @@ export class CapabilitySet {
       },
       {} as Record<CapabilityKey, boolean | number>
     );
-    return new CapabilitySet(values);
+    return new CapabilitySet(values, []);
+  }
+
+  get fallbacks(): readonly CapabilityFallback[] {
+    return this.#fallbacks;
   }
 
   allows(key: CapabilityKey): boolean {

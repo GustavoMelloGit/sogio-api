@@ -34,7 +34,13 @@ Cada entrada do registro declara sua própria `metadata_key`. Consequência deli
 
 I-3 já vale para planos ("ausência nunca aposenta"). Esta entrega estende a mesma ideia para capacidades: um Price que não declara uma capacidade recebe o **valor padrão declarado no registro**, não "não tem".
 
-Isso é uma escolha consciente de degradar aberto. O cenário que justifica: a reconciliação de catálogo do boot é **não-fatal** e pulada em `test`/sem `STRIPE_SECRET_KEY`. Se ela falhar contra um banco parcialmente populado e a regra fosse fail-closed, todo plano perderia toda capacidade e o produto inteiro escureceria para todos os clientes pagantes de uma vez. O custo do fail-open é entregar recurso pago de graça até alguém notar; o custo do fail-closed é uma indisponibilidade total disparada por uma falha de rede no boot. O primeiro é recuperável, o segundo não.
+Isso é uma escolha consciente de degradar aberto.
+
+> **Correção pós-revisão de segurança.** A justificativa original desta decisão era falsa e foi reescrita. Ela dizia: "a reconciliação de catálogo do boot é não-fatal, e sob fail-closed uma falha de rede no boot escureceria o produto para todos os pagantes de uma vez". **Essa reconciliação de boot não existe** — foi removida em `30592e8 refactor: drop boot-time catalog reconciliation`. O Arquiteto a leu numa linha desatualizada do `CLAUDE.md` (desatualizada desde aquele commit) e não conferiu contra `src/index.ts`. Hoje a reconciliação só roda por ação deliberada de um admin em `POST /billing/catalog/sync`, com alguém olhando o resultado. A decisão de degradar aberto **permanece**, pelo motivo abaixo; o cenário que a autorizava não.
+
+O motivo real é a assimetria dos erros. `required: true` já cobre o que não pode faltar — é por isso que `max_properties` invalida a entrada inteira quando ausente. O fail-open governa portanto apenas capacidade que o dashboard **ainda não declarou**: negá-la puniria todo assinante por um campo que ninguém preencheu, enquanto concedê-la entrega recurso de graça até alguém notar. O primeiro é quebra de produto para quem paga; o segundo é receita perdida e recuperável.
+
+Isso só se sustenta enquanto o fail-open for **visível**. Dois logs sustentam a decisão, e remover qualquer um deles a invalida: um `warn` por entrada de catálogo aceita no parser (batelado, listando as chaves que caíram no padrão, emitido só depois de todas as validações), e o `warn` de `SyncPlanCatalogEntryUseCase` alimentado por `CapabilitySet.fallbacks` no caminho de escrita.
 
 Exceção declarada por capacidade: o registro tem um campo `required`. `required: true` significa que a ausência **invalida a entrada de catálogo inteira**, exatamente como `sogio_max_properties` se comporta hoje. `max_properties` nasce `required: true` — assim o comportamento atual é preservado ao pé da letra, e um Price de Pro com a chave digitada errada continua sendo rejeitado em vez de virar silenciosamente um plano de 1 imóvel.
 
@@ -87,6 +93,15 @@ A guarda é de **runtime**, não de tipos. Separar `CapabilityKey` em uniões po
 | Migration derruba a coluna e um processo antigo em execução quebra.                                             | Deploy é instância única atrás de nginx; a janela é o restart. Alternativa expand/contract (duas entregas) fica registrada como opção se isso mudar. |
 | `GET /billing/subscription/status` deixa de expor `max_properties` no topo e quebra o frontend.                 | **Coordenação cross-repo necessária.** Ver Task 10 — o frontend precisa passar a ler `capabilities.max_properties`.                                  |
 | A IA no `/mcp` recebe "seu plano não cobre isso" e não tem como dizer qual plano cobre.                         | Task 11 cria a tool MCP de status da assinatura, que hoje não existe apesar de ser um caso de uso de escopo de usuário.                              |
+
+## Registrado para depois (revisão de segurança)
+
+Achados aceitos e **não** corrigidos nesta entrega. Cada um tem a decisão registrada aqui em vez de virar dívida silenciosa:
+
+- **Migration sem caminho de volta.** `0011` faz add + backfill + drop num passo. A aplicação é atômica, mas não há down migration: um rollback do binário contra o schema novo faz `planSchema.parse` lançar em toda resolução de entitlement — 500 em toda rota autenticada e no `/mcp`. Se for preciso, a recuperação é forward-only: recriar a coluna com `COALESCE((capabilities->>'max_properties')::int, 1)`.
+- **Piso global de capacidade de limite.** `MIN_LIMIT_CAPABILITY_VALUE = 1` foi herdado literalmente de `max_properties` e virou global. Impede expressar "o plano Free tem 0 de X" — e a tentativa não devolve 0, rejeita a entrada de catálogo inteira. É a única parte fail-closed do mecanismo. A segunda capacidade de limite que precisar de faixa própria força mover `min`/`max` para o registro.
+- **`export_reports` sem consumidor.** Continua no registro, e aparece como `false` na resposta pública de `GET /billing/plans`. Virou load-bearing: sem nenhuma capacidade de acesso, `AccessCapabilityKey` seria `never` e a tipagem de `requiredCapability` (correção C-1) não existiria. Sai do registro quando ganhar um consumidor real ou quando outra capacidade de acesso a substituir nesse papel.
+- **Bypass de admin codificado em dois lugares.** No MCP, admin recebe `CapabilitySet.empty()` e é salvo pela condição `user.role !== "admin"` no adaptador. Remover essa condição achando que o conjunto passado já é o do admin negaria o admin em tudo — o conjunto vazio é o mais restritivo que existe. Um predicado único (`isExemptFromCapabilityGate`) resolveria.
 
 ## Mapped Changes
 

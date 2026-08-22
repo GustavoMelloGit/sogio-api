@@ -13,7 +13,7 @@ import { FinanceDi } from "../../../../finance/infra/di/finance_di";
 import { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
 import { BackofficeDi } from "../../../../backoffice/infra/di/backoffice_di";
 import { BillingDi } from "../../../../billing/infra/di/billing_di";
-import type { CapabilityKey } from "../../../../billing/domain/capability/capability_key";
+import type { AccessCapabilityKey } from "../../../../billing/domain/capability/capability_registry";
 import { OpenApiBuilder } from "../swagger/open_api_builder";
 import { scalarUiHtml } from "../swagger/scalar_ui";
 import { makeMcpRequestHandler } from "../../mcp/routes";
@@ -47,7 +47,7 @@ type Route = {
    * protocol step itself). See `.claude/plans/2026-08-15-add-billing-subscriptions.md`.
    */
   allowWithoutPlatformAccess?: boolean;
-  requiredCapability?: CapabilityKey;
+  requiredCapability?: AccessCapabilityKey;
 };
 
 const healthController: Route = {

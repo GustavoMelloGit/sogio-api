@@ -256,7 +256,7 @@ describe("parseStripeCatalogEntry — sogio_max_properties (DA-4)", () => {
 });
 
 describe("parseStripeCatalogEntry — sogio_export_reports (D-3)", () => {
-  it("falls back to the registry default and warns when sogio_export_reports is absent", () => {
+  it("falls back to the registry default and warns once, after every validation, when sogio_export_reports is absent (C-6)", () => {
     const { logger, warnCalls } = makeSpyLogger();
     const price = makePrice({ metadata: { ...VALID_METADATA } });
 
@@ -264,12 +264,10 @@ describe("parseStripeCatalogEntry — sogio_export_reports (D-3)", () => {
 
     expect(entry?.capabilities.export_reports).toBe(false);
     expect(warnCalls).toContainEqual([
-      "Capability metadata absent; falling back to registry default (D-3)",
+      "Capability metadata absent for one or more capabilities; falling back to registry defaults (D-3)",
       {
         price_id: "price_test_1",
-        capability: "export_reports",
-        metadata_key: "sogio_export_reports",
-        default: false,
+        capabilities: ["export_reports"],
       },
     ]);
   });
@@ -284,7 +282,22 @@ describe("parseStripeCatalogEntry — sogio_export_reports (D-3)", () => {
 
     expect(entry?.capabilities.export_reports).toBe(true);
     expect(
-      warnCalls.some(([, context]) => context?.capability === "export_reports")
+      warnCalls.some(([message]) => message.includes("falling back"))
+    ).toBe(false);
+  });
+
+  it("never warns about the fallback for an entry that ends up rejected by a later validation (C-6)", () => {
+    const { logger, warnCalls } = makeSpyLogger();
+    const price = makePrice({
+      metadata: { ...VALID_METADATA },
+      currency: "usd",
+    });
+
+    const entry = parseStripeCatalogEntry(price, logger);
+
+    expect(entry).toBeNull();
+    expect(
+      warnCalls.some(([message]) => message.includes("falling back"))
     ).toBe(false);
   });
 

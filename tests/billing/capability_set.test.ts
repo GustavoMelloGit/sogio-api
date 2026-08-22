@@ -73,3 +73,36 @@ describe("CapabilitySet.of — resolution ignores keys outside the registry (D-7
     });
   });
 });
+
+describe("CapabilitySet.of — reports a fallback when a value falls back to the registry default (C-5)", () => {
+  it("reports reason 'absent' when a capability key is missing entirely", () => {
+    const set = CapabilitySet.of({ export_reports: true });
+
+    expect(set.fallbacks).toEqual([
+      { key: "max_properties", reason: "absent" },
+    ]);
+  });
+
+  it("reports reason 'wrong_type' when a capability value has the wrong type", () => {
+    const set = CapabilitySet.of({
+      max_properties: "not-a-number",
+      export_reports: true,
+    });
+
+    expect(set.fallbacks).toEqual([
+      { key: "max_properties", reason: "wrong_type" },
+    ]);
+  });
+
+  it("reports no fallback when every capability resolves from an explicit, correctly-typed value", () => {
+    const set = CapabilitySet.of({ max_properties: 5, export_reports: true });
+
+    expect(set.fallbacks).toEqual([]);
+  });
+
+  it("never reports a fallback for empty() — zeroing is deliberate, not a degradation", () => {
+    const set = CapabilitySet.empty();
+
+    expect(set.fallbacks).toEqual([]);
+  });
+});

@@ -11,7 +11,6 @@ describe("mapErrorToToolResult", () => {
   it.each([
     ["ConflictError", new ConflictError("Property already booked")],
     ["ForbiddenError", new ForbiddenError("You cannot manage this property")],
-    ["IllegalStateError", new IllegalStateError("Invalid stay state")],
     ["ResourceNotFoundError", new ResourceNotFoundError("Stay not found")],
     ["UnauthorizedError", new UnauthorizedError("Unauthorized")],
     ["ValidationError", new ValidationError("Invalid input")],
@@ -20,6 +19,19 @@ describe("mapErrorToToolResult", () => {
 
     expect(result.isError).toBe(true);
     expect(result.content).toEqual([{ type: "text", text: error.message }]);
+  });
+
+  it("returns a generic message for IllegalStateError instead of its developer-facing message (C-4)", () => {
+    const error = new IllegalStateError(
+      'Capability "max_properties" is a "limit" capability; use limitOf() instead of allows()'
+    );
+
+    const result = mapErrorToToolResult(error);
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual([
+      { type: "text", text: "Internal server error" },
+    ]);
   });
 
   it("returns a generic message for an unmapped Error", () => {

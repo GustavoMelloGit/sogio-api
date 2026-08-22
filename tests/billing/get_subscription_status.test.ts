@@ -10,7 +10,6 @@ const TABLES = ["properties", "addresses", "users"];
 type StatusBody = {
   has_platform_access: boolean;
   status: string;
-  max_properties: number;
   plan: { id: string; code: string; name: string } | null;
   blocked_reason?: string;
 };

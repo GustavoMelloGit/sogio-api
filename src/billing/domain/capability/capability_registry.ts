@@ -23,7 +23,7 @@ export type CapabilityRegistryEntry =
   | AccessCapabilityRegistryEntry
   | LimitCapabilityRegistryEntry;
 
-export const CAPABILITY_REGISTRY: readonly CapabilityRegistryEntry[] = [
+export const CAPABILITY_REGISTRY = [
   {
     key: "max_properties",
     kind: "limit",
@@ -40,7 +40,12 @@ export const CAPABILITY_REGISTRY: readonly CapabilityRegistryEntry[] = [
     label: "report exports",
     metadata_key: "sogio_export_reports",
   },
-];
+] as const satisfies readonly CapabilityRegistryEntry[];
+
+export type AccessCapabilityKey = Extract<
+  (typeof CAPABILITY_REGISTRY)[number],
+  { kind: "access" }
+>["key"];
 
 export function capabilityRegistryEntryOf(
   key: CapabilityKey

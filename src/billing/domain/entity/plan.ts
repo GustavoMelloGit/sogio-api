@@ -113,7 +113,7 @@ export class Plan {
   }
 
   get capabilities() {
-    return this.#data.capabilities;
+    return { ...this.#data.capabilities };
   }
 
   get trial_days() {

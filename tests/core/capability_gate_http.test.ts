@@ -7,6 +7,7 @@ import { BunHttpControllerAdapter } from "../../src/core/infra/http/adapters/htt
 import type { EntitlementService } from "../../src/billing/application/service/entitlement_service";
 import { Entitlement } from "../../src/billing/domain/value_object/entitlement";
 import { CapabilitySet } from "../../src/billing/domain/capability/capability_set";
+import { IllegalStateError } from "../../src/core/application/error/illegal_state_error";
 import { truncate } from "../helpers/database";
 import {
   createAdminFixture,
@@ -148,5 +149,118 @@ describe("requiredCapability gate through BunHttpControllerAdapter (D-5, D-6)", 
     });
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe("BunHttpControllerAdapter — requiredCapability configuration guard (C-2)", () => {
+  it("throws at construction when requiredCapability is declared on a route that is neither authenticated nor adminOnly", () => {
+    const controller = new FakeCapabilityGatedController(
+      "/__test/capability/misconfigured-unauthenticated"
+    );
+
+    expect(() =>
+      BunHttpControllerAdapter(
+        controller,
+        false,
+        grantedEntitlementService,
+        false,
+        false,
+        "export_reports"
+      )
+    ).toThrow();
+  });
+
+  it("throws at construction when requiredCapability is declared together with adminOnly", () => {
+    const controller = new FakeCapabilityGatedController(
+      "/__test/capability/misconfigured-admin-only"
+    );
+
+    expect(() =>
+      BunHttpControllerAdapter(
+        controller,
+        true,
+        grantedEntitlementService,
+        true,
+        false,
+        "export_reports"
+      )
+    ).toThrow();
+  });
+
+  it("does not throw when requiredCapability is declared on an authenticated, non-admin route", () => {
+    const controller = new FakeCapabilityGatedController(
+      "/__test/capability/misconfigured-control"
+    );
+
+    expect(() =>
+      BunHttpControllerAdapter(
+        controller,
+        true,
+        grantedEntitlementService,
+        false,
+        false,
+        "export_reports"
+      )
+    ).not.toThrow();
+  });
+});
+
+class FakeIllegalStateController implements Controller {
+  path = "/__test/capability/illegal-state";
+  method = HttpControllerMethod.GET;
+
+  async handle(): Promise<never> {
+    throw new IllegalStateError(
+      'Capability "max_properties" is a "limit" capability; use limitOf() instead of allows()'
+    );
+  }
+}
+
+const illegalStateController = new FakeIllegalStateController();
+
+const illegalStateServer = Bun.serve({
+  port: 0,
+  routes: {
+    [illegalStateController.path]: {
+      [HttpControllerMethod.GET]: BunHttpControllerAdapter(
+        illegalStateController,
+        true,
+        grantedEntitlementService
+      ),
+    },
+  },
+});
+
+const illegalStateBaseUrl = `http://localhost:${illegalStateServer.port}`;
+
+afterAll(() => {
+  illegalStateServer.stop();
+});
+
+describe("BunHttpControllerAdapter — IllegalStateError never leaks its message (C-4)", () => {
+  beforeEach(async () => {
+    await truncate(["users"]);
+  });
+
+  it("returns a generic message with status 500 instead of the developer-facing IllegalStateError message", async () => {
+    const { user } = await createUserFixture({
+      name: "Erro Interno",
+      email: "illegal.state@sogio.dev",
+      password: "password123",
+    });
+    const token = await createAuthToken(user.id);
+
+    const res = await fetch(
+      `${illegalStateBaseUrl}${illegalStateController.path}`,
+      {
+        headers: { Authorization: "Bearer " + token },
+      }
+    );
+
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { message: string };
+    expect(body.message).toBe("Internal server error");
+    expect(body.message).not.toContain("limitOf");
+    expect(body.message).not.toContain("allows");
   });
 });
