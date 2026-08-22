@@ -3,6 +3,7 @@ import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
   MAX_LIMIT,
+  MAX_PAGE,
 } from "../../../core/application/dto/pagination";
 import type { FindPropertyStaysUseCase } from "../../application/use_case/stay/find_property_stays";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
@@ -31,6 +32,7 @@ const inputSchema = {
     .number()
     .int()
     .positive()
+    .max(MAX_PAGE)
     .default(DEFAULT_PAGE)
     .describe("Page number to retrieve, starting at 1."),
   limit: z.coerce

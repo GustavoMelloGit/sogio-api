@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { BookStayUseCase } from "../../application/use_case/property/book_stay";
 import { tenantSexSchema } from "../../domain/entity/tenant";
+import { MAX_STAY_PRICE_IN_CENTS } from "../../domain/entity/stay";
+import { MAX_PROPERTY_CAPACITY } from "../../../property_management/domain/entity/property";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 export const inputSchema = {
@@ -9,7 +11,12 @@ export const inputSchema = {
     .describe(
       "ID of the property to book. Must be a property administered by the authenticated user."
     ),
-  guests: z.number().int().positive().describe("Number of guests staying."),
+  guests: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_PROPERTY_CAPACITY)
+    .describe("Number of guests staying."),
   check_in: z.iso
     .datetime({ offset: true })
     .transform(value => new Date(value))
@@ -25,6 +32,7 @@ export const inputSchema = {
   price: z
     .int()
     .nonnegative()
+    .max(MAX_STAY_PRICE_IN_CENTS)
     .describe(
       "Total stay price in cents, e.g. 100000 for R$ 1.000,00. Must be a non-negative integer."
     ),

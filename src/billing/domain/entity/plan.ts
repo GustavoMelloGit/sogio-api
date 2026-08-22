@@ -8,7 +8,10 @@ export const billingIntervalSchema = z.enum(["monthly"]);
 
 export type BillingInterval = z.infer<typeof billingIntervalSchema>;
 
-export const planCapabilitiesSchema = z.record(z.string(), z.unknown());
+export const planCapabilitiesSchema = z.record(
+  z.string().max(100),
+  z.unknown()
+);
 
 export type PlanCapabilities = z.infer<typeof planCapabilitiesSchema>;
 

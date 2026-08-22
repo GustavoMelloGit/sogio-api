@@ -10,6 +10,7 @@ import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
   MAX_LIMIT,
+  MAX_PAGE,
 } from "../../../core/application/dto/pagination";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
 import {
@@ -19,7 +20,7 @@ import {
 
 const inputSchema = z.object({
   property_id: z.uuidv4("Property ID must be a valid UUID"),
-  page: z.coerce.number().int().positive().default(DEFAULT_PAGE),
+  page: z.coerce.number().int().positive().max(MAX_PAGE).default(DEFAULT_PAGE),
   limit: z.coerce
     .number()
     .int()

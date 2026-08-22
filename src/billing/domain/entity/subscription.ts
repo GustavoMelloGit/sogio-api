@@ -27,8 +27,8 @@ export const subscriptionSchema = baseEntitySchema
     trial_ends_at: z.date().nullable().optional(),
     canceled_at: z.date().nullable().optional(),
     grace_period_ends_at: z.date().nullable().optional(),
-    external_reference: z.string().nullable().optional(),
-    external_customer_reference: z.string().nullable().optional(),
+    external_reference: z.string().max(255).nullable().optional(),
+    external_customer_reference: z.string().max(255).nullable().optional(),
 
     external_event_at: z.date().nullable().optional(),
   })

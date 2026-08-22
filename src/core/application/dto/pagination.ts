@@ -3,12 +3,13 @@ import { z } from "zod";
 export const DEFAULT_PAGE = 1;
 export const DEFAULT_LIMIT = 20;
 export const MAX_LIMIT = 100;
+export const MAX_PAGE = 10_000;
 
 /**
  * Parâmetros de entrada para paginação
  */
 export const paginationInputSchema = z.object({
-  page: z.int().positive().default(DEFAULT_PAGE),
+  page: z.int().positive().max(MAX_PAGE).default(DEFAULT_PAGE),
   limit: z.int().positive().max(MAX_LIMIT).default(DEFAULT_LIMIT),
 });
 

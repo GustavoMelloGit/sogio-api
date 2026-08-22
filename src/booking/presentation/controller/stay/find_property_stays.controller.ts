@@ -10,6 +10,7 @@ import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
   MAX_LIMIT,
+  MAX_PAGE,
 } from "../../../../core/application/dto/pagination";
 import type { OpenApiOperation } from "../../../../core/presentation/open_api/open_api_types";
 import {
@@ -22,7 +23,12 @@ const inputSchema = z
     property_id: z.uuid(),
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
-    page: z.coerce.number().int().positive().default(DEFAULT_PAGE),
+    page: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(MAX_PAGE)
+      .default(DEFAULT_PAGE),
     limit: z.coerce
       .number()
       .int()
@@ -35,7 +41,7 @@ const inputSchema = z
     path: ["from"],
   });
 
-const stayItemSchema = z.object({
+const stayItemOutputSchema = z.object({
   id: z.string().uuid(),
   check_in: z.string().datetime(),
   check_out: z.string().datetime(),
@@ -56,7 +62,7 @@ const stayItemSchema = z.object({
 });
 
 const outputSchema = z.object({
-  data: z.array(stayItemSchema),
+  data: z.array(stayItemOutputSchema),
   pagination: z.object({
     page: z.number().int(),
     limit: z.number().int(),
