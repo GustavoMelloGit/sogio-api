@@ -6,13 +6,15 @@ import {
 import { z } from "zod";
 import { Stay } from "./stay";
 import { ValidationError } from "../../../core/application/error/validation_error";
+import { MAX_PROPERTY_CAPACITY } from "../../../property_management/domain/entity/property";
 
 export const bookingPropertySchema = baseEntitySchema.extend({
-  name: z.string().min(1, "Name is required"),
+  name: z.string().min(1, "Name is required").max(100),
   user_id: z.uuidv4("User ID is required and must be a valid UUID"),
   capacity: z
     .int("Capacity is required and must be a positive integer")
-    .positive("Capacity must be a positive integer"),
+    .positive("Capacity must be a positive integer")
+    .max(MAX_PROPERTY_CAPACITY),
 });
 
 export type BookingPropertyData = z.infer<typeof bookingPropertySchema>;

@@ -3,6 +3,14 @@ import eslintConfigPrettier from "eslint-config-prettier/flat";
 import { defineConfig } from "eslint/config";
 import globals from "globals";
 import tseslint from "typescript-eslint";
+import { sogioPlugin } from "./eslint-rules/index.js";
+
+const IGNORED_SCHEMA_NAMES = [
+  "^outputSchema$",
+  "OutputSchema$",
+  "ResponseSchema$",
+  "^envSchema$",
+];
 
 export default defineConfig([
   {
@@ -25,6 +33,20 @@ export default defineConfig([
       "@typescript-eslint/no-unused-vars": [
         "error",
         { ignoreRestSiblings: true },
+      ],
+    },
+  },
+  {
+    files: ["src/**/*.ts"],
+    plugins: { sogio: sogioPlugin },
+    rules: {
+      "sogio/zod-int-bounds": [
+        "error",
+        { ignoredSchemaNames: IGNORED_SCHEMA_NAMES },
+      ],
+      "sogio/zod-string-max": [
+        "error",
+        { ignoredSchemaNames: IGNORED_SCHEMA_NAMES },
       ],
     },
   },

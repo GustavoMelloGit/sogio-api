@@ -5,15 +5,18 @@ import {
   type WithoutBaseEntity,
 } from "../../../core/domain/entity/base_entity";
 import { z } from "zod";
+import { MAX_PROPERTY_CAPACITY } from "../../../property_management/domain/entity/property";
+
+export const MAX_STAY_PRICE_IN_CENTS = 100_000_000;
 
 export const staySchema = baseEntitySchema.extend({
   check_in: z.date(),
   check_out: z.date(),
   tenant_id: z.uuidv4(),
   property_id: z.uuidv4(),
-  guests: z.number().int().positive(),
+  guests: z.number().int().positive().max(MAX_PROPERTY_CAPACITY),
   entrance_code: z.string().max(10),
-  price: z.number().int().nonnegative(),
+  price: z.number().int().nonnegative().max(MAX_STAY_PRICE_IN_CENTS),
   source: z.string().max(100),
 });
 

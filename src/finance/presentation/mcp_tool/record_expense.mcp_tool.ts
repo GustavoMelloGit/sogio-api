@@ -1,6 +1,9 @@
 import { z } from "zod";
 import type { RecordExpenseUseCase } from "../../application/use_case/record_expense";
-import { expenseCategorySchema } from "../../domain/entity/ledger_entry";
+import {
+  expenseCategorySchema,
+  MAX_LEDGER_AMOUNT_IN_CENTS,
+} from "../../domain/entity/ledger_entry";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 export const inputSchema = {
@@ -12,6 +15,7 @@ export const inputSchema = {
   amount: z
     .int()
     .positive()
+    .max(MAX_LEDGER_AMOUNT_IN_CENTS)
     .describe(
       "Expense amount in cents, e.g. 1050 for R$ 10,50. Must be a positive integer."
     ),

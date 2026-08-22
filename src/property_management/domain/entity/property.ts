@@ -7,6 +7,8 @@ import {
 import { Address } from "../value_object/address";
 import type { DeepPartial } from "../../../core/application/types/deep_partial";
 
+export const MAX_PROPERTY_CAPACITY = 1_000;
+
 export const propertySchema = baseEntitySchema.extend({
   name: z.string().min(1, "Name is required").max(100),
   user_id: z.uuidv4("User ID is required and must be a valid UUID"),
@@ -21,7 +23,11 @@ export const propertySchema = baseEntitySchema.extend({
     complement: z.string().max(100).default(""),
   }),
   images: z.array(z.string().max(2048)).min(1, "Images are required"),
-  capacity: z.number().int().positive("Capacity must be greater than 0"),
+  capacity: z
+    .number()
+    .int()
+    .positive("Capacity must be greater than 0")
+    .max(MAX_PROPERTY_CAPACITY),
 });
 
 export type PropertyData = z.infer<typeof propertySchema>;

@@ -16,8 +16,13 @@ export const expenseCategorySchema = z.enum([
 
 export type ExpenseCategory = z.infer<typeof expenseCategorySchema>;
 
+export const MAX_LEDGER_AMOUNT_IN_CENTS = 100_000_000;
+
 export const ledgerEntrySchema = baseEntitySchema.extend({
-  amount: z.int(),
+  amount: z
+    .int()
+    .min(-MAX_LEDGER_AMOUNT_IN_CENTS)
+    .max(MAX_LEDGER_AMOUNT_IN_CENTS),
   description: z.string().max(500).nullable(),
   category: z.string().max(100),
   property_id: z.uuidv4(),
