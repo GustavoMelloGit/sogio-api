@@ -7,6 +7,10 @@ import { RecordRevenueOnStayPaymentConfirmed } from "../../application/handler/r
 import { RecordExpenseUseCase } from "../../application/use_case/record_expense";
 import { RecordRevenueUseCase } from "../../application/use_case/record_revenue";
 import { FindPropertyFinancialMovementsUseCase } from "../../application/use_case/find_property_financial_movements";
+import { ImportLedgerEntriesUseCase } from "../../application/use_case/import_ledger_entries";
+import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
+import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
+import { ImportRunner } from "../../../core/application/import/import_runner";
 import type { LedgerEntryRepository } from "../../domain/repository/ledger_entry_repository";
 import { RecordExpenseController } from "../../presentation/controller/record_expense.controller";
 import { RecordRevenueController } from "../../presentation/controller/record_revenue.controller";
@@ -25,12 +29,16 @@ export class FinanceDi {
   #eventDispatcher: EventDispatcher;
   #ledgerEntryRepository: LedgerEntryRepository;
   #propertyRepository: PropertyRepository;
+  #transactionRunner: TransactionRunner;
+  #importRunner: ImportRunner;
 
   constructor() {
     this.#logger = new ConsoleLogger();
     this.#eventDispatcher = inMemoryEventDispatcher;
     this.#ledgerEntryRepository = new LedgerEntryPostgresRepository();
     this.#propertyRepository = new PropertyPostgresRepository();
+    this.#transactionRunner = new DrizzleTransactionRunner();
+    this.#importRunner = new ImportRunner(this.#transactionRunner);
   }
 
   registerEventHandlers(): void {
@@ -87,6 +95,14 @@ export class FinanceDi {
     return new FindPropertyFinancialMovementsUseCase(
       this.#ledgerEntryRepository,
       this.#propertyRepository
+    );
+  }
+
+  makeImportLedgerEntriesUseCase() {
+    return new ImportLedgerEntriesUseCase(
+      this.#ledgerEntryRepository,
+      this.#propertyRepository,
+      this.#importRunner
     );
   }
 
