@@ -15,6 +15,8 @@ import { makeRecordExpenseTool } from "../../presentation/mcp_tool/record_expens
 import { LedgerEntryPostgresRepository } from "../database/postgres_repository/ledger_entry_postgres_repository";
 import { RevertRevenueOnStayCancel } from "../../application/handler/revert_revenue_on_stay_cancel";
 import { StayCanceledEvent } from "../../../booking/domain/event/stay_canceled_event";
+import { RecordRevenueOnStayImported } from "../../application/handler/record_revenue_on_stay_imported";
+import { StayImportedEvent } from "../../../booking/domain/event/stay_imported_event";
 import type { PropertyRepository } from "../../../property_management/domain/repository/property_repository";
 import { PropertyPostgresRepository } from "../../../property_management/infra/database/postgres_repository/property_postgres_repository";
 
@@ -40,6 +42,10 @@ export class FinanceDi {
       StayCanceledEvent.NAME,
       this.makeRevertRevenueOnStayCancelHandler()
     );
+    this.#eventDispatcher.register(
+      StayImportedEvent.NAME,
+      this.makeRecordRevenueOnStayImportedHandler()
+    );
   }
 
   // Handlers
@@ -51,6 +57,12 @@ export class FinanceDi {
   }
   makeRevertRevenueOnStayCancelHandler() {
     return new RevertRevenueOnStayCancel(
+      this.#logger,
+      this.#ledgerEntryRepository
+    );
+  }
+  makeRecordRevenueOnStayImportedHandler() {
+    return new RecordRevenueOnStayImported(
       this.#logger,
       this.#ledgerEntryRepository
     );
