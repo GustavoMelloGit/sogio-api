@@ -2,12 +2,14 @@ import type Stripe from "stripe";
 import type { Logger } from "../../../core/application/logger/logger";
 import { env } from "../../../core/infra/config/environments";
 import type { GatewayCatalogEntry } from "../../application/gateway/gateway_catalog_entry";
+import type { CapabilityKey } from "../../domain/capability/capability_key";
+import { CAPABILITY_REGISTRY } from "../../domain/capability/capability_registry";
 import type { BillingInterval } from "../../domain/entity/plan";
 
 const CODE_PATTERN = /^[a-z][a-z0-9_]{0,49}$/;
 const MAX_NAME_LENGTH = 100;
-const MIN_MAX_PROPERTIES = 1;
-const MAX_MAX_PROPERTIES = 10_000;
+const MIN_LIMIT_CAPABILITY_VALUE = 1;
+const MAX_LIMIT_CAPABILITY_VALUE = 10_000;
 const MIN_TRIAL_DAYS = 0;
 const MAX_TRIAL_DAYS = 365;
 
@@ -57,14 +59,8 @@ export function parseStripeCatalogEntry(
     return null;
   }
 
-  const max_properties = parseMaxProperties(
-    price.metadata.sogio_max_properties
-  );
-  if (max_properties === null) {
-    logger.warn(
-      "Ignoring catalog entry: missing, non-integer, or out-of-range sogio_max_properties",
-      { price_id: price.id }
-    );
+  const capabilities = parseCapabilities(price, logger);
+  if (capabilities === null) {
     return null;
   }
 
@@ -121,7 +117,7 @@ export function parseStripeCatalogEntry(
     name,
     price_amount: price.unit_amount,
     billing_interval,
-    max_properties,
+    capabilities,
     trial_days,
     is_offered: price.active,
   };
@@ -146,11 +142,75 @@ function parseName(raw: string | undefined): string | null {
     : trimmed;
 }
 
-function parseMaxProperties(raw: string | undefined): number | null {
-  if (raw === undefined) return null;
+function parseCapabilities(
+  price: Stripe.Price,
+  logger: Logger
+): Record<CapabilityKey, boolean | number> | null {
+  const capabilities = {} as Record<CapabilityKey, boolean | number>;
+
+  for (const entry of CAPABILITY_REGISTRY) {
+    const raw = price.metadata[entry.metadata_key];
+
+    if (raw === undefined) {
+      if (entry.required) {
+        logger.warn(
+          "Ignoring catalog entry: missing required capability metadata",
+          {
+            price_id: price.id,
+            capability: entry.key,
+            metadata_key: entry.metadata_key,
+          }
+        );
+        return null;
+      }
+      logger.warn(
+        "Capability metadata absent; falling back to registry default (D-3)",
+        {
+          price_id: price.id,
+          capability: entry.key,
+          metadata_key: entry.metadata_key,
+          default: entry.default,
+        }
+      );
+      capabilities[entry.key] = entry.default;
+      continue;
+    }
+
+    const value =
+      entry.kind === "access"
+        ? parseAccessCapabilityValue(raw)
+        : parseLimitCapabilityValue(raw);
+
+    if (value === null) {
+      logger.warn("Ignoring catalog entry: invalid capability metadata", {
+        price_id: price.id,
+        capability: entry.key,
+        metadata_key: entry.metadata_key,
+      });
+      return null;
+    }
+
+    capabilities[entry.key] = value;
+  }
+
+  return capabilities;
+}
+
+function parseAccessCapabilityValue(raw: string): boolean | null {
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  return null;
+}
+
+function parseLimitCapabilityValue(raw: string): number | null {
   const value = Number(raw);
   if (!Number.isInteger(value)) return null;
-  if (value < MIN_MAX_PROPERTIES || value > MAX_MAX_PROPERTIES) return null;
+  if (
+    value < MIN_LIMIT_CAPABILITY_VALUE ||
+    value > MAX_LIMIT_CAPABILITY_VALUE
+  ) {
+    return null;
+  }
   return value;
 }
 
