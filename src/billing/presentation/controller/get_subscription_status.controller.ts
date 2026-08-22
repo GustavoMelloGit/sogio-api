@@ -36,7 +36,11 @@ export class GetSubscriptionStatusController implements Controller {
       "Returns the authenticated user's current platform entitlement — whether they have access, their subscription status, plan limits and, if blocked, why.",
     tags: ["Billing"],
     responses: {
-      "200": responseFromZod("Current subscription status", outputSchema),
+      "200": responseFromZod("Current subscription status", outputSchema, {
+        has_platform_access: true,
+        status: "active",
+        max_properties: 5,
+      }),
       "401": errorResponse("Unauthorized"),
     },
   };

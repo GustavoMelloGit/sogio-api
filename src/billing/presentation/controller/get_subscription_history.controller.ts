@@ -84,7 +84,40 @@ export class GetSubscriptionHistoryController implements Controller {
       },
     ],
     responses: {
-      "200": responseFromZod("Paginated subscription history", outputSchema),
+      "200": responseFromZod("Paginated subscription history", outputSchema, {
+        data: [
+          {
+            id: "b8a1f4d2-6c3e-4f57-9a20-5e7d1c8b3f92",
+            type: "payment_failed",
+            resulting_status: "past_due",
+            plan_id: "7b2d9e04-1c5f-4e83-8a77-9f0c3b5d2e64",
+            plan_code: "pro",
+            plan_name: "Pro",
+            occurred_at: "2026-08-18T09:12:44.000Z",
+            access_until: "2026-08-25T09:12:44.000Z",
+            reason: "insufficient_funds",
+          },
+          {
+            id: "1d5c8e30-9b47-4a62-8f13-c0a6d2b74e51",
+            type: "started",
+            resulting_status: "trialing",
+            plan_id: "7b2d9e04-1c5f-4e83-8a77-9f0c3b5d2e64",
+            plan_code: "pro",
+            plan_name: "Pro",
+            occurred_at: "2026-08-01T14:03:07.000Z",
+            access_until: "2026-08-15T14:03:07.000Z",
+            reason: null,
+          },
+        ],
+        pagination: {
+          page: 1,
+          limit: 20,
+          total: 2,
+          total_pages: 1,
+          has_next: false,
+          has_previous: false,
+        },
+      }),
       "401": errorResponse("Unauthorized"),
     },
   };

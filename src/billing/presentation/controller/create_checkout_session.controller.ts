@@ -41,7 +41,9 @@ export class CreateCheckoutSessionController implements Controller {
       "Creates a hosted checkout session for the given plan and returns its URL. The caller only ever gets redirected — no card data ever reaches this API.",
     tags: ["Billing"],
     responses: {
-      "200": responseFromZod("Checkout session URL", outputSchema),
+      "200": responseFromZod("Checkout session URL", outputSchema, {
+        url: "https://checkout.stripe.com/c/pay/cs_test_a1FpQ8xKZ2mWvL9nY3bR7dJ6",
+      }),
       "401": errorResponse("Unauthorized"),
       "404": errorResponse("Plan or subscription not found"),
       "409": errorResponse("A gateway subscription is already live"),
