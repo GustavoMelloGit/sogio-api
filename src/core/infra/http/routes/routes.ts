@@ -28,7 +28,7 @@ const financeDi = new FinanceDi();
  * dispatcher from its constructor (not idempotent) — must be instantiated
  * exactly once and this single instance reused everywhere (DA-7).
  */
-export const billingDi = new BillingDi();
+const billingDi = new BillingDi();
 const propertyManagementDi = new PropertyManagementDi(
   billingDi.makeEntitlementService(),
   stayDi.makeStayPropertyOccupancy()
