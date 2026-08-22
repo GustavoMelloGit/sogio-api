@@ -3,7 +3,11 @@ import {
   Subscription,
   type SubscriptionStatus,
 } from "../../../domain/entity/subscription";
-import { Plan, type BillingInterval } from "../../../domain/entity/plan";
+import {
+  Plan,
+  type BillingInterval,
+  type PlanCapabilities,
+} from "../../../domain/entity/plan";
 import type {
   SubscriptionRepository,
   SubscriptionWithPlan,
@@ -38,6 +42,7 @@ export class SubscriptionPostgresRepository implements SubscriptionRepository {
       plan: Plan.reconstitute({
         ...row.plan,
         billing_interval: row.plan.billing_interval as BillingInterval,
+        capabilities: row.plan.capabilities as PlanCapabilities,
       }),
     };
   }

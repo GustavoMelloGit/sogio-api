@@ -6,6 +6,7 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { baseSchema } from "./base_schema";
@@ -19,7 +20,7 @@ export const plansTable = pgTable(
     name: varchar({ length: 100 }).notNull(),
     price_amount: integer().notNull(),
     billing_interval: varchar({ length: 20 }).notNull(),
-    max_properties: integer().notNull(),
+    capabilities: jsonb().notNull().default({}),
     trial_days: integer().notNull(),
     external_price_reference: varchar({ length: 255 }),
 
