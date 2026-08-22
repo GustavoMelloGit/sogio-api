@@ -26,7 +26,7 @@ describe("seedPlans (DA-10 — dev/test fixture only)", () => {
     const original = {
       name: pro.name,
       price_amount: pro.price_amount,
-      max_properties: pro.max_properties,
+      capabilities: pro.capabilities,
       trial_days: pro.trial_days,
       external_price_reference: pro.external_price_reference,
     };

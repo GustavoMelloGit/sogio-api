@@ -15,6 +15,7 @@ import type { z } from "zod";
 import type { User } from "../../src/auth/domain/entity/user";
 import { PropertyDi } from "../../src/booking/infra/di/property_di";
 import { StayDi } from "../../src/booking/infra/di/stay_di";
+import { CapabilitySet } from "../../src/billing/domain/capability/capability_set";
 import { db } from "../../src/core/infra/database/drizzle/database";
 import { staysTable } from "../../src/core/infra/database/drizzle/schema";
 import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
@@ -53,7 +54,12 @@ async function callTool(
 function registerCancelStayTool(user: User): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
 
-  return registerMcpTool(server, user, new StayDi().makeCancelStayTool());
+  return registerMcpTool(
+    server,
+    user,
+    CapabilitySet.of({}),
+    new StayDi().makeCancelStayTool()
+  );
 }
 
 async function bookStayFixture(propertyId: string, user: User) {

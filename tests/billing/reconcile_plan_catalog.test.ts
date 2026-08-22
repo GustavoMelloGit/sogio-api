@@ -96,7 +96,7 @@ describe("ReconcilePlanCatalogFromGatewayUseCase — I-3: absence never retires"
           name: "Untouched",
           price_amount: 1500,
           billing_interval: "monthly",
-          max_properties: 2,
+          capabilities: { max_properties: 2, export_reports: false },
           trial_days: 0,
           is_offered: true,
         },
@@ -127,7 +127,7 @@ describe("ReconcilePlanCatalogFromGatewayUseCase — populates the catalog (DA-5
           name: "Bootstrap Test",
           price_amount: 4200,
           billing_interval: "monthly",
-          max_properties: 8,
+          capabilities: { max_properties: 8, export_reports: false },
           trial_days: 10,
           is_offered: true,
         },
@@ -139,7 +139,7 @@ describe("ReconcilePlanCatalogFromGatewayUseCase — populates the catalog (DA-5
       const created = await planRepository.planOfCode(code);
       expect(created).not.toBeNull();
       expect(created?.price_amount).toBe(4200);
-      expect(created?.max_properties).toBe(8);
+      expect(created?.capabilities.max_properties).toBe(8);
     } finally {
       await deletePlans([code]);
     }
@@ -164,7 +164,7 @@ describe("ReconcilePlanCatalogFromGatewayUseCase — ignores staleness (DA-7)", 
           name: "Before Reconcile",
           price_amount: 1000,
           billing_interval: "monthly",
-          max_properties: 3,
+          capabilities: { max_properties: 3, export_reports: false },
           trial_days: 0,
           is_offered: true,
         },
@@ -178,7 +178,7 @@ describe("ReconcilePlanCatalogFromGatewayUseCase — ignores staleness (DA-7)", 
           name: "After Reconcile",
           price_amount: 1000,
           billing_interval: "monthly",
-          max_properties: 3,
+          capabilities: { max_properties: 3, export_reports: false },
           trial_days: 0,
           is_offered: true,
         },

@@ -13,6 +13,7 @@ import { describe, expect, it } from "bun:test";
 import { formatISO } from "date-fns";
 import { z } from "zod";
 import type { User } from "../../src/auth/domain/entity/user";
+import { CapabilitySet } from "../../src/billing/domain/capability/capability_set";
 import { ValidationError } from "../../src/core/application/error/validation_error";
 import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
 
@@ -51,16 +52,21 @@ describe("registerMcpTool", () => {
     let receivedUser: User | undefined;
     const server = new McpServer({ name: "test-server", version: "1.0.0" });
 
-    const registeredTool = registerMcpTool(server, fakeUser, {
-      name: "echo",
-      description: "Echoes the input back",
-      inputSchema: { message: z.string() },
-      handler: async (input, user) => {
-        receivedInput = input;
-        receivedUser = user;
-        return { echoed: input.message };
-      },
-    });
+    const registeredTool = registerMcpTool(
+      server,
+      fakeUser,
+      CapabilitySet.of({}),
+      {
+        name: "echo",
+        description: "Echoes the input back",
+        inputSchema: { message: z.string() },
+        handler: async (input, user) => {
+          receivedInput = input;
+          receivedUser = user;
+          return { echoed: input.message };
+        },
+      }
+    );
 
     const result = await callTool(
       registeredTool,
@@ -79,12 +85,17 @@ describe("registerMcpTool", () => {
     const server = new McpServer({ name: "test-server", version: "1.0.0" });
     const bookedAt = new Date("2026-08-07T12:00:00.000Z");
 
-    const registeredTool = registerMcpTool(server, fakeUser, {
-      name: "book",
-      description: "Books something",
-      inputSchema: {},
-      handler: async () => ({ bookedAt }),
-    });
+    const registeredTool = registerMcpTool(
+      server,
+      fakeUser,
+      CapabilitySet.of({}),
+      {
+        name: "book",
+        description: "Books something",
+        inputSchema: {},
+        handler: async () => ({ bookedAt }),
+      }
+    );
 
     const result = await callTool(registeredTool, {}, makeExtra());
 
@@ -101,14 +112,21 @@ describe("registerMcpTool", () => {
   it("maps a domain error thrown by the handler to a tool error with the domain message", async () => {
     const server = new McpServer({ name: "test-server", version: "1.0.0" });
 
-    const registeredTool = registerMcpTool(server, fakeUser, {
-      name: "fail",
-      description: "Always fails validation",
-      inputSchema: {},
-      handler: async () => {
-        throw new ValidationError("category must be one of the allowed values");
-      },
-    });
+    const registeredTool = registerMcpTool(
+      server,
+      fakeUser,
+      CapabilitySet.of({}),
+      {
+        name: "fail",
+        description: "Always fails validation",
+        inputSchema: {},
+        handler: async () => {
+          throw new ValidationError(
+            "category must be one of the allowed values"
+          );
+        },
+      }
+    );
 
     const result = await callTool(registeredTool, {}, makeExtra());
 
@@ -123,14 +141,19 @@ describe("registerMcpTool", () => {
   it("masks unexpected errors with a generic message", async () => {
     const server = new McpServer({ name: "test-server", version: "1.0.0" });
 
-    const registeredTool = registerMcpTool(server, fakeUser, {
-      name: "explode",
-      description: "Throws an unexpected error",
-      inputSchema: {},
-      handler: async () => {
-        throw new Error("leaked internal detail");
-      },
-    });
+    const registeredTool = registerMcpTool(
+      server,
+      fakeUser,
+      CapabilitySet.of({}),
+      {
+        name: "explode",
+        description: "Throws an unexpected error",
+        inputSchema: {},
+        handler: async () => {
+          throw new Error("leaked internal detail");
+        },
+      }
+    );
 
     const result = await callTool(registeredTool, {}, makeExtra());
 

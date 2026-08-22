@@ -13,6 +13,7 @@ import { describe, expect, it, beforeEach } from "bun:test";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { User } from "../../src/auth/domain/entity/user";
+import { CapabilitySet } from "../../src/billing/domain/capability/capability_set";
 import { db } from "../../src/core/infra/database/drizzle/database";
 import { ledgerEntriesTable } from "../../src/core/infra/database/drizzle/schema";
 import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
@@ -54,7 +55,12 @@ function registerRecordExpenseTool(user: User): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
   const financeDi = new FinanceDi();
 
-  return registerMcpTool(server, user, financeDi.makeRecordExpenseTool());
+  return registerMcpTool(
+    server,
+    user,
+    CapabilitySet.of({}),
+    financeDi.makeRecordExpenseTool()
+  );
 }
 
 describe("record_expense tool", () => {

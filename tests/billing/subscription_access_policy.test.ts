@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { SubscriptionAccessPolicy } from "../../src/billing/domain/policy/subscription_access_policy";
+import { CapabilitySet } from "../../src/billing/domain/capability/capability_set";
 import { Plan } from "../../src/billing/domain/entity/plan";
 import {
   Subscription,
@@ -15,7 +16,7 @@ const proPlan = Plan.create({
   name: "Pro",
   price_amount: 4990,
   billing_interval: "monthly",
-  max_properties: 5,
+  capabilities: { max_properties: 5 },
   trial_days: 14,
 });
 
@@ -24,9 +25,16 @@ const freePlan = Plan.create({
   name: "Free",
   price_amount: 0,
   billing_interval: "monthly",
-  max_properties: 1,
+  capabilities: { max_properties: 1 },
   trial_days: 0,
 });
+
+const proMaxProperties = CapabilitySet.of(proPlan.capabilities).limitOf(
+  "max_properties"
+);
+const freeMaxProperties = CapabilitySet.of(freePlan.capabilities).limitOf(
+  "max_properties"
+);
 
 function makeSubscription(overrides: Partial<SubscriptionData>): Subscription {
   return Subscription.reconstitute({
@@ -64,7 +72,9 @@ describe("SubscriptionAccessPolicy", () => {
 
       expect(entitlement.has_platform_access).toBe(true);
       expect(entitlement.status).toBe("trialing");
-      expect(entitlement.max_properties).toBe(proPlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        proMaxProperties
+      );
       expect(entitlement.blocked_reason).toBeUndefined();
     });
 
@@ -99,7 +109,9 @@ describe("SubscriptionAccessPolicy", () => {
 
       expect(entitlement.has_platform_access).toBe(false);
       expect(entitlement.blocked_reason).toBe("trial_expired");
-      expect(entitlement.max_properties).toBe(proPlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        proMaxProperties
+      );
     });
   });
 
@@ -137,7 +149,9 @@ describe("SubscriptionAccessPolicy", () => {
       );
 
       expect(entitlement.has_platform_access).toBe(true);
-      expect(entitlement.max_properties).toBe(proPlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        proMaxProperties
+      );
     });
 
     it("grants access exactly at the current_period_end boundary (inclusive)", () => {
@@ -173,7 +187,9 @@ describe("SubscriptionAccessPolicy", () => {
 
       expect(entitlement.has_platform_access).toBe(false);
       expect(entitlement.blocked_reason).toBe("period_expired");
-      expect(entitlement.max_properties).toBe(proPlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        proMaxProperties
+      );
     });
   });
 
@@ -192,7 +208,9 @@ describe("SubscriptionAccessPolicy", () => {
       );
 
       expect(entitlement.has_platform_access).toBe(true);
-      expect(entitlement.max_properties).toBe(proPlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        proMaxProperties
+      );
     });
 
     it("grants access exactly at the grace_period_ends_at boundary (inclusive)", () => {
@@ -226,7 +244,9 @@ describe("SubscriptionAccessPolicy", () => {
 
       expect(entitlement.has_platform_access).toBe(false);
       expect(entitlement.blocked_reason).toBe("payment_failed");
-      expect(entitlement.max_properties).toBe(proPlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        proMaxProperties
+      );
     });
   });
 
@@ -267,7 +287,9 @@ describe("SubscriptionAccessPolicy", () => {
 
       expect(entitlement.has_platform_access).toBe(false);
       expect(entitlement.plan?.code).toBe("pro");
-      expect(entitlement.max_properties).toBe(proPlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        proMaxProperties
+      );
     });
 
     it("reports the Free plan once a canceled subscription's period expired, agreeing with max_properties instead of the retired paid plan", () => {
@@ -290,7 +312,9 @@ describe("SubscriptionAccessPolicy", () => {
         code: "free",
         name: "Free",
       });
-      expect(entitlement.max_properties).toBe(freePlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        freeMaxProperties
+      );
     });
   });
 
@@ -311,7 +335,9 @@ describe("SubscriptionAccessPolicy", () => {
       );
 
       expect(entitlement.has_platform_access).toBe(true);
-      expect(entitlement.max_properties).toBe(proPlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        proMaxProperties
+      );
       expect(entitlement.blocked_reason).toBeUndefined();
     });
 
@@ -331,7 +357,9 @@ describe("SubscriptionAccessPolicy", () => {
       );
 
       expect(entitlement.has_platform_access).toBe(true);
-      expect(entitlement.max_properties).toBe(proPlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        proMaxProperties
+      );
     });
 
     it("reverts to the Free plan's limits once the period has expired, without blocking access", () => {
@@ -350,7 +378,9 @@ describe("SubscriptionAccessPolicy", () => {
       );
 
       expect(entitlement.has_platform_access).toBe(true);
-      expect(entitlement.max_properties).toBe(freePlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        freeMaxProperties
+      );
       expect(entitlement.blocked_reason).toBeUndefined();
     });
 
@@ -370,7 +400,9 @@ describe("SubscriptionAccessPolicy", () => {
       );
 
       expect(entitlement.has_platform_access).toBe(true);
-      expect(entitlement.max_properties).toBe(freePlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        freeMaxProperties
+      );
       expect(entitlement.blocked_reason).toBeUndefined();
     });
 
@@ -404,9 +436,11 @@ describe("SubscriptionAccessPolicy", () => {
       expect(entitlementAfterTrialWouldHaveEnded.has_platform_access).toBe(
         true
       );
-      expect(entitlementAfterTrialWouldHaveEnded.max_properties).toBe(
-        freePlan.max_properties
-      );
+      expect(
+        entitlementAfterTrialWouldHaveEnded.capabilities.limitOf(
+          "max_properties"
+        )
+      ).toBe(freeMaxProperties);
     });
 
     it("reverts to Free immediately when canceling a past_due subscription whose grace period already expired, instead of restoring paid access until the original current_period_end", () => {
@@ -429,7 +463,9 @@ describe("SubscriptionAccessPolicy", () => {
       );
 
       expect(entitlement.has_platform_access).toBe(true);
-      expect(entitlement.max_properties).toBe(freePlan.max_properties);
+      expect(entitlement.capabilities.limitOf("max_properties")).toBe(
+        freeMaxProperties
+      );
     });
   });
 });

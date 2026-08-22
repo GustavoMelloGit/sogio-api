@@ -62,7 +62,7 @@ describe("parseStripeCatalogEntry — a fully valid entry (DA-4)", () => {
       name: "Pro",
       price_amount: 2500,
       billing_interval: "monthly",
-      max_properties: 5,
+      capabilities: { max_properties: 5, export_reports: false },
       trial_days: 14,
       is_offered: true,
     });

@@ -17,7 +17,7 @@ describe("GET /billing/plans", () => {
       name: string;
       price_amount: number;
       billing_interval: string;
-      max_properties: number;
+      capabilities: Record<string, boolean | number>;
       trial_days: number;
     }>;
 
@@ -29,7 +29,7 @@ describe("GET /billing/plans", () => {
       name: "Free",
       price_amount: 0,
       billing_interval: "monthly",
-      max_properties: 1,
+      capabilities: { max_properties: 1, export_reports: false },
       trial_days: 0,
     });
     expect(pro).toMatchObject({
@@ -37,7 +37,7 @@ describe("GET /billing/plans", () => {
       name: "Pro",
       price_amount: 2500,
       billing_interval: "monthly",
-      max_properties: 5,
+      capabilities: { max_properties: 5, export_reports: false },
       trial_days: 14,
     });
   });
