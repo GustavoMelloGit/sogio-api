@@ -1,15 +1,16 @@
 import { z } from "zod";
-import { NOTIFICATION_CHANNELS } from "../../domain/notification_type/notification_type_registry";
+import {
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_TYPE_KEYS,
+} from "../../domain/notification_type/notification_type_registry";
 import type { UpdateNotificationPreferencesUseCase } from "../../application/use_case/update_notification_preferences";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 export const inputSchema = {
   type: z
-    .string()
-    .min(1)
-    .max(100)
+    .enum(NOTIFICATION_TYPE_KEYS)
     .describe(
-      "Notification type key, exactly as returned by get_notification_preferences."
+      `Notification type key. One of: ${NOTIFICATION_TYPE_KEYS.join(", ")}.`
     ),
   channel: z
     .enum(NOTIFICATION_CHANNELS)

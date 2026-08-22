@@ -11,17 +11,20 @@ import {
   errorResponse,
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
-import { NOTIFICATION_CHANNELS } from "../../domain/notification_type/notification_type_registry";
+import {
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_TYPE_KEYS,
+} from "../../domain/notification_type/notification_type_registry";
 import { ValidationError } from "../../../core/application/error/validation_error";
 
 const inputSchema = z.object({
-  type: z.string().min(1).max(100),
+  type: z.enum(NOTIFICATION_TYPE_KEYS),
   channel: z.enum(NOTIFICATION_CHANNELS),
   enabled: z.boolean(),
 });
 
 const outputSchema = z.object({
-  type: z.string().min(1).max(100),
+  type: z.enum(NOTIFICATION_TYPE_KEYS),
   channel: z.enum(NOTIFICATION_CHANNELS),
   enabled: z.boolean(),
 });
@@ -44,7 +47,11 @@ export class UpdateNotificationPreferencesController implements Controller {
             type: "object",
             required: ["type", "channel", "enabled"],
             properties: {
-              type: { type: "string", example: "stay_upcoming" },
+              type: {
+                type: "string",
+                enum: [...NOTIFICATION_TYPE_KEYS],
+                example: "subscription_trial_ending",
+              },
               channel: {
                 type: "string",
                 enum: [...NOTIFICATION_CHANNELS],
@@ -58,7 +65,7 @@ export class UpdateNotificationPreferencesController implements Controller {
     },
     responses: {
       "200": responseFromZod("Preference updated", outputSchema, {
-        type: "stay_upcoming",
+        type: "subscription_trial_ending",
         channel: "email",
         enabled: false,
       }),

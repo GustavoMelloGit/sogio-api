@@ -11,12 +11,15 @@ import {
   errorResponse,
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
-import { NOTIFICATION_CHANNELS } from "../../domain/notification_type/notification_type_registry";
+import {
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_TYPE_KEYS,
+} from "../../domain/notification_type/notification_type_registry";
 
 const outputSchema = z.object({
   preferences: z.array(
     z.object({
-      type: z.string().min(1).max(100),
+      type: z.enum(NOTIFICATION_TYPE_KEYS),
       label: z.string().min(1).max(200),
       optional: z.boolean(),
       channels: z.array(

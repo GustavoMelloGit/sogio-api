@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { baseEntitySchema } from "../../../core/domain/entity/base_entity";
 import { IllegalStateError } from "../../../core/application/error/illegal_state_error";
-import { NOTIFICATION_CHANNELS } from "../notification_type/notification_type_registry";
+import {
+  NOTIFICATION_CHANNELS,
+  type NotificationTypeKey,
+} from "../notification_type/notification_type_registry";
 
 export const MAX_DELIVERY_ATTEMPTS = 5;
 
@@ -28,7 +31,7 @@ export type NotificationData = z.infer<typeof notificationSchema>;
 
 type CreateInput = {
   user_id: string;
-  type: string;
+  type: NotificationTypeKey;
   channel: NotificationData["channel"];
   title: string;
   body: string;

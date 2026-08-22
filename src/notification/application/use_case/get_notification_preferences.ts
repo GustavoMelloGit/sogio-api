@@ -4,11 +4,12 @@ import type { NotificationPreferenceRepository } from "../../domain/repository/n
 import {
   NOTIFICATION_TYPE_REGISTRY,
   type NotificationChannelKey,
+  type NotificationTypeKey,
 } from "../../domain/notification_type/notification_type_registry";
 
 type Output = {
   preferences: Array<{
-    type: string;
+    type: NotificationTypeKey;
     label: string;
     optional: boolean;
     channels: Array<{

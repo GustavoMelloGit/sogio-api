@@ -7,16 +7,17 @@ import {
   isNotificationChannel,
   notificationTypeEntryOf,
   type NotificationChannelKey,
+  type NotificationTypeKey,
 } from "../../domain/notification_type/notification_type_registry";
 
 type Input = {
-  type: string;
-  channel: string;
+  type: NotificationTypeKey;
+  channel: NotificationChannelKey;
   enabled: boolean;
 };
 
 type Output = {
-  type: string;
+  type: NotificationTypeKey;
   channel: NotificationChannelKey;
   enabled: boolean;
 };

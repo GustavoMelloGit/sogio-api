@@ -15,6 +15,32 @@ function pendingNotification(): Notification {
   });
 }
 
+describe("Notification persisted schema", () => {
+  it("still reconstitutes a row whose type was removed from the registry", () => {
+    const now = new Date();
+
+    const notification = Notification.reconstitute({
+      id: crypto.randomUUID(),
+      created_at: now,
+      updated_at: now,
+      user_id: crypto.randomUUID(),
+      type: "a_type_that_no_longer_exists",
+      channel: "email",
+      title: "Histórico antigo",
+      body: "Uma notificação de um tipo já aposentado.",
+      status: "sent",
+      attempts: 1,
+      scheduled_for: null,
+      next_attempt_at: now,
+      sent_at: now,
+      read_at: null,
+      last_error: null,
+    });
+
+    expect(notification.type).toBe("a_type_that_no_longer_exists");
+  });
+});
+
 describe("Notification.markRead", () => {
   it("refuses to mark a pending notification as read", () => {
     const notification = pendingNotification();

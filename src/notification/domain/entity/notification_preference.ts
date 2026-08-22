@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { baseEntitySchema } from "../../../core/domain/entity/base_entity";
-import { NOTIFICATION_CHANNELS } from "../notification_type/notification_type_registry";
+import {
+  NOTIFICATION_CHANNELS,
+  type NotificationTypeKey,
+} from "../notification_type/notification_type_registry";
 
 export const notificationPreferenceSchema = baseEntitySchema.extend({
   user_id: z.uuidv4(),
@@ -25,7 +28,7 @@ export class NotificationPreference {
 
   public static create(input: {
     user_id: string;
-    type: string;
+    type: NotificationTypeKey;
     channel: NotificationPreferenceData["channel"];
     enabled: boolean;
   }): NotificationPreference {

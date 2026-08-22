@@ -19,6 +19,7 @@ import type {
   NotificationRecipient,
 } from "../../src/notification/domain/service/notification_channel";
 import type { Notification } from "../../src/notification/domain/entity/notification";
+import type { NotificationTypeKey } from "../../src/notification/domain/notification_type/notification_type_registry";
 import "../helpers/server";
 
 const TABLES = ["notifications", "notification_preferences", "users"];
@@ -215,12 +216,12 @@ describe("Notification delivery", () => {
     expect(rows[0]?.status).toBe("pending");
   });
 
-  it("ignores an unknown notification type instead of throwing", async () => {
+  it("ignores a type missing from the registry instead of throwing", async () => {
     const user = await makeUser();
 
     await makeService().notify({
       user_id: user.id,
-      type: "does_not_exist",
+      type: "does_not_exist" as NotificationTypeKey,
       title: "Nada",
       body: "Nada",
     });

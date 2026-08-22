@@ -27,6 +27,10 @@ export const NOTIFICATION_TYPE_REGISTRY = [
 export type NotificationTypeKey =
   (typeof NOTIFICATION_TYPE_REGISTRY)[number]["key"];
 
+export const NOTIFICATION_TYPE_KEYS = NOTIFICATION_TYPE_REGISTRY.map(
+  entry => entry.key
+) as [NotificationTypeKey, ...NotificationTypeKey[]];
+
 export function notificationTypeEntryOf(
   key: string
 ): NotificationTypeRegistryEntry | null {

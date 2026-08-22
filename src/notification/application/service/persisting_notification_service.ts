@@ -6,6 +6,7 @@ import type { NotificationRepository } from "../../domain/repository/notificatio
 import {
   notificationTypeEntryOf,
   type NotificationChannelKey,
+  type NotificationTypeKey,
 } from "../../domain/notification_type/notification_type_registry";
 import type { NotificationService, NotifyInput } from "./notification_service";
 
@@ -56,7 +57,7 @@ export class PersistingNotificationService implements NotificationService {
   #isEnabled(
     preferences: NotificationPreference[],
     optional: boolean,
-    type: string,
+    type: NotificationTypeKey,
     channel: NotificationChannelKey
   ): boolean {
     if (!optional) {
