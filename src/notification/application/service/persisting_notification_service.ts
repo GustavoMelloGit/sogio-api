@@ -1,5 +1,6 @@
 import type { Logger } from "../../../core/application/logger/logger";
 import { Notification } from "../../domain/entity/notification";
+import type { NotificationPreference } from "../../domain/entity/notification_preference";
 import type { NotificationPreferenceRepository } from "../../domain/repository/notification_preference_repository";
 import type { NotificationRepository } from "../../domain/repository/notification_repository";
 import {
@@ -53,7 +54,7 @@ export class PersistingNotificationService implements NotificationService {
   }
 
   #isEnabled(
-    preferences: Array<{ type: string; channel: string; enabled: boolean }>,
+    preferences: NotificationPreference[],
     optional: boolean,
     type: string,
     channel: NotificationChannelKey

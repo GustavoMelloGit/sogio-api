@@ -11,6 +11,7 @@ import {
   errorResponse,
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
+import { NOTIFICATION_CHANNELS } from "../../domain/notification_type/notification_type_registry";
 import { ValidationError } from "../../../core/application/error/validation_error";
 
 const inputSchema = z.object({
@@ -21,7 +22,7 @@ const inputSchema = z.object({
 
 const outputSchema = z.object({
   type: z.string().min(1).max(100),
-  channel: z.enum(["email"]),
+  channel: z.enum(NOTIFICATION_CHANNELS),
   enabled: z.boolean(),
 });
 

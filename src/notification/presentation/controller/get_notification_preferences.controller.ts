@@ -11,6 +11,7 @@ import {
   errorResponse,
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
+import { NOTIFICATION_CHANNELS } from "../../domain/notification_type/notification_type_registry";
 
 const outputSchema = z.object({
   preferences: z.array(
@@ -20,7 +21,7 @@ const outputSchema = z.object({
       optional: z.boolean(),
       channels: z.array(
         z.object({
-          channel: z.enum(["email"]),
+          channel: z.enum(NOTIFICATION_CHANNELS),
           enabled: z.boolean(),
         })
       ),

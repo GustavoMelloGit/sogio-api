@@ -16,6 +16,12 @@ export const NOTIFICATION_TYPE_REGISTRY = [
     default_channels: ["email"],
     optional: false,
   },
+  {
+    key: "subscription_trial_ending",
+    label: "Fim do período de teste",
+    default_channels: ["email"],
+    optional: true,
+  },
 ] as const satisfies readonly NotificationTypeRegistryEntry[];
 
 export type NotificationTypeKey =

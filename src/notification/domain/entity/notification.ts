@@ -112,6 +112,12 @@ export class Notification {
   }
 
   public markRead(): void {
+    if (this.#data.status !== "sent") {
+      throw new IllegalStateError(
+        "Cannot read a notification that was never sent"
+      );
+    }
+
     if (this.#data.read_at) {
       return;
     }

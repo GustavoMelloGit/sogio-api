@@ -3,7 +3,9 @@ import type { Logger } from "../../../core/application/logger/logger";
 import { inMemoryEventDispatcher } from "../../../core/infra/event/in_memory_event_dispatcher";
 import { CoreDi } from "../../../core/infra/di/core_di";
 import { SubscriptionPaymentFailedEvent } from "../../../billing/domain/event/subscription_payment_failed_event";
+import { SubscriptionTrialEndingEvent } from "../../../billing/domain/event/subscription_trial_ending_event";
 import { NotifyOnSubscriptionPaymentFailed } from "../../application/handler/notify_on_subscription_payment_failed";
+import { NotifyOnSubscriptionTrialEnding } from "../../application/handler/notify_on_subscription_trial_ending";
 import { PersistingNotificationService } from "../../application/service/persisting_notification_service";
 import type { NotificationService } from "../../application/service/notification_service";
 import { DeliverPendingNotificationsUseCase } from "../../application/use_case/deliver_pending_notifications";
@@ -44,6 +46,13 @@ export class NotificationDi {
     this.#eventDispatcher.register(
       SubscriptionPaymentFailedEvent.NAME,
       new NotifyOnSubscriptionPaymentFailed(
+        this.#logger,
+        this.#notificationService
+      )
+    );
+    this.#eventDispatcher.register(
+      SubscriptionTrialEndingEvent.NAME,
+      new NotifyOnSubscriptionTrialEnding(
         this.#logger,
         this.#notificationService
       )

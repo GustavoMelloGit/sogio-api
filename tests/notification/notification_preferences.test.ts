@@ -15,6 +15,8 @@ import { NotificationPreferencePostgresRepository } from "../../src/notification
 import { PersistingNotificationService } from "../../src/notification/application/service/persisting_notification_service";
 import { NotifyOnSubscriptionPaymentFailed } from "../../src/notification/application/handler/notify_on_subscription_payment_failed";
 import { SubscriptionPaymentFailedEvent } from "../../src/billing/domain/event/subscription_payment_failed_event";
+import { SubscriptionTrialEndingEvent } from "../../src/billing/domain/event/subscription_trial_ending_event";
+import { NotifyOnSubscriptionTrialEnding } from "../../src/notification/application/handler/notify_on_subscription_trial_ending";
 import { NotificationDi } from "../../src/notification/infra/di/notification_di";
 
 const TABLES = ["notifications", "notification_preferences", "users"];
@@ -28,6 +30,14 @@ type PreferencesBody = {
     channels: Array<{ channel: string; enabled: boolean }>;
   }>;
 };
+
+function makeService() {
+  return new PersistingNotificationService(
+    new ConsoleLogger(),
+    new NotificationPostgresRepository(),
+    new NotificationPreferencePostgresRepository()
+  );
+}
 
 async function authenticatedUser() {
   const { user } = await createUserFixture({
@@ -110,16 +120,74 @@ describe("Notification preferences", () => {
     );
   });
 
+  it("respects a preference the user turned off", async () => {
+    const { user, token } = await authenticatedUser();
+
+    const res = await api("/notifications/preferences", {
+      method: "PUT",
+      headers: { Authorization: "Bearer " + token },
+      body: JSON.stringify({
+        type: "subscription_trial_ending",
+        channel: "email",
+        enabled: false,
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    const handler = new NotifyOnSubscriptionTrialEnding(
+      new ConsoleLogger(),
+      makeService()
+    );
+
+    await handler.handle(
+      new SubscriptionTrialEndingEvent({
+        subscription_id: crypto.randomUUID(),
+        user_id: user.id,
+        plan_id: crypto.randomUUID(),
+        trial_ends_at: new Date("2040-06-10T12:00:00.000Z"),
+      })
+    );
+
+    const rows = await db
+      .select()
+      .from(notificationsTable)
+      .where(eq(notificationsTable.user_id, user.id));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("enqueues a trial ending notification when the preference is untouched", async () => {
+    const { user } = await authenticatedUser();
+
+    const handler = new NotifyOnSubscriptionTrialEnding(
+      new ConsoleLogger(),
+      makeService()
+    );
+
+    await handler.handle(
+      new SubscriptionTrialEndingEvent({
+        subscription_id: crypto.randomUUID(),
+        user_id: user.id,
+        plan_id: crypto.randomUUID(),
+        trial_ends_at: new Date("2040-06-10T12:00:00.000Z"),
+      })
+    );
+
+    const rows = await db
+      .select()
+      .from(notificationsTable)
+      .where(eq(notificationsTable.user_id, user.id));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.type).toBe("subscription_trial_ending");
+    expect(rows[0]?.body).toContain("10/06/2040");
+  });
+
   it("enqueues a notification when a subscription payment fails", async () => {
     const { user } = await authenticatedUser();
 
     const handler = new NotifyOnSubscriptionPaymentFailed(
       new ConsoleLogger(),
-      new PersistingNotificationService(
-        new ConsoleLogger(),
-        new NotificationPostgresRepository(),
-        new NotificationPreferencePostgresRepository()
-      )
+      makeService()
     );
 
     await handler.handle(
