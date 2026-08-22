@@ -3,6 +3,7 @@ import type { PlanRepository } from "../../domain/repository/plan_repository";
 import type { SubscriptionRepository } from "../../domain/repository/subscription_repository";
 import { SubscriptionAccessPolicy } from "../../domain/policy/subscription_access_policy";
 import { Entitlement } from "../../domain/value_object/entitlement";
+import { CapabilitySet } from "../../domain/capability/capability_set";
 
 const FREE_PLAN_CODE = "free";
 
@@ -38,7 +39,7 @@ export class SubscriptionEntitlementService implements EntitlementService {
     return Entitlement.of({
       has_platform_access: false,
       status: "none",
-      max_properties: 0,
+      capabilities: CapabilitySet.empty(),
       plan: null,
       blocked_reason: "no_subscription",
     });

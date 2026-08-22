@@ -11,16 +11,17 @@ import {
   errorResponse,
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
+import { capabilitiesSchema } from "./capabilities_schema";
 
 const outputSchema = z.object({
   has_platform_access: z.boolean(),
-  status: z.string(),
-  max_properties: z.int(),
+  status: z.enum(["none", "trialing", "active", "past_due", "canceled"]),
+  capabilities: capabilitiesSchema,
   plan: z
     .object({
       id: z.uuid(),
-      code: z.string(),
-      name: z.string(),
+      code: z.string().min(1).max(50),
+      name: z.string().min(1).max(100),
     })
     .nullable(),
   blocked_reason: z
@@ -40,13 +41,13 @@ export class GetSubscriptionStatusController implements Controller {
   openApiSpec: OpenApiOperation = {
     summary: "Get subscription status",
     description:
-      "Returns the authenticated user's current platform entitlement — whether they have access, their subscription status, the plan whose limits actually apply and, if blocked, why. The plan is the effective one: a canceled subscription past its paid period reports the Free plan, matching max_properties.",
+      "Returns the authenticated user's current platform entitlement — whether they have access, their subscription status, the plan whose limits actually apply and, if blocked, why. The plan is the effective one: a canceled subscription past its paid period reports the Free plan, matching capabilities.",
     tags: ["Billing"],
     responses: {
       "200": responseFromZod("Current subscription status", outputSchema, {
         has_platform_access: true,
         status: "active",
-        max_properties: 5,
+        capabilities: { max_properties: 5, export_reports: false },
         plan: {
           id: "7b2d9e04-1c5f-4e83-8a77-9f0c3b5d2e64",
           code: "pro",

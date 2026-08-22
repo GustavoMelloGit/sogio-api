@@ -1,5 +1,9 @@
 import { eq, isNull } from "drizzle-orm";
-import { Plan, type BillingInterval } from "../../../domain/entity/plan";
+import {
+  Plan,
+  type BillingInterval,
+  type PlanCapabilities,
+} from "../../../domain/entity/plan";
 import type { PlanRepository } from "../../../domain/repository/plan_repository";
 import { db } from "../../../../core/infra/database/drizzle/database";
 import { plansTable } from "../../../../core/infra/database/drizzle/schema";
@@ -68,7 +72,7 @@ export class PlanPostgresRepository implements PlanRepository {
       name: plan.name,
       price_amount: plan.price_amount,
       billing_interval: plan.billing_interval,
-      max_properties: plan.max_properties,
+      capabilities: plan.capabilities,
       trial_days: plan.trial_days,
       external_price_reference: plan.external_price_reference,
       external_product_reference: plan.external_product_reference,
@@ -106,6 +110,7 @@ export class PlanPostgresRepository implements PlanRepository {
     return Plan.reconstitute({
       ...row,
       billing_interval: row.billing_interval as BillingInterval,
+      capabilities: row.capabilities as PlanCapabilities,
     });
   }
 }

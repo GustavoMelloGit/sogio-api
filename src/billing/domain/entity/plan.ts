@@ -8,12 +8,16 @@ export const billingIntervalSchema = z.enum(["monthly"]);
 
 export type BillingInterval = z.infer<typeof billingIntervalSchema>;
 
+export const planCapabilitiesSchema = z.record(z.string(), z.unknown());
+
+export type PlanCapabilities = z.infer<typeof planCapabilitiesSchema>;
+
 export const planSchema = baseEntitySchema.extend({
   code: z.string().min(1).max(50),
   name: z.string().min(1).max(100),
   price_amount: z.int().min(0).max(100_000_000),
   billing_interval: billingIntervalSchema,
-  max_properties: z.int().min(1).max(10_000),
+  capabilities: planCapabilitiesSchema,
   trial_days: z.int().min(0).max(365),
   external_price_reference: z.string().max(255).nullable().optional(),
 
@@ -28,7 +32,7 @@ export type PlanCatalogSync = {
   name: string;
   price_amount: number;
   billing_interval: BillingInterval;
-  max_properties: number;
+  capabilities: PlanCapabilities;
   trial_days: number;
   external_price_reference: string;
   external_product_reference: string | null;
@@ -60,7 +64,7 @@ export class Plan {
     this.#data.name = entry.name;
     this.#data.price_amount = entry.price_amount;
     this.#data.billing_interval = entry.billing_interval;
-    this.#data.max_properties = entry.max_properties;
+    this.#data.capabilities = entry.capabilities;
     this.#data.trial_days = entry.trial_days;
     this.#data.external_price_reference = entry.external_price_reference;
     this.#data.external_product_reference = entry.external_product_reference;
@@ -108,8 +112,8 @@ export class Plan {
     return this.#data.billing_interval;
   }
 
-  get max_properties() {
-    return this.#data.max_properties;
+  get capabilities() {
+    return { ...this.#data.capabilities };
   }
 
   get trial_days() {

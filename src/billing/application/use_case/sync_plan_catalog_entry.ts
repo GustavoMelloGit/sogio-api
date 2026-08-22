@@ -4,6 +4,7 @@ import { ConflictError } from "../../../core/application/error/conflict_error";
 import { ValidationError } from "../../../core/application/error/validation_error";
 import type { PlanRepository } from "../../domain/repository/plan_repository";
 import { Plan, type PlanCatalogSync } from "../../domain/entity/plan";
+import { CapabilitySet } from "../../domain/capability/capability_set";
 import type { GatewayCatalogEntry } from "../gateway/gateway_catalog_entry";
 import type {
   GatewayCatalogEvent,
@@ -81,7 +82,7 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
         name: entry.name,
         price_amount: guarded.price_amount,
         billing_interval: entry.billing_interval,
-        max_properties: entry.max_properties,
+        capabilities: entry.capabilities,
         trial_days: guarded.trial_days,
         external_price_reference: entry.external_price_reference,
         external_product_reference: entry.external_product_reference,
@@ -134,7 +135,7 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
       name: entry.name,
       price_amount: guarded.price_amount,
       billing_interval: entry.billing_interval,
-      max_properties: entry.max_properties,
+      capabilities: entry.capabilities,
       trial_days: guarded.trial_days,
       external_price_reference: entry.external_price_reference,
       external_product_reference: entry.external_product_reference,
@@ -274,6 +275,19 @@ export class SyncPlanCatalogEntryUseCase implements UseCase<Input, Output> {
   }
 
   async #save(plan: Plan, event_id: string): Promise<void> {
+    const resolvedCapabilities = CapabilitySet.of(plan.capabilities);
+    if (resolvedCapabilities.fallbacks.length > 0) {
+      this.logger.warn(
+        "Plan capabilities fell back to registry defaults on write (D-3)",
+        {
+          event_id,
+          plan_id: plan.id,
+          plan_code: plan.code,
+          fallbacks: resolvedCapabilities.fallbacks,
+        }
+      );
+    }
+
     try {
       await this.planRepository.save(plan);
     } catch (error) {

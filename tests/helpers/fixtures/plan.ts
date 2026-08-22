@@ -13,7 +13,7 @@ export async function seedPlans(): Promise<void> {
       name: "Free",
       price_amount: 0,
       billing_interval: "monthly",
-      max_properties: 1,
+      capabilities: { max_properties: 1 },
       trial_days: 0,
     })
     .onConflictDoNothing({ target: plansTable.code });
@@ -26,7 +26,7 @@ export async function seedPlans(): Promise<void> {
       name: "Pro",
       price_amount: 2500,
       billing_interval: "monthly",
-      max_properties: 5,
+      capabilities: { max_properties: 5 },
       trial_days: 14,
     })
     .onConflictDoNothing({ target: plansTable.code });

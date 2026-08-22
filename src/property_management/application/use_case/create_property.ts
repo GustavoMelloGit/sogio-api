@@ -2,7 +2,7 @@ import type { UseCase } from "../../../core/application/use_case/use_case";
 import type { EntitlementService } from "../../../billing/application/service/entitlement_service";
 import type { PropertyRepository } from "../../domain/repository/property_repository";
 import { Property } from "../../domain/entity/property";
-import { PropertyQuotaPolicy } from "../../domain/policy/property_quota_policy";
+import { CapabilityLimitPolicy } from "../../../billing/domain/policy/capability_limit_policy";
 
 export type CreatePropertyInput = {
   name: string;
@@ -59,9 +59,10 @@ export class CreatePropertyUseCase
     const property = Property.create(input);
 
     await this.propertyRepository.saveNewWithinQuota(property, currentCount =>
-      PropertyQuotaPolicy.ensureWithinLimit(
+      CapabilityLimitPolicy.ensureWithinLimit(
+        "max_properties",
         currentCount,
-        entitlement.max_properties
+        entitlement.capabilities.limitOf("max_properties")
       )
     );
 

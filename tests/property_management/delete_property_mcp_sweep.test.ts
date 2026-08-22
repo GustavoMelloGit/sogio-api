@@ -12,6 +12,7 @@ import {
 import { describe, expect, it, beforeEach } from "bun:test";
 import type { z } from "zod";
 import { PropertyDi } from "../../src/booking/infra/di/property_di";
+import { CapabilitySet } from "../../src/billing/domain/capability/capability_set";
 import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
 import { PropertyManagementDi } from "../../src/property_management/infra/di/property_management_di";
 import { makeTestEntitlementService } from "../helpers/entitlement_service";
@@ -92,6 +93,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
     const registeredTool = registerMcpTool(
       server,
       user,
+      CapabilitySet.of({}),
       makePropertyManagementDi().makeListPropertiesTool()
     );
     const result = await callTool(registeredTool, {}, makeExtra());
@@ -116,6 +118,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
     const registeredTool = registerMcpTool(
       server,
       user,
+      CapabilitySet.of({}),
       new PropertyDi().makeBookStayTool()
     );
     const result = await callTool(
@@ -164,6 +167,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
       registerMcpTool(
         server,
         user,
+        CapabilitySet.of({}),
         makePropertyManagementDi().makeListPropertySettingsTool()
       ),
       { property_id: property.id, page: 1, limit: 20 },
@@ -175,6 +179,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
       registerMcpTool(
         server,
         user,
+        CapabilitySet.of({}),
         makePropertyManagementDi().makeGetPropertySettingTool()
       ),
       { property_id: property.id, id: setting.id },
@@ -186,6 +191,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
       registerMcpTool(
         server,
         user,
+        CapabilitySet.of({}),
         makePropertyManagementDi().makeCreatePropertySettingTool()
       ),
       {
@@ -202,6 +208,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
       registerMcpTool(
         server,
         user,
+        CapabilitySet.of({}),
         makePropertyManagementDi().makeUpdatePropertySettingTool()
       ),
       { property_id: property.id, id: setting.id, value: "15:00" },
@@ -213,6 +220,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
       registerMcpTool(
         server,
         user,
+        CapabilitySet.of({}),
         makePropertyManagementDi().makeDeletePropertySettingTool()
       ),
       { property_id: property.id, id: setting.id },
@@ -233,6 +241,7 @@ describe("MCP tools do not surface a deleted property (R-7)", () => {
     const registeredTool = registerMcpTool(
       server,
       user,
+      CapabilitySet.of({}),
       makePropertyManagementDi().makeDeletePropertyTool()
     );
 

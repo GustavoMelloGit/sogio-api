@@ -5,13 +5,14 @@ import type {
   BlockedReason,
   EntitlementPlan,
 } from "../../domain/value_object/entitlement";
+import type { CapabilityKey } from "../../domain/capability/capability_key";
 
 type Input = Record<string, never>;
 
 type Output = {
   has_platform_access: boolean;
   status: string;
-  max_properties: number;
+  capabilities: Record<CapabilityKey, boolean | number>;
   plan: EntitlementPlan | null;
   blocked_reason?: BlockedReason;
 };
@@ -25,7 +26,7 @@ export class GetSubscriptionStatusUseCase implements UseCase<Input, Output> {
     return {
       has_platform_access: entitlement.has_platform_access,
       status: entitlement.status,
-      max_properties: entitlement.max_properties,
+      capabilities: entitlement.capabilities.toRecord(),
       plan: entitlement.plan,
       blocked_reason: entitlement.blocked_reason,
     };

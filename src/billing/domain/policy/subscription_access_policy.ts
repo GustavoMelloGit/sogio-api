@@ -1,6 +1,7 @@
 import type { Subscription } from "../entity/subscription";
 import type { Plan } from "../entity/plan";
 import { Entitlement, type EntitlementPlan } from "../value_object/entitlement";
+import { CapabilitySet } from "../capability/capability_set";
 
 export class SubscriptionAccessPolicy {
   static resolve(
@@ -34,7 +35,7 @@ export class SubscriptionAccessPolicy {
       return Entitlement.of({
         has_platform_access: true,
         status: subscription.status,
-        max_properties: plan.max_properties,
+        capabilities: CapabilitySet.of(plan.capabilities),
         plan: this.#entitlementPlan(plan),
       });
     }
@@ -42,7 +43,7 @@ export class SubscriptionAccessPolicy {
     return Entitlement.of({
       has_platform_access: false,
       status: subscription.status,
-      max_properties: plan.max_properties,
+      capabilities: CapabilitySet.of(plan.capabilities),
       plan: this.#entitlementPlan(plan),
       blocked_reason: "trial_expired",
     });
@@ -60,7 +61,7 @@ export class SubscriptionAccessPolicy {
       return Entitlement.of({
         has_platform_access: true,
         status: subscription.status,
-        max_properties: plan.max_properties,
+        capabilities: CapabilitySet.of(plan.capabilities),
         plan: this.#entitlementPlan(plan),
       });
     }
@@ -68,7 +69,7 @@ export class SubscriptionAccessPolicy {
     return Entitlement.of({
       has_platform_access: false,
       status: subscription.status,
-      max_properties: plan.max_properties,
+      capabilities: CapabilitySet.of(plan.capabilities),
       plan: this.#entitlementPlan(plan),
       blocked_reason: "period_expired",
     });
@@ -86,7 +87,7 @@ export class SubscriptionAccessPolicy {
       return Entitlement.of({
         has_platform_access: true,
         status: subscription.status,
-        max_properties: plan.max_properties,
+        capabilities: CapabilitySet.of(plan.capabilities),
         plan: this.#entitlementPlan(plan),
       });
     }
@@ -94,7 +95,7 @@ export class SubscriptionAccessPolicy {
     return Entitlement.of({
       has_platform_access: false,
       status: subscription.status,
-      max_properties: plan.max_properties,
+      capabilities: CapabilitySet.of(plan.capabilities),
       plan: this.#entitlementPlan(plan),
       blocked_reason: "payment_failed",
     });
@@ -113,7 +114,7 @@ export class SubscriptionAccessPolicy {
       return Entitlement.of({
         has_platform_access: true,
         status: subscription.status,
-        max_properties: plan.max_properties,
+        capabilities: CapabilitySet.of(plan.capabilities),
         plan: this.#entitlementPlan(plan),
       });
     }
@@ -121,7 +122,7 @@ export class SubscriptionAccessPolicy {
     return Entitlement.of({
       has_platform_access: true,
       status: subscription.status,
-      max_properties: freePlan.max_properties,
+      capabilities: CapabilitySet.of(freePlan.capabilities),
       plan: this.#entitlementPlan(freePlan),
     });
   }

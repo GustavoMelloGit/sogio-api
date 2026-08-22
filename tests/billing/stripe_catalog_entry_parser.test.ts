@@ -11,6 +11,25 @@ const silentLogger: Logger = {
   fatal: () => {},
 };
 
+function makeSpyLogger(): {
+  logger: Logger;
+  warnCalls: Array<[string, Record<string, unknown> | undefined]>;
+} {
+  const warnCalls: Array<[string, Record<string, unknown> | undefined]> = [];
+  return {
+    logger: {
+      debug: () => {},
+      info: () => {},
+      warn: (message, context) => {
+        warnCalls.push([message, context]);
+      },
+      error: () => {},
+      fatal: () => {},
+    },
+    warnCalls,
+  };
+}
+
 const VALID_METADATA = {
   sogio_plan_code: "pro",
   sogio_plan_name: "Pro",
@@ -62,7 +81,7 @@ describe("parseStripeCatalogEntry — a fully valid entry (DA-4)", () => {
       name: "Pro",
       price_amount: 2500,
       billing_interval: "monthly",
-      max_properties: 5,
+      capabilities: { max_properties: 5, export_reports: false },
       trial_days: 14,
       is_offered: true,
     });
@@ -233,6 +252,93 @@ describe("parseStripeCatalogEntry — sogio_max_properties (DA-4)", () => {
     const entry = parseStripeCatalogEntry(price, silentLogger);
 
     expect(entry).toBeNull();
+  });
+});
+
+describe("parseStripeCatalogEntry — sogio_export_reports (D-3)", () => {
+  it("falls back to the registry default and warns once, after every validation, when sogio_export_reports is absent (C-6)", () => {
+    const { logger, warnCalls } = makeSpyLogger();
+    const price = makePrice({ metadata: { ...VALID_METADATA } });
+
+    const entry = parseStripeCatalogEntry(price, logger);
+
+    expect(entry?.capabilities.export_reports).toBe(false);
+    expect(warnCalls).toContainEqual([
+      "Capability metadata absent for one or more capabilities; falling back to registry defaults (D-3)",
+      {
+        price_id: "price_test_1",
+        capabilities: ["export_reports"],
+      },
+    ]);
+  });
+
+  it("does not warn about export_reports when the metadata sets it explicitly", () => {
+    const { logger, warnCalls } = makeSpyLogger();
+    const price = makePrice({
+      metadata: { ...VALID_METADATA, sogio_export_reports: "true" },
+    });
+
+    const entry = parseStripeCatalogEntry(price, logger);
+
+    expect(entry?.capabilities.export_reports).toBe(true);
+    expect(
+      warnCalls.some(([message]) => message.includes("falling back"))
+    ).toBe(false);
+  });
+
+  it("never warns about the fallback for an entry that ends up rejected by a later validation (C-6)", () => {
+    const { logger, warnCalls } = makeSpyLogger();
+    const price = makePrice({
+      metadata: { ...VALID_METADATA },
+      currency: "usd",
+    });
+
+    const entry = parseStripeCatalogEntry(price, logger);
+
+    expect(entry).toBeNull();
+    expect(
+      warnCalls.some(([message]) => message.includes("falling back"))
+    ).toBe(false);
+  });
+
+  it("ignores the entry when sogio_export_reports is present but not a boolean string", () => {
+    const price = makePrice({
+      metadata: { ...VALID_METADATA, sogio_export_reports: "yes" },
+    });
+
+    expect(() => parseStripeCatalogEntry(price, silentLogger)).not.toThrow();
+    expect(parseStripeCatalogEntry(price, silentLogger)).toBeNull();
+  });
+
+  it("accepts an explicit false the same way as an explicit true", () => {
+    const price = makePrice({
+      metadata: { ...VALID_METADATA, sogio_export_reports: "false" },
+    });
+
+    expect(parseStripeCatalogEntry(price, silentLogger)?.capabilities).toEqual({
+      max_properties: 5,
+      export_reports: false,
+    });
+  });
+});
+
+describe("parseStripeCatalogEntry — required capability missing warns and invalidates (D-3)", () => {
+  it("warns with the required-missing message, not the fallback-default message, when sogio_max_properties is absent", () => {
+    const { logger, warnCalls } = makeSpyLogger();
+    const price = makePrice({ metadata: { ...VALID_METADATA } });
+    delete (price.metadata as Record<string, string>).sogio_max_properties;
+
+    const entry = parseStripeCatalogEntry(price, logger);
+
+    expect(entry).toBeNull();
+    expect(warnCalls).toContainEqual([
+      "Ignoring catalog entry: missing required capability metadata",
+      {
+        price_id: "price_test_1",
+        capability: "max_properties",
+        metadata_key: "sogio_max_properties",
+      },
+    ]);
   });
 });
 

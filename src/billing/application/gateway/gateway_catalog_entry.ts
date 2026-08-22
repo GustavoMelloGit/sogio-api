@@ -1,3 +1,4 @@
+import type { CapabilityKey } from "../../domain/capability/capability_key";
 import type { BillingInterval } from "../../domain/entity/plan";
 
 export type GatewayCatalogEntry = {
@@ -7,7 +8,7 @@ export type GatewayCatalogEntry = {
   name: string;
   price_amount: number;
   billing_interval: BillingInterval;
-  max_properties: number;
+  capabilities: Record<CapabilityKey, boolean | number>;
   trial_days: number;
 
   is_offered: boolean;

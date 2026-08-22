@@ -13,6 +13,7 @@ import { describe, expect, it, beforeEach } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { z } from "zod";
 import type { User } from "../../src/auth/domain/entity/user";
+import { CapabilitySet } from "../../src/billing/domain/capability/capability_set";
 import { db } from "../../src/core/infra/database/drizzle/database";
 import { propertySettingsTable } from "../../src/core/infra/database/drizzle/schema";
 import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
@@ -55,6 +56,7 @@ function registerDeletePropertySettingTool(user: User): RegisteredTool {
   return registerMcpTool(
     server,
     user,
+    CapabilitySet.of({}),
     propertyManagementDi.makeDeletePropertySettingTool()
   );
 }

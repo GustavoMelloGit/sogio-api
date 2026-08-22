@@ -93,7 +93,7 @@ async function createTeamPlan(): Promise<{ id: string; priceRef: string }> {
     name: "Team",
     price_amount: 9990,
     billing_interval: "monthly",
-    max_properties: 20,
+    capabilities: { max_properties: 20 },
     trial_days: 0,
     external_price_reference: `price_team_${crypto.randomUUID().slice(0, 8)}`,
   });

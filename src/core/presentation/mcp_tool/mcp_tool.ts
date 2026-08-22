@@ -1,6 +1,7 @@
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { z } from "zod";
 import type { User } from "../../../auth/domain/entity/user";
+import type { AccessCapabilityKey } from "../../../billing/domain/capability/capability_registry";
 
 export type McpToolInput<Shape extends z.ZodRawShape> = {
   [Key in keyof Shape]: z.infer<Shape[Key]>;
@@ -11,6 +12,7 @@ export type McpToolDefinition<Shape extends z.ZodRawShape = z.ZodRawShape> = {
   description: string;
   inputSchema: Shape;
   annotations?: ToolAnnotations;
+  requiredCapability?: AccessCapabilityKey;
   /**
    * Declared with method shorthand (bivariant parameter checking) on purpose:
    * it lets `registerMcpTool` accept any `McpToolDefinition<Shape>` through a

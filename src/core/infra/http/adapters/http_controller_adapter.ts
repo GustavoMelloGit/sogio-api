@@ -8,6 +8,8 @@ import { UnauthorizedError } from "../../../application/error/unauthorized_error
 import { ValidationError } from "../../../application/error/validation_error";
 import type { User } from "../../../../auth/domain/entity/user";
 import type { EntitlementService } from "../../../../billing/application/service/entitlement_service";
+import type { CapabilityKey } from "../../../../billing/domain/capability/capability_key";
+import { capabilityRegistryEntryOf } from "../../../../billing/domain/capability/capability_registry";
 import {
   ControllerHttpResponse,
   type Controller,
@@ -300,8 +302,21 @@ export function BunHttpControllerAdapter(
   authenticated: boolean,
   entitlementService: EntitlementService,
   adminOnly: boolean = false,
-  allowWithoutPlatformAccess: boolean = false
+  allowWithoutPlatformAccess: boolean = false,
+  requiredCapability?: CapabilityKey
 ) {
+  if (requiredCapability && !authenticated && !adminOnly) {
+    throw new Error(
+      `Route ${controller.method} ${controller.path} declares requiredCapability but is neither authenticated nor adminOnly, so the check would never run`
+    );
+  }
+
+  if (requiredCapability && adminOnly) {
+    throw new Error(
+      `Route ${controller.method} ${controller.path} declares requiredCapability together with adminOnly, which bypasses the check entirely`
+    );
+  }
+
   return async function (
     request: Request,
     server?: Server<unknown>
@@ -368,17 +383,29 @@ export function BunHttpControllerAdapter(
        * separate steps, not folded into `AuthMiddleware`, so `handleOptional()`
        * callers (the OAuth flow) never pay for a billing lookup they don't need.
        */
-      if (
-        requiresAuth &&
-        user &&
-        user.role !== "admin" &&
-        !allowWithoutPlatformAccess
-      ) {
-        const entitlement = await entitlementService.entitlementOf(user.id);
-        if (!entitlement.has_platform_access) {
-          throw new ForbiddenError(
-            entitlement.blocked_reason ?? "no_platform_access"
-          );
+      if (requiresAuth && user && user.role !== "admin") {
+        const needsPlatformAccessCheck = !allowWithoutPlatformAccess;
+        const needsCapabilityCheck = Boolean(requiredCapability);
+
+        if (needsPlatformAccessCheck || needsCapabilityCheck) {
+          const entitlement = await entitlementService.entitlementOf(user.id);
+
+          if (needsPlatformAccessCheck && !entitlement.has_platform_access) {
+            throw new ForbiddenError(
+              entitlement.blocked_reason ?? "no_platform_access"
+            );
+          }
+
+          if (
+            needsCapabilityCheck &&
+            requiredCapability &&
+            !entitlement.capabilities.allows(requiredCapability)
+          ) {
+            const { label } = capabilityRegistryEntryOf(requiredCapability);
+            throw new ForbiddenError(
+              `Your current plan doesn't include ${label}. Upgrade your plan to unlock it.`
+            );
+          }
         }
       }
 
@@ -412,7 +439,12 @@ export function BunHttpControllerAdapter(
 
       if (Error.isError(e)) {
         const errorCode = errorCodeMap[e.name];
-        if (errorCode) {
+        if (errorCode && e.name === IllegalStateError.name) {
+          errorResponse = Response.json(
+            { message: "Internal server error" },
+            { status: errorCode }
+          );
+        } else if (errorCode) {
           errorResponse = Response.json(
             { message: e.message },
             { status: errorCode }

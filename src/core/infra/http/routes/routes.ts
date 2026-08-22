@@ -13,6 +13,7 @@ import { FinanceDi } from "../../../../finance/infra/di/finance_di";
 import { PropertyManagementDi } from "../../../../property_management/infra/di/property_management_di";
 import { BackofficeDi } from "../../../../backoffice/infra/di/backoffice_di";
 import { BillingDi } from "../../../../billing/infra/di/billing_di";
+import type { AccessCapabilityKey } from "../../../../billing/domain/capability/capability_registry";
 import { OpenApiBuilder } from "../swagger/open_api_builder";
 import { scalarUiHtml } from "../swagger/scalar_ui";
 import { makeMcpRequestHandler } from "../../mcp/routes";
@@ -46,6 +47,7 @@ type Route = {
    * protocol step itself). See `.claude/plans/2026-08-15-add-billing-subscriptions.md`.
    */
   allowWithoutPlatformAccess?: boolean;
+  requiredCapability?: AccessCapabilityKey;
 };
 
 const healthController: Route = {
@@ -345,7 +347,13 @@ const routeMap = new Map<
 const entitlementService = billingDi.makeEntitlementService();
 
 controllers.forEach(
-  ({ authenticated, adminOnly, allowWithoutPlatformAccess, controller }) => {
+  ({
+    authenticated,
+    adminOnly,
+    allowWithoutPlatformAccess,
+    requiredCapability,
+    controller,
+  }) => {
     const alreadyExists = routeMap.get(controller.path);
     if (!alreadyExists) {
       routeMap.set(controller.path, {
@@ -354,7 +362,8 @@ controllers.forEach(
           authenticated,
           entitlementService,
           adminOnly,
-          allowWithoutPlatformAccess
+          allowWithoutPlatformAccess,
+          requiredCapability
         ),
         // Add OPTIONS handler for CORS preflight
         [HttpControllerMethod.OPTIONS]: async (request: Request) =>
@@ -368,7 +377,8 @@ controllers.forEach(
           authenticated,
           entitlementService,
           adminOnly,
-          allowWithoutPlatformAccess
+          allowWithoutPlatformAccess,
+          requiredCapability
         ),
         // Add OPTIONS handler for CORS preflight
         [HttpControllerMethod.OPTIONS]: async (request: Request) =>
