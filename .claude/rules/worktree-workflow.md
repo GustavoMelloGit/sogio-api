@@ -28,5 +28,4 @@ Every new feature must be developed inside an isolated git worktree — never di
 
 Branching from `origin/main` instead of `main` is what makes the flow safe when tasks are requested from a phone: PRs get merged on GitHub, and nothing pulls that back down automatically. Without the fetch, each new task would silently start from the last state this machine happened to see, and the merged work would come back as a conflict or a revert.
 
-
 Keeps the main project directory stable and untouched while agents implement features, and avoids in-progress work from one feature bleeding into another or into the directory the user may be inspecting concurrently.

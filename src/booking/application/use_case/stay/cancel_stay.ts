@@ -23,11 +23,13 @@ export class CancelStayUseCase implements UseCase<Input, Output> {
   ) {}
 
   async execute(input: Input, user: User): Promise<Output> {
-    const stay = await this.stayRepository.stayOfId(input.stay_id);
+    const result = await this.stayRepository.stayWithTenantOfId(input.stay_id);
 
-    if (!stay) {
+    if (!result) {
       throw new ResourceNotFoundError("Stay");
     }
+
+    const { stay, tenant } = result;
 
     const property = await this.propertyRepository.propertyOfId(
       stay.property_id
@@ -38,7 +40,7 @@ export class CancelStayUseCase implements UseCase<Input, Output> {
       "Stay"
     );
 
-    await this.cancelStayService.cancel(stay, ownedProperty.id);
+    await this.cancelStayService.cancel(stay, tenant, ownedProperty.id);
 
     return {
       id: stay.id,

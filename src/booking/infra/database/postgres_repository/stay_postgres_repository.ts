@@ -27,6 +27,12 @@ export class StayPostgresRepository implements StayRepository {
    * plain `db` outside `TransactionRunner.run`, unchanged from before.
    */
   async stayOfId(id: string): Promise<Stay | null> {
+    const result = await this.stayWithTenantOfId(id);
+
+    return result?.stay ?? null;
+  }
+
+  async stayWithTenantOfId(id: string): Promise<StayWithTenant | null> {
     const stay = await currentExecutor().query.staysTable.findFirst({
       where: and(eq(staysTable.id, id), isNull(staysTable.deleted_at)),
       with: {
@@ -38,7 +44,10 @@ export class StayPostgresRepository implements StayRepository {
       return null;
     }
 
-    return Stay.reconstitute(stay);
+    return {
+      stay: Stay.reconstitute(stay),
+      tenant: Tenant.reconstitute(stay.tenant),
+    };
   }
 
   async saveStay(input: Stay): Promise<void> {
