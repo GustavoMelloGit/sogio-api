@@ -1,7 +1,7 @@
 import { and, between, eq, isNull, ne, or } from "drizzle-orm";
 import { ConflictError } from "../../../../core/application/error/conflict_error";
 import type { BookingPolicy } from "../../../domain/policy/booking_policy";
-import { db } from "../../../../core/infra/database/drizzle/database";
+import { currentExecutor } from "../../../../core/infra/database/drizzle/transaction_context";
 import { staysTable } from "../../../../core/infra/database/drizzle/schema";
 
 export class PostgresBookingPolicy implements BookingPolicy {
@@ -18,7 +18,7 @@ export class PostgresBookingPolicy implements BookingPolicy {
      * - O check-in estiver entre o check-in e check-out de uma estadia
      * - O check-out estiver entre o check-in e check-out de uma estadia
      */
-    const isOccupied = await db.query.staysTable.findFirst({
+    const isOccupied = await currentExecutor().query.staysTable.findFirst({
       where: and(
         isNull(staysTable.deleted_at),
         eq(staysTable.property_id, property_id),

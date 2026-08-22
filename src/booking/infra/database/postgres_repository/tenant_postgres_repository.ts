@@ -2,6 +2,7 @@ import { and, eq, ilike, isNull } from "drizzle-orm";
 import { Tenant, type TenantData } from "../../../domain/entity/tenant";
 import type { TenantRepository } from "../../../domain/repository/tenant_repository";
 import { db } from "../../../../core/infra/database/drizzle/database";
+import { currentExecutor } from "../../../../core/infra/database/drizzle/transaction_context";
 import {
   tenantsTable,
   staysTable,
@@ -10,7 +11,7 @@ import {
 
 export class TenantPostgresRepository implements TenantRepository {
   async findByPhone(phone: string): Promise<Tenant | null> {
-    const tenant = await db.query.tenantsTable.findFirst({
+    const tenant = await currentExecutor().query.tenantsTable.findFirst({
       where: eq(tenantsTable.phone, phone),
     });
 
@@ -27,7 +28,10 @@ export class TenantPostgresRepository implements TenantRepository {
       updated_at: tenant.updated_at,
       deleted_at: tenant.deleted_at,
     };
-    const result = await db.insert(tenantsTable).values(data).returning();
+    const result = await currentExecutor()
+      .insert(tenantsTable)
+      .values(data)
+      .returning();
 
     if (!result[0]) {
       throw new Error("Failed to save tenant");
