@@ -60,4 +60,8 @@ export class CapabilitySet {
     }
     return Number(this.#values[key]);
   }
+
+  toRecord(): Record<CapabilityKey, boolean | number> {
+    return { ...this.#values };
+  }
 }

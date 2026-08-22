@@ -14,7 +14,7 @@ const outputSchema = z.array(
     name: z.string(),
     price_amount: z.int(),
     billing_interval: z.string(),
-    max_properties: z.int(),
+    capabilities: z.record(z.string(), z.union([z.boolean(), z.int()])),
     trial_days: z.int(),
   })
 );
@@ -36,7 +36,7 @@ export class ListPlansController implements Controller {
           name: "Free",
           price_amount: 0,
           billing_interval: "monthly",
-          max_properties: 1,
+          capabilities: { max_properties: 1 },
           trial_days: 0,
         },
         {
@@ -45,7 +45,7 @@ export class ListPlansController implements Controller {
           name: "Pro",
           price_amount: 2500,
           billing_interval: "monthly",
-          max_properties: 5,
+          capabilities: { max_properties: 5 },
           trial_days: 14,
         },
       ]),
@@ -63,7 +63,7 @@ export class ListPlansController implements Controller {
       name: plan.name,
       price_amount: plan.price_amount,
       billing_interval: plan.billing_interval,
-      max_properties: plan.max_properties,
+      capabilities: plan.capabilities,
       trial_days: plan.trial_days,
     }));
   }

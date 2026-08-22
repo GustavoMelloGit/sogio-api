@@ -15,7 +15,7 @@ import {
 const outputSchema = z.object({
   has_platform_access: z.boolean(),
   status: z.string(),
-  max_properties: z.int(),
+  capabilities: z.record(z.string(), z.union([z.boolean(), z.int()])),
   plan: z
     .object({
       id: z.uuid(),
@@ -40,13 +40,13 @@ export class GetSubscriptionStatusController implements Controller {
   openApiSpec: OpenApiOperation = {
     summary: "Get subscription status",
     description:
-      "Returns the authenticated user's current platform entitlement — whether they have access, their subscription status, the plan whose limits actually apply and, if blocked, why. The plan is the effective one: a canceled subscription past its paid period reports the Free plan, matching max_properties.",
+      "Returns the authenticated user's current platform entitlement — whether they have access, their subscription status, the plan whose limits actually apply and, if blocked, why. The plan is the effective one: a canceled subscription past its paid period reports the Free plan, matching capabilities.",
     tags: ["Billing"],
     responses: {
       "200": responseFromZod("Current subscription status", outputSchema, {
         has_platform_access: true,
         status: "active",
-        max_properties: 5,
+        capabilities: { max_properties: 5 },
         plan: {
           id: "7b2d9e04-1c5f-4e83-8a77-9f0c3b5d2e64",
           code: "pro",
