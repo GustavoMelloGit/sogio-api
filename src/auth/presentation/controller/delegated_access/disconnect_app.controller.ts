@@ -45,7 +45,7 @@ export class DisconnectAppController implements Controller {
   openApiSpec: OpenApiOperation = {
     summary: "Disconnect app",
     description:
-      "Revokes the Consent identified by consentId and, in cascade, every credential derived from it (invariant 5). The next call the app makes to /mcp receives 401.",
+      "Revokes the Consent identified by consentId and, in cascade, every credential derived from it. The next call the app makes to /mcp receives 401.",
     tags: ["Auth"],
     parameters: [
       {

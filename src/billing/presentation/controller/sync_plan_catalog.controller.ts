@@ -21,7 +21,7 @@ export class SyncPlanCatalogController implements Controller {
   openApiSpec: OpenApiOperation = {
     summary: "Reconcile the plan catalog from the payment gateway",
     description:
-      "Reads the entire price catalog from the gateway and applies it to the local plans table (DA-5). Admin only.",
+      "Reads the entire price catalog from the gateway and applies it to the local plans table. Admin only.",
     tags: ["Billing"],
     responses: {
       "200": responseFromZod(
