@@ -16,7 +16,7 @@ import { ValidationError } from "../../../core/application/error/validation_erro
 
 const inputSchema = z.object({
   type: z.string().min(1).max(100),
-  channel: z.string().min(1).max(50),
+  channel: z.enum(NOTIFICATION_CHANNELS),
   enabled: z.boolean(),
 });
 
@@ -45,7 +45,11 @@ export class UpdateNotificationPreferencesController implements Controller {
             required: ["type", "channel", "enabled"],
             properties: {
               type: { type: "string", example: "stay_upcoming" },
-              channel: { type: "string", example: "email" },
+              channel: {
+                type: "string",
+                enum: [...NOTIFICATION_CHANNELS],
+                example: "email",
+              },
               enabled: { type: "boolean", example: false },
             },
           },

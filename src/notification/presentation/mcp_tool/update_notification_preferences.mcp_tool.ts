@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { NOTIFICATION_CHANNELS } from "../../domain/notification_type/notification_type_registry";
 import type { UpdateNotificationPreferencesUseCase } from "../../application/use_case/update_notification_preferences";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
@@ -11,10 +12,10 @@ export const inputSchema = {
       "Notification type key, exactly as returned by get_notification_preferences."
     ),
   channel: z
-    .string()
-    .min(1)
-    .max(50)
-    .describe("Delivery channel for this preference. Currently only 'email'."),
+    .enum(NOTIFICATION_CHANNELS)
+    .describe(
+      `Delivery channel for this preference. One of: ${NOTIFICATION_CHANNELS.join(", ")}.`
+    ),
   enabled: z
     .boolean()
     .describe("Whether this notification should be delivered on this channel."),

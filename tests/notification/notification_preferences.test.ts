@@ -120,6 +120,22 @@ describe("Notification preferences", () => {
     );
   });
 
+  it("PUT /notifications/preferences rejects an unknown channel", async () => {
+    const { token } = await authenticatedUser();
+
+    const res = await api("/notifications/preferences", {
+      method: "PUT",
+      headers: { Authorization: "Bearer " + token },
+      body: JSON.stringify({
+        type: "subscription_trial_ending",
+        channel: "carrier_pigeon",
+        enabled: false,
+      }),
+    });
+
+    expect(res.status).toBe(422);
+  });
+
   it("respects a preference the user turned off", async () => {
     const { user, token } = await authenticatedUser();
 
