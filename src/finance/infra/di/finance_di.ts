@@ -29,7 +29,9 @@ export class FinanceDi {
     this.#eventDispatcher = inMemoryEventDispatcher;
     this.#ledgerEntryRepository = new LedgerEntryPostgresRepository();
     this.#propertyRepository = new PropertyPostgresRepository();
+  }
 
+  registerEventHandlers(): void {
     this.#eventDispatcher.register(
       StayBookedEvent.NAME,
       this.makeRecordRevenueOnStayPaymentConfirmedHandler()
