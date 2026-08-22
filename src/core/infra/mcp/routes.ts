@@ -8,6 +8,7 @@ import type { StayDi } from "../../../booking/infra/di/stay_di";
 import type { FinanceDi } from "../../../finance/infra/di/finance_di";
 import type { PropertyManagementDi } from "../../../property_management/infra/di/property_management_di";
 import type { BillingDi } from "../../../billing/infra/di/billing_di";
+import { CapabilitySet } from "../../../billing/domain/capability/capability_set";
 import { ForbiddenError } from "../../application/error/forbidden_error";
 import { UnauthorizedError } from "../../application/error/unauthorized_error";
 import { mapErrorToToolResult } from "./mcp_error_mapper";
@@ -148,6 +149,7 @@ export function makeMcpRequestHandler(
      * account is blocked outright. Admins still pass: staff can't be locked
      * out of tooling by a billing problem.
      */
+    let capabilities = CapabilitySet.empty();
     if (requester.user.role !== "admin") {
       const entitlement = await entitlementService.entitlementOf(
         requester.user.id
@@ -168,12 +170,14 @@ export function makeMcpRequestHandler(
           "public"
         );
       }
+      capabilities = entitlement.capabilities;
     }
 
     const server = createMcpServer({
       name: MCP_SERVER_NAME,
       version: MCP_SERVER_VERSION,
       user: requester.user,
+      capabilities,
       tools,
     });
     const transport = new WebStandardStreamableHTTPServerTransport({
