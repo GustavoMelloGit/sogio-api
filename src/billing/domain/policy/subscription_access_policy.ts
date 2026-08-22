@@ -1,6 +1,6 @@
 import type { Subscription } from "../entity/subscription";
 import type { Plan } from "../entity/plan";
-import { Entitlement } from "../value_object/entitlement";
+import { Entitlement, type EntitlementPlan } from "../value_object/entitlement";
 
 export class SubscriptionAccessPolicy {
   static resolve(
@@ -21,6 +21,10 @@ export class SubscriptionAccessPolicy {
     }
   }
 
+  static #entitlementPlan(plan: Plan): EntitlementPlan {
+    return { id: plan.id, code: plan.code, name: plan.name };
+  }
+
   static #resolveTrialing(
     subscription: Subscription,
     plan: Plan,
@@ -31,6 +35,7 @@ export class SubscriptionAccessPolicy {
         has_platform_access: true,
         status: subscription.status,
         max_properties: plan.max_properties,
+        plan: this.#entitlementPlan(plan),
       });
     }
 
@@ -38,6 +43,7 @@ export class SubscriptionAccessPolicy {
       has_platform_access: false,
       status: subscription.status,
       max_properties: plan.max_properties,
+      plan: this.#entitlementPlan(plan),
       blocked_reason: "trial_expired",
     });
   }
@@ -55,6 +61,7 @@ export class SubscriptionAccessPolicy {
         has_platform_access: true,
         status: subscription.status,
         max_properties: plan.max_properties,
+        plan: this.#entitlementPlan(plan),
       });
     }
 
@@ -62,6 +69,7 @@ export class SubscriptionAccessPolicy {
       has_platform_access: false,
       status: subscription.status,
       max_properties: plan.max_properties,
+      plan: this.#entitlementPlan(plan),
       blocked_reason: "period_expired",
     });
   }
@@ -79,6 +87,7 @@ export class SubscriptionAccessPolicy {
         has_platform_access: true,
         status: subscription.status,
         max_properties: plan.max_properties,
+        plan: this.#entitlementPlan(plan),
       });
     }
 
@@ -86,6 +95,7 @@ export class SubscriptionAccessPolicy {
       has_platform_access: false,
       status: subscription.status,
       max_properties: plan.max_properties,
+      plan: this.#entitlementPlan(plan),
       blocked_reason: "payment_failed",
     });
   }
@@ -104,6 +114,7 @@ export class SubscriptionAccessPolicy {
         has_platform_access: true,
         status: subscription.status,
         max_properties: plan.max_properties,
+        plan: this.#entitlementPlan(plan),
       });
     }
 
@@ -111,6 +122,7 @@ export class SubscriptionAccessPolicy {
       has_platform_access: true,
       status: subscription.status,
       max_properties: freePlan.max_properties,
+      plan: this.#entitlementPlan(freePlan),
     });
   }
 }

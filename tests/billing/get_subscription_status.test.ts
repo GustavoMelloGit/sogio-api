@@ -7,6 +7,14 @@ import { SubscriptionPostgresRepository } from "../../src/billing/infra/database
 
 const TABLES = ["properties", "addresses", "users"];
 
+type StatusBody = {
+  has_platform_access: boolean;
+  status: string;
+  max_properties: number;
+  plan: { id: string; code: string; name: string } | null;
+  blocked_reason?: string;
+};
+
 /** Puts a fixture user's Free subscription into a blocked state (DA-9). */
 async function blockUser(userId: string): Promise<void> {
   const subscriptionRepository = new SubscriptionPostgresRepository();
@@ -39,14 +47,11 @@ describe("GET /billing/subscription", () => {
     });
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      has_platform_access: boolean;
-      status: string;
-      max_properties: number;
-      blocked_reason?: string;
-    };
+    const body = (await res.json()) as StatusBody;
     expect(body.has_platform_access).toBe(true);
     expect(body.blocked_reason).toBeUndefined();
+    expect(body.plan).toMatchObject({ code: "free", name: "Free" });
+    expect(body.plan?.id).toEqual(expect.any(String));
   });
 
   /**
@@ -69,14 +74,10 @@ describe("GET /billing/subscription", () => {
     });
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      has_platform_access: boolean;
-      status: string;
-      max_properties: number;
-      blocked_reason?: string;
-    };
+    const body = (await res.json()) as StatusBody;
     expect(body.has_platform_access).toBe(false);
     expect(body.status).toBe("past_due");
     expect(body.blocked_reason).toBe("payment_failed");
+    expect(body.plan?.code).toBe("free");
   });
 });

@@ -230,6 +230,70 @@ describe("SubscriptionAccessPolicy", () => {
     });
   });
 
+  describe("effective plan", () => {
+    it("reports the subscription's own plan while it is entitled", () => {
+      const subscription = makeSubscription({
+        status: "active",
+        current_period_start: PAST,
+        current_period_end: FUTURE,
+      });
+
+      const entitlement = SubscriptionAccessPolicy.resolve(
+        subscription,
+        proPlan,
+        freePlan,
+        NOW
+      );
+
+      expect(entitlement.plan).toEqual({
+        id: proPlan.id,
+        code: "pro",
+        name: "Pro",
+      });
+    });
+
+    it("still reports the plan when access is blocked, so a blocked account can see what it was paying for", () => {
+      const subscription = makeSubscription({
+        status: "past_due",
+        grace_period_ends_at: PAST,
+      });
+
+      const entitlement = SubscriptionAccessPolicy.resolve(
+        subscription,
+        proPlan,
+        freePlan,
+        NOW
+      );
+
+      expect(entitlement.has_platform_access).toBe(false);
+      expect(entitlement.plan?.code).toBe("pro");
+      expect(entitlement.max_properties).toBe(proPlan.max_properties);
+    });
+
+    it("reports the Free plan once a canceled subscription's period expired, agreeing with max_properties instead of the retired paid plan", () => {
+      const subscription = makeSubscription({
+        status: "canceled",
+        canceled_at: PAST,
+        current_period_start: PAST,
+        current_period_end: PAST,
+      });
+
+      const entitlement = SubscriptionAccessPolicy.resolve(
+        subscription,
+        proPlan,
+        freePlan,
+        NOW
+      );
+
+      expect(entitlement.plan).toEqual({
+        id: freePlan.id,
+        code: "free",
+        name: "Free",
+      });
+      expect(entitlement.max_properties).toBe(freePlan.max_properties);
+    });
+  });
+
   describe("canceled", () => {
     it("grants access with the subscription's own plan limits while now is before current_period_end", () => {
       const subscription = makeSubscription({

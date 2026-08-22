@@ -39,6 +39,7 @@ export class SubscriptionEntitlementService implements EntitlementService {
       has_platform_access: false,
       status: "none",
       max_properties: 0,
+      plan: null,
       blocked_reason: "no_subscription",
     });
   }
