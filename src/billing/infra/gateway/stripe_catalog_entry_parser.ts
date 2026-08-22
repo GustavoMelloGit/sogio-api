@@ -3,13 +3,15 @@ import type { Logger } from "../../../core/application/logger/logger";
 import { env } from "../../../core/infra/config/environments";
 import type { GatewayCatalogEntry } from "../../application/gateway/gateway_catalog_entry";
 import type { CapabilityKey } from "../../domain/capability/capability_key";
-import { CAPABILITY_REGISTRY } from "../../domain/capability/capability_registry";
+import {
+  CAPABILITY_REGISTRY,
+  MAX_LIMIT_CAPABILITY_VALUE,
+  MIN_LIMIT_CAPABILITY_VALUE,
+} from "../../domain/capability/capability_registry";
 import type { BillingInterval } from "../../domain/entity/plan";
 
 const CODE_PATTERN = /^[a-z][a-z0-9_]{0,49}$/;
 const MAX_NAME_LENGTH = 100;
-const MIN_LIMIT_CAPABILITY_VALUE = 1;
-const MAX_LIMIT_CAPABILITY_VALUE = 10_000;
 const MIN_TRIAL_DAYS = 0;
 const MAX_TRIAL_DAYS = 365;
 

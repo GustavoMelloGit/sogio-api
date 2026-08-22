@@ -1,5 +1,8 @@
 import type { CapabilityKey } from "./capability_key";
 
+export const MIN_LIMIT_CAPABILITY_VALUE = 1;
+export const MAX_LIMIT_CAPABILITY_VALUE = 10_000;
+
 export type CapabilityKind = "access" | "limit";
 
 type BaseCapabilityRegistryEntry = {

@@ -6,16 +6,17 @@ import {
 import type { ListPlansUseCase } from "../../application/use_case/list_plans";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
 import { responseFromZod } from "../../../core/infra/http/swagger/schema_helpers";
+import { capabilitiesSchema } from "./capabilities_schema";
 
 const outputSchema = z.array(
   z.object({
     id: z.uuid(),
-    code: z.string(),
-    name: z.string(),
-    price_amount: z.int(),
-    billing_interval: z.string(),
-    capabilities: z.record(z.string(), z.union([z.boolean(), z.int()])),
-    trial_days: z.int(),
+    code: z.string().min(1).max(50),
+    name: z.string().min(1).max(100),
+    price_amount: z.int().min(0).max(100_000_000),
+    billing_interval: z.enum(["monthly"]),
+    capabilities: capabilitiesSchema,
+    trial_days: z.int().min(0).max(365),
   })
 );
 
@@ -36,7 +37,7 @@ export class ListPlansController implements Controller {
           name: "Free",
           price_amount: 0,
           billing_interval: "monthly",
-          capabilities: { max_properties: 1 },
+          capabilities: { max_properties: 1, export_reports: false },
           trial_days: 0,
         },
         {
@@ -45,7 +46,7 @@ export class ListPlansController implements Controller {
           name: "Pro",
           price_amount: 2500,
           billing_interval: "monthly",
-          capabilities: { max_properties: 5 },
+          capabilities: { max_properties: 5, export_reports: false },
           trial_days: 14,
         },
       ]),
