@@ -3,6 +3,7 @@ import type { ExternalBookingSourcesRepository } from "../../domain/repository/e
 import { BookStayUseCase } from "../../application/use_case/property/book_stay";
 import { CreateExternalBookingSourceUseCase } from "../../application/use_case/property/create_external_booking_source";
 import { ReconcileExternalBookingsUseCase } from "../../application/use_case/property/reconcile_external_bookings";
+import { ImportStaysUseCase } from "../../application/use_case/import_stays";
 import type { BookingPolicy } from "../../domain/policy/booking_policy";
 import type { StayRepository } from "../../domain/repository/stay_repository";
 import type { TenantRepository } from "../../domain/repository/tenant_repository";
@@ -23,6 +24,9 @@ import { BookingPropertyPostgresRepository } from "../database/postgres_reposito
 import type { BookingPropertyRepository } from "../../domain/repository/booking_property_repository";
 import type { EntranceCodeGenerator } from "../../domain/service/entrance_code_generator";
 import { CryptoEntranceCodeGenerator } from "../service/crypto_entrance_code_generator";
+import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
+import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
+import { ImportRunner } from "../../../core/application/import/import_runner";
 
 export class PropertyDi {
   #tenantRepository: TenantRepository;
@@ -34,6 +38,8 @@ export class PropertyDi {
   #eventDispatcher: EventDispatcher;
   #logger: Logger;
   #entranceCodeGenerator: EntranceCodeGenerator;
+  #transactionRunner: TransactionRunner;
+  #importRunner: ImportRunner;
 
   constructor() {
     this.#logger = new ConsoleLogger();
@@ -46,6 +52,8 @@ export class PropertyDi {
     this.#calendarAdapter = new ICalendarAdapter();
     this.#eventDispatcher = inMemoryEventDispatcher;
     this.#entranceCodeGenerator = new CryptoEntranceCodeGenerator();
+    this.#transactionRunner = new DrizzleTransactionRunner();
+    this.#importRunner = new ImportRunner(this.#transactionRunner);
   }
 
   // Use Cases
@@ -57,6 +65,17 @@ export class PropertyDi {
       this.#bookingPolicy,
       this.#eventDispatcher,
       this.#entranceCodeGenerator
+    );
+  }
+  makeImportStaysUseCase() {
+    return new ImportStaysUseCase(
+      this.#tenantRepository,
+      this.#propertyRepository,
+      this.#stayRepository,
+      this.#bookingPolicy,
+      this.#eventDispatcher,
+      this.#entranceCodeGenerator,
+      this.#importRunner
     );
   }
   makeReconcileExternalBookingUseCase() {
