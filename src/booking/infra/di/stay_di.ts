@@ -57,7 +57,9 @@ export class StayDi {
       this.#logger
     );
     this.#eventDispatcher = inMemoryEventDispatcher;
+  }
 
+  registerEventHandlers(): void {
     this.#eventDispatcher.register(
       StayBookedEvent.NAME,
       this.makeCreateTempPasswordOnBookHandler()

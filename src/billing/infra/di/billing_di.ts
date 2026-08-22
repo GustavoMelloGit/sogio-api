@@ -86,7 +86,9 @@ export class BillingDi {
       env.STRIPE_WEBHOOK_SECRET ?? "",
       this.#logger
     );
+  }
 
+  registerEventHandlers(): void {
     this.#eventDispatcher.register(
       UserCreatedEvent.NAME,
       this.makeStartFreeSubscriptionOnUserCreatedHandler()
