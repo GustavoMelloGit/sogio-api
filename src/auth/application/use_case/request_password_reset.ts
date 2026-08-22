@@ -80,7 +80,8 @@ export class RequestPasswordResetUseCase implements UseCase<Input, Output> {
       user.name,
       user.email,
       secret,
-      this.requestTtlMs
+      this.requestTtlMs,
+      user.locale
     );
 
     /**

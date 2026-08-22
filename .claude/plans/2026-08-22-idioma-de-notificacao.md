@@ -90,10 +90,19 @@ O risco previsto era dropar `title`/`body`. Ao gerar a migration descobriu-se qu
 
 Resultado: `drizzle/0012` **cria** as duas tabelas — já com `payload` no lugar de `title`/`body` — em vez de alterá-las, e nada é dropado. A migration fecha a lacuna da PR #51 e entrega esta issue no mesmo passo. A ressalva é para um banco em que alguém tenha rodado `db:push` manualmente: lá o `CREATE TABLE` falha e as colunas legadas precisam sair à mão.
 
+### D7 — Todo texto endereçado a um usuário segue a preferência dele, não só notificação
+
+Ampliação pedida depois da primeira rodada: os outros dois lugares com português fixo no código entram na mesma entrega.
+
+- **Email de recuperação de senha** (`password_reset_email_composer.ts`) — o `User` já está em mãos no use case (é encontrado pelo email), então basta repassar `user.locale`. A marcação HTML **não** é duplicada por idioma: o texto sai para um `Record<Locale, PasswordResetCopy>` e o template continua único. Duplicar o HTML faria toda correção de layout precisar ser feita N vezes, e a esquecida só apareceria na caixa de entrada de quem fala aquele idioma. `escapeHtml` continua valendo para `name`/`email`; o texto de `COPY` é código, nunca entrada de usuário, e é o único HTML aqui que não passa por ele.
+- **Descrição de lançamento do ledger** (`stay_ledger_description.ts`) — escrita para o **dono do imóvel**, mas os eventos de estadia carregam `property_id`, não o dono. `finance` resolve `property_id → user_id` com o `PropertyRepository` que o `FinanceDi` já tinha, e `user_id → preferências` pelo OHS novo. Histórico **não é migrado**: lançamentos antigos ficam como estão.
+
+**`DisplayPreferencesService` (`auth/application/service/`) é o OHS.** Mesmo papel de `EntitlementService` em `billing`: publica idioma e fuso de um usuário sem expor `User` nem o repositório. Existe porque `finance` precisa da preferência e não tem — nem deveria ter — acesso à entidade de `auth`. `notification` não o usa: no caminho de entrega a preferência já vem de graça no join que `claimDue` faz para pegar nome e email, e uma segunda ida ao banco por notificação seria puro desperdício.
+
+Ausência nunca lança, nos dois níveis (propriedade sumida, usuário sumido): cai no padrão. Um lançamento no idioma padrão é degradação; uma reserva que falha por causa do texto de uma descrição é quebra de produto.
+
 ## Fora de escopo (dívida registrada, não paga aqui)
 
-- `src/auth/application/service/password_reset_email_composer.ts` — `<html lang="pt-BR">` e corpo em português fixo. Não passa pelo BC `notification` (o usuário não está autenticado), então usaria a preferência gravada no `User` encontrado pelo email. Vale uma issue própria.
-- `src/finance/application/handler/stay_ledger_description.ts` — `pt-BR` + `America/Sao_Paulo` fixos, mas o texto é **persistido no ledger** no momento da criação; mudar exige decidir se o histórico é reescrito. Issue própria.
 - `src/booking/infra/service/tuya_device_management.ts` — `America/Sao_Paulo` é fuso do dispositivo físico, não do usuário. Não é o mesmo problema.
 
 ## Mapped Changes
