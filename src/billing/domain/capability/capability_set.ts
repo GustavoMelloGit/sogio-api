@@ -5,7 +5,7 @@ import {
   capabilityRegistryEntryOf,
 } from "./capability_registry";
 
-export type CapabilityValues = Partial<Record<CapabilityKey, boolean | number>>;
+export type CapabilityValues = Record<string, unknown>;
 
 export class CapabilitySet {
   readonly #values: Record<CapabilityKey, boolean | number>;

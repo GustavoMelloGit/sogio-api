@@ -1,3 +1,5 @@
+import type { CapabilitySet } from "../capability/capability_set";
+
 export type BlockedReason =
   | "trial_expired"
   | "period_expired"
@@ -13,7 +15,7 @@ export type EntitlementPlan = {
 export type EntitlementData = {
   has_platform_access: boolean;
   status: string;
-  max_properties: number;
+  capabilities: CapabilitySet;
   plan: EntitlementPlan | null;
   blocked_reason?: BlockedReason;
 };
@@ -37,8 +39,8 @@ export class Entitlement {
     return this.#data.status;
   }
 
-  get max_properties() {
-    return this.#data.max_properties;
+  get capabilities() {
+    return this.#data.capabilities;
   }
 
   get plan() {
