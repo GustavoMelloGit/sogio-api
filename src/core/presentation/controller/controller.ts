@@ -45,6 +45,7 @@ export type ControllerRequest = {
    * request had no body.
    */
   rawBody: string | null;
+  bodyStream: ReadableStream<Uint8Array> | null;
 };
 
 export type AuthenticatedControllerRequest = ControllerRequest & {
@@ -108,4 +109,5 @@ export interface Controller {
    * credentials allowed.
    */
   corsPolicy?: "public";
+  bodyMode?: "stream";
 }

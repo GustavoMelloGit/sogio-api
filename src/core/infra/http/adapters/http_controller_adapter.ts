@@ -38,6 +38,20 @@ class ControllerRequestParser {
   ) {}
 
   async parse(peerIp: string | null): Promise<ControllerRequest> {
+    if (this.controller.bodyMode === "stream") {
+      return {
+        params: this.#parseParams(),
+        body: {},
+        query: this.#parseQuery(),
+        headers: this.#parseHeaders(),
+        method: this.request.method as HttpControllerMethod,
+        url: this.request.url,
+        peerIp,
+        rawBody: null,
+        bodyStream: this.request.body,
+      };
+    }
+
     this.#rawBody = await this.#readRawBody();
 
     return {
@@ -49,6 +63,7 @@ class ControllerRequestParser {
       url: this.request.url,
       peerIp,
       rawBody: this.#rawBody,
+      bodyStream: null,
     };
   }
 
@@ -314,6 +329,12 @@ export function BunHttpControllerAdapter(
   if (requiredCapability && adminOnly) {
     throw new Error(
       `Route ${controller.method} ${controller.path} declares requiredCapability together with adminOnly, which bypasses the check entirely`
+    );
+  }
+
+  if (controller.bodyMode === "stream" && controller.inputSchema) {
+    throw new Error(
+      `Route ${controller.method} ${controller.path} declares bodyMode: "stream" together with inputSchema, but there is no body object for the schema to validate`
     );
   }
 
