@@ -18,6 +18,12 @@ import {
   type PaginatedResult,
   type PaginationInput,
 } from "../../../../core/application/dto/pagination";
+import {
+  DEFAULT_LOCALE,
+  DEFAULT_TIME_ZONE,
+  isSupportedLocale,
+  isSupportedTimeZone,
+} from "../../../../core/domain/locale/locale";
 
 const CLAIM_LEASE_MS = 5 * 60 * 1000;
 
@@ -85,6 +91,8 @@ export class NotificationPostgresRepository implements NotificationRepository {
           user_id: usersTable.id,
           name: usersTable.name,
           email: usersTable.email,
+          locale: usersTable.locale,
+          time_zone: usersTable.time_zone,
         })
         .from(notificationsTable)
         .innerJoin(usersTable, eq(usersTable.id, notificationsTable.user_id))
@@ -98,6 +106,10 @@ export class NotificationPostgresRepository implements NotificationRepository {
           user_id: row.user_id,
           name: row.name,
           email: row.email,
+          locale: isSupportedLocale(row.locale) ? row.locale : DEFAULT_LOCALE,
+          time_zone: isSupportedTimeZone(row.time_zone)
+            ? row.time_zone
+            : DEFAULT_TIME_ZONE,
         },
       }));
     });

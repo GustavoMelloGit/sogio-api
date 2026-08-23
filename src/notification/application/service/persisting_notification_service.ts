@@ -28,6 +28,17 @@ export class PersistingNotificationService implements NotificationService {
       return;
     }
 
+    const payloadError = entry.payloadError(input.payload);
+
+    if (payloadError !== null) {
+      this.logger.error("Refusing to notify: invalid notification payload", {
+        type: input.type,
+        user_id: input.user_id,
+        reason: payloadError,
+      });
+      return;
+    }
+
     const preferences = await this.preferenceRepository.allOfUser(
       input.user_id
     );
@@ -45,8 +56,7 @@ export class PersistingNotificationService implements NotificationService {
         user_id: input.user_id,
         type: input.type,
         channel,
-        title: input.title,
-        body: input.body,
+        payload: input.payload,
         scheduled_for: input.scheduled_for ?? null,
       })
     );

@@ -7,7 +7,7 @@ import {
   timestamp,
   integer,
   boolean,
-  text,
+  jsonb,
   index,
   unique,
 } from "drizzle-orm/pg-core";
@@ -21,8 +21,7 @@ export const notificationsTable = pgTable(
       .notNull(),
     type: varchar({ length: 100 }).notNull(),
     channel: varchar({ length: 50 }).notNull(),
-    title: varchar({ length: 200 }).notNull(),
-    body: text().notNull(),
+    payload: jsonb().notNull().default({}),
     status: varchar({ length: 20 }).notNull().default("pending"),
     attempts: integer().notNull().default(0),
     scheduled_for: timestamp({ withTimezone: true, mode: "date" }),

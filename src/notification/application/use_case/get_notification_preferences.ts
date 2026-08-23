@@ -32,7 +32,7 @@ export class GetNotificationPreferencesUseCase
     return {
       preferences: NOTIFICATION_TYPE_REGISTRY.map(entry => ({
         type: entry.key,
-        label: entry.label,
+        label: entry.label[user.locale],
         optional: entry.optional,
         channels: entry.default_channels.map(channel => ({
           channel,

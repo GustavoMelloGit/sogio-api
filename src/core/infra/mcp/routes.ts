@@ -8,6 +8,7 @@ import type { StayDi } from "../../../booking/infra/di/stay_di";
 import type { FinanceDi } from "../../../finance/infra/di/finance_di";
 import type { PropertyManagementDi } from "../../../property_management/infra/di/property_management_di";
 import type { BillingDi } from "../../../billing/infra/di/billing_di";
+import type { AuthDi } from "../../../auth/infra/di/auth_di";
 import type { NotificationDi } from "../../../notification/infra/di/notification_di";
 import { CapabilitySet } from "../../../billing/domain/capability/capability_set";
 import { ForbiddenError } from "../../application/error/forbidden_error";
@@ -35,6 +36,7 @@ const OAUTH_PROTECTED_RESOURCE_METADATA_PATH =
   "/.well-known/oauth-protected-resource";
 
 export type McpRouteDependencies = {
+  authDi: AuthDi;
   propertyDi: PropertyDi;
   stayDi: StayDi;
   financeDi: FinanceDi;
@@ -116,6 +118,8 @@ export function makeMcpRequestHandler(
     dependencies.propertyManagementDi.makeDeletePropertySettingTool(),
     dependencies.propertyManagementDi.makeDeletePropertyTool(),
     dependencies.billingDi.makeGetSubscriptionStatusTool(),
+    dependencies.authDi.makeGetUserPreferencesTool(),
+    dependencies.authDi.makeUpdateUserPreferencesTool(),
     dependencies.notificationDi.makeGetNotificationPreferencesTool(),
     dependencies.notificationDi.makeUpdateNotificationPreferencesTool(),
   ];

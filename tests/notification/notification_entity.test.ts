@@ -10,8 +10,7 @@ function pendingNotification(): Notification {
     user_id: crypto.randomUUID(),
     type: "subscription_payment_failed",
     channel: "email",
-    title: "Falha no pagamento",
-    body: "Regularize sua assinatura.",
+    payload: { grace_period_ends_at: new Date("2040-06-10T12:00:00Z") },
   });
 }
 
@@ -26,8 +25,7 @@ describe("Notification persisted schema", () => {
       user_id: crypto.randomUUID(),
       type: "a_type_that_no_longer_exists",
       channel: "email",
-      title: "Histórico antigo",
-      body: "Uma notificação de um tipo já aposentado.",
+      payload: {},
       status: "sent",
       attempts: 1,
       scheduled_for: null,

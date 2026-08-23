@@ -6,7 +6,7 @@ import type { AuthorizationCodeRepository } from "../../domain/repository/delega
 import type { AuthorizationRequestRepository } from "../../domain/repository/delegated_access/authorization_request_repository";
 import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
-import { revokeConsentCascadeIfNotAlreadyRevoked } from "../service/consent_cascade";
+import type { ConsentCascade } from "../service/consent_cascade";
 import type { IssuedCredentialRepository } from "../../domain/repository/delegated_access/issued_credential_repository";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 
@@ -89,7 +89,8 @@ export class DecideAuthorizationRequestUseCase
     private readonly issuedCredentialRepository: IssuedCredentialRepository,
     private readonly secretService: DelegatedSecretService,
     private readonly consentAbsoluteLifetimeMs: number,
-    private readonly consentInactivityTtlMs: number
+    private readonly consentInactivityTtlMs: number,
+    private readonly consentCascade: ConsentCascade
   ) {}
 
   async execute(
@@ -186,11 +187,7 @@ export class DecideAuthorizationRequestUseCase
       return existing.id;
     }
 
-    await revokeConsentCascadeIfNotAlreadyRevoked(
-      existing,
-      this.consentRepository,
-      this.issuedCredentialRepository
-    );
+    await this.consentCascade.revokeIfNotAlreadyRevoked(existing);
     const grantedAt = new Date();
     await this.consentRepository.revive(existing.id, scope, grantedAt);
     return existing.id;

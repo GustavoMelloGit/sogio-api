@@ -195,7 +195,9 @@ describe("Notification preferences", () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0]?.type).toBe("subscription_trial_ending");
-    expect(rows[0]?.body).toContain("10/06/2040");
+    expect(rows[0]?.payload).toEqual({
+      trial_ends_at: "2040-06-10T12:00:00.000Z",
+    });
   });
 
   it("enqueues a notification when a subscription payment fails", async () => {
@@ -224,6 +226,8 @@ describe("Notification preferences", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.type).toBe(TYPE);
     expect(rows[0]?.status).toBe("pending");
-    expect(rows[0]?.body).toContain("10/06/2040");
+    expect(rows[0]?.payload).toEqual({
+      grace_period_ends_at: "2040-06-10T12:00:00.000Z",
+    });
   });
 });

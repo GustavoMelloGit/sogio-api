@@ -2,6 +2,7 @@ import type { Logger } from "../../../core/application/logger/logger";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 import type { NotificationChannel } from "../../domain/service/notification_channel";
 import type { NotificationRepository } from "../../domain/repository/notification_repository";
+import type { NotificationContentRenderer } from "../../domain/service/notification_content_renderer";
 
 type Input = {
   limit: number;
@@ -20,6 +21,7 @@ export class DeliverPendingNotificationsUseCase
   constructor(
     private readonly logger: Logger,
     private readonly notificationRepository: NotificationRepository,
+    private readonly contentRenderer: NotificationContentRenderer,
     channels: NotificationChannel[]
   ) {
     this.#channels = new Map(
@@ -48,8 +50,29 @@ export class DeliverPendingNotificationsUseCase
         continue;
       }
 
+      const content = this.contentRenderer.render(
+        notification.type,
+        notification.payload,
+        recipient.locale,
+        recipient.time_zone
+      );
+
+      if (!content) {
+        notification.markFailed(
+          `Unrenderable notification: ${notification.type}`
+        );
+        await this.notificationRepository.save(notification);
+        failed++;
+        this.logger.error("Notification content could not be rendered", {
+          notification_id: notification.id,
+          type: notification.type,
+          locale: recipient.locale,
+        });
+        continue;
+      }
+
       try {
-        await channel.deliver(notification, recipient);
+        await channel.deliver(notification, recipient, content);
         notification.markSent();
         delivered++;
       } catch (error) {

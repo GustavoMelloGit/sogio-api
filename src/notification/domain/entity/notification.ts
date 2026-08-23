@@ -16,8 +16,7 @@ export const notificationSchema = baseEntitySchema.extend({
   user_id: z.uuidv4(),
   type: z.string().min(1).max(100),
   channel: z.enum(NOTIFICATION_CHANNELS),
-  title: z.string().min(1).max(200),
-  body: z.string().min(1).max(5000),
+  payload: z.record(z.string().max(100), z.unknown()),
   status: notificationStatusSchema,
   attempts: z.int().min(0).max(MAX_DELIVERY_ATTEMPTS),
   scheduled_for: z.date().nullable(),
@@ -33,8 +32,7 @@ type CreateInput = {
   user_id: string;
   type: NotificationTypeKey;
   channel: NotificationData["channel"];
-  title: string;
-  body: string;
+  payload: Record<string, unknown>;
   scheduled_for?: Date | null;
 };
 
@@ -63,8 +61,7 @@ export class Notification {
       user_id: input.user_id,
       type: input.type,
       channel: input.channel,
-      title: input.title,
-      body: input.body,
+      payload: input.payload,
       status: "pending",
       attempts: 0,
       scheduled_for: scheduledFor,
@@ -150,12 +147,8 @@ export class Notification {
     return this.#data.channel;
   }
 
-  get title() {
-    return this.#data.title;
-  }
-
-  get body() {
-    return this.#data.body;
+  get payload(): Record<string, unknown> {
+    return this.#data.payload;
   }
 
   get status() {
