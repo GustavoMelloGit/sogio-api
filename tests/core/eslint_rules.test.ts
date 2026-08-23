@@ -2,6 +2,8 @@ import { describe, it } from "bun:test";
 import { RuleTester } from "eslint";
 import { zodIntBounds } from "../../eslint-rules/zod_int_bounds.js";
 import { zodStringMax } from "../../eslint-rules/zod_string_max.js";
+import { handlerOnlyEventHandlers } from "../../eslint-rules/handler_only_event_handlers.js";
+import tsParser from "@typescript-eslint/parser";
 
 const ruleTester = new RuleTester({
   languageOptions: { ecmaVersion: 2022, sourceType: "module" },
@@ -75,5 +77,59 @@ describe("sogio/zod-string-max", () => {
         },
       ],
     });
+  });
+});
+
+const tsRuleTester = new RuleTester({
+  languageOptions: {
+    parser: tsParser as never,
+    ecmaVersion: 2022,
+    sourceType: "module",
+  },
+});
+
+describe("sogio/handler-only-event-handlers", () => {
+  it("keeps application/handler/ for event handlers only", () => {
+    tsRuleTester.run(
+      "handler-only-event-handlers",
+      handlerOnlyEventHandlers as never,
+      {
+        valid: [
+          "export class NotifyOnX implements EventHandler<XEvent> { async handle() {} }",
+          "export class NotifyOnX implements Something, EventHandler<XEvent> { async handle() {} }",
+          "export type StayReference = { id: string };",
+          "export interface Whatever { id: string }",
+          "function helper() {} export class NotifyOnX implements EventHandler<XEvent> { async handle() { helper(); } }",
+          "const DATE = 1; export class NotifyOnX implements EventHandler<XEvent> { async handle() {} }",
+          'export type { Thing } from "./thing";',
+        ],
+        invalid: [
+          {
+            code: "export function describeStayRevenue() { return 1; }",
+            errors: [{ messageId: "notAnEventHandler" }],
+          },
+          {
+            code: "export const STAY_TIME_ZONE = 'America/Sao_Paulo';",
+            errors: [{ messageId: "notAnEventHandler" }],
+          },
+          {
+            code: "export class PlainHelper { run() {} }",
+            errors: [{ messageId: "notAnEventHandler" }],
+          },
+          {
+            code: "export class NotifyOnX implements SomethingElse { async handle() {} }",
+            errors: [{ messageId: "notAnEventHandler" }],
+          },
+          {
+            code: 'export * from "./helpers";',
+            errors: [{ messageId: "unnamedExport" }],
+          },
+          {
+            code: "function helper() {} export { helper };",
+            errors: [{ messageId: "notAnEventHandler" }],
+          },
+        ],
+      }
+    );
   });
 });

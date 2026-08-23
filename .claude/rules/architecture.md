@@ -17,6 +17,7 @@ alwaysApply: true
   - **`src/<bc>/application`**: Contains the application-specific logic, such as use cases and data transfer objects.
   - **`src/<bc>/infra`**: Contains the implementation details of the application, such as database repositories, web frameworks, and dependency injection.
   - **`src/<bc>/presentation`**: Contains the API controllers, which handle incoming HTTP requests, and the MCP tools, which handle incoming MCP tool calls — both call the appropriate use cases.
+- **`application/handler/` holds event handlers and nothing else.** A file there exports exactly one class implementing `EventHandler`; anything a handler needs but is not a handler — a text composer, a lookup helper, a pure derivation — belongs in `application/service/` or `domain/`. The directory is the list of things a bounded context reacts to; a helper drifting into it makes that list stop meaning anything. Enforced by `sogio/handler-only-event-handlers` (`eslint-rules/handler_only_event_handlers.js`), which allows non-exported helpers inside a handler file and type-only exports.
 - The project uses Bun as the JavaScript runtime and toolkit.
 - The project uses TypeScript as the programming language.
 - The project uses PostgreSQL as the database.
