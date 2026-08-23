@@ -119,6 +119,7 @@ export function makeImportStaysTool(
 ): McpToolDefinition<typeof inputSchema> {
   return {
     name: "import_stays",
+    requiredCapability: "bulk_import",
     description:
       "Imports stays in bulk, one call per batch of up to " +
       `${MAX_MCP_IMPORT_RECORDS} records. The whole batch is accepted or ` +

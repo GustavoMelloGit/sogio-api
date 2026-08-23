@@ -3,6 +3,7 @@ import { eq, inArray } from "drizzle-orm";
 import { api } from "../helpers/server";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
+import { upgradeToPro } from "../helpers/fixtures/plan";
 import { createPropertyFixture } from "../helpers/fixtures/property";
 import { createAuthToken } from "../helpers/fixtures/auth_token";
 import { db } from "../../src/core/infra/database/drizzle/database";
@@ -72,6 +73,7 @@ describe("POST /import/stays", () => {
       email: "import-stays-happy@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const property = await createPropertyFixture({ userId: user.id });
     const token = await createAuthToken(user.id);
 
@@ -136,6 +138,7 @@ describe("POST /import/stays", () => {
       email: "import-stays-overlap-batch@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const property = await createPropertyFixture({ userId: user.id });
     const token = await createAuthToken(user.id);
 
@@ -178,6 +181,7 @@ describe("POST /import/stays", () => {
       email: "import-stays-same-tenant@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const property = await createPropertyFixture({ userId: user.id });
     const token = await createAuthToken(user.id);
     const phone = "5511922220000";
@@ -212,6 +216,7 @@ describe("POST /import/stays", () => {
       email: "import-stays-im5@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const property = await createPropertyFixture({ userId: user.id });
     const token = await createAuthToken(user.id);
 
@@ -275,6 +280,7 @@ describe("POST /import/stays", () => {
       email: "import-stays-existing-overlap@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const property = await createPropertyFixture({ userId: user.id });
     const token = await createAuthToken(user.id);
 
@@ -328,11 +334,13 @@ describe("POST /import/stays", () => {
       email: "import-stays-tenant-scope-owner1@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(owner1.id);
     const { user: owner2 } = await createUserFixture({
       name: "Owner Dois",
       email: "import-stays-tenant-scope-owner2@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(owner2.id);
     const property1 = await createPropertyFixture({ userId: owner1.id });
     const property2 = await createPropertyFixture({ userId: owner2.id });
     const token1 = await createAuthToken(owner1.id);

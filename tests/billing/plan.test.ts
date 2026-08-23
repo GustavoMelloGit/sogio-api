@@ -39,6 +39,7 @@ describe("Plan — capabilities schema tolerates an unknown key (D-7)", () => {
     expect(capabilities.toRecord()).toEqual({
       max_properties: 3,
       export_reports: false,
+      bulk_import: false,
     });
   });
 });

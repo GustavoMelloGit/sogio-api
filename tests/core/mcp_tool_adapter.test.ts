@@ -205,7 +205,7 @@ describe("registerMcpTool — requiredCapability gate (D-5, D-6)", () => {
     const registeredTool = registerMcpTool(
       server,
       fakeUser,
-      CapabilitySet.of({ export_reports: true }),
+      CapabilitySet.of({ export_reports: true, bulk_import: false }),
       {
         name: "export_reports",
         description: "Exports a report",

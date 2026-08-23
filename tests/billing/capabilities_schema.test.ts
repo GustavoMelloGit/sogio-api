@@ -17,6 +17,7 @@ describe("capabilitiesSchema", () => {
     const result = capabilitiesSchema.safeParse({
       max_properties: 5,
       export_reports: false,
+      bulk_import: false,
       not_a_capability: 1,
     });
 
@@ -27,6 +28,7 @@ describe("capabilitiesSchema", () => {
     const result = capabilitiesSchema.safeParse({
       max_properties: MIN_LIMIT_CAPABILITY_VALUE - 1,
       export_reports: false,
+      bulk_import: false,
     });
 
     expect(result.success).toBe(false);
@@ -36,6 +38,7 @@ describe("capabilitiesSchema", () => {
     const result = capabilitiesSchema.safeParse({
       max_properties: MAX_LIMIT_CAPABILITY_VALUE + 1,
       export_reports: false,
+      bulk_import: false,
     });
 
     expect(result.success).toBe(false);
@@ -45,6 +48,7 @@ describe("capabilitiesSchema", () => {
     const result = capabilitiesSchema.safeParse({
       max_properties: 2.5,
       export_reports: false,
+      bulk_import: false,
     });
 
     expect(result.success).toBe(false);
@@ -63,6 +67,7 @@ describe("capabilitiesSchema", () => {
     const result = capabilitiesSchema.safeParse({
       max_properties: 5,
       export_reports: true,
+      bulk_import: false,
     });
 
     expect(result.success).toBe(true);

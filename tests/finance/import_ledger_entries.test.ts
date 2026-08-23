@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { api } from "../helpers/server";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
+import { upgradeToPro } from "../helpers/fixtures/plan";
 import { createPropertyFixture } from "../helpers/fixtures/property";
 import { createAuthToken } from "../helpers/fixtures/auth_token";
 import { db } from "../../src/core/infra/database/drizzle/database";
@@ -39,6 +40,7 @@ describe("POST /import/ledger-entries", () => {
       email: "import-happy@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const property = await createPropertyFixture({ userId: user.id });
     const token = await createAuthToken(user.id);
 
@@ -70,6 +72,7 @@ describe("POST /import/ledger-entries", () => {
       email: "import-rejected@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const property = await createPropertyFixture({ userId: user.id });
     const token = await createAuthToken(user.id);
 
@@ -101,11 +104,13 @@ describe("POST /import/ledger-entries", () => {
       email: "import-owner@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(owner.id);
     const { user: intruder } = await createUserFixture({
       name: "Maria Souza",
       email: "import-intruder@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(intruder.id);
     const ownedProperty = await createPropertyFixture({ userId: owner.id });
     const intruderToken = await createAuthToken(intruder.id);
 
@@ -134,6 +139,7 @@ describe("POST /import/ledger-entries", () => {
       email: "import-historical@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const property = await createPropertyFixture({ userId: user.id });
     const token = await createAuthToken(user.id);
 
@@ -162,6 +168,7 @@ describe("POST /import/ledger-entries", () => {
       email: "import-im5@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const property = await createPropertyFixture({ userId: user.id });
     const token = await createAuthToken(user.id);
 
@@ -193,6 +200,7 @@ describe("POST /import/ledger-entries", () => {
       email: "import-unauth@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const property = await createPropertyFixture({ userId: user.id });
 
     const csv = [

@@ -36,7 +36,10 @@ const grantedEntitlementService = new FakeEntitlementService(
   Entitlement.of({
     has_platform_access: true,
     status: "active",
-    capabilities: CapabilitySet.of({ export_reports: true }),
+    capabilities: CapabilitySet.of({
+      export_reports: true,
+      bulk_import: false,
+    }),
     plan: null,
   })
 );

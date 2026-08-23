@@ -78,6 +78,7 @@ export function makeImportLedgerEntriesTool(
 ): McpToolDefinition<typeof inputSchema> {
   return {
     name: "import_ledger_entries",
+    requiredCapability: "bulk_import",
     description:
       "Imports financial movements (expenses and revenues) for one or more properties in a single batch. The whole batch is accepted or rejected atomically: on rejection, nothing is written and the result lists which records failed and why. This does not deduplicate — resubmitting an already-accepted batch inserts every row again; use delete_ledger_entry to remove duplicates.",
     inputSchema,

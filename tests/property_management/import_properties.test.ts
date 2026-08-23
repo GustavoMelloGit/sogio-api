@@ -5,7 +5,10 @@ import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
 import { createAuthToken } from "../helpers/fixtures/auth_token";
-import { PRO_PLAN_ID } from "../helpers/fixtures/plan";
+import {
+  PRO_PLAN_ID,
+  assignPlanWithCapabilities,
+} from "../helpers/fixtures/plan";
 import { db } from "../../src/core/infra/database/drizzle/database";
 import {
   propertiesTable,
@@ -152,6 +155,29 @@ describe("POST /import/properties", () => {
     expect(await countPropertiesOfUser(user.id)).toBe(3);
   });
 
+  it("403 — a plan without bulk_import cannot import at all", async () => {
+    const { user } = await createUserFixture({
+      name: "Dono de Imóvel",
+      email: "import.no-capability@sogio.dev",
+      password: "password123",
+    });
+    const token = await createAuthToken(user.id);
+
+    const res = await api("/import/properties", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "text/csv",
+      },
+      body: buildCsv([propertyRow("Casa Bloqueada")]),
+    });
+    const body = (await res.json()) as { message: string };
+
+    expect(res.status).toBe(403);
+    expect(body.message).toContain("bulk data imports");
+    expect(await countPropertiesOfUser(user.id)).toBe(0);
+  });
+
   it("produces the same upgrade message as the unit path when the quota is exceeded (IM-2)", async () => {
     const { user: unitPathUser } = await createUserFixture({
       name: "Dono de Imóvel",
@@ -189,6 +215,10 @@ describe("POST /import/properties", () => {
       password: "password123",
     });
     await createPropertyFixture({ userId: importUser.id });
+    await assignPlanWithCapabilities(importUser.id, "import-im2-quota", {
+      max_properties: 1,
+      bulk_import: true,
+    });
     const importToken = await createAuthToken(importUser.id);
 
     const importRes = await api("/import/properties", {

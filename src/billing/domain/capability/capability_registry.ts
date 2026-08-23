@@ -43,6 +43,14 @@ export const CAPABILITY_REGISTRY = [
     label: "report exports",
     metadata_key: "sogio_export_reports",
   },
+  {
+    key: "bulk_import",
+    kind: "access",
+    default: false,
+    required: false,
+    label: "bulk data imports",
+    metadata_key: "sogio_bulk_import",
+  },
 ] as const satisfies readonly CapabilityRegistryEntry[];
 
 export type AccessCapabilityKey = Extract<

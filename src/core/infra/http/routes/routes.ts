@@ -79,6 +79,7 @@ const propertyControllers: Route[] = [
   },
   {
     authenticated: true,
+    requiredCapability: "bulk_import",
     controller: propertyDi.makeImportStaysController(),
   },
 ];
@@ -98,6 +99,7 @@ const financeControllers: Route[] = [
   },
   {
     authenticated: true,
+    requiredCapability: "bulk_import",
     controller: financeDi.makeImportLedgerEntriesController(),
   },
   {
@@ -152,6 +154,7 @@ const propertyManagementControllers: Route[] = [
   },
   {
     authenticated: true,
+    requiredCapability: "bulk_import",
     controller: propertyManagementDi.makeImportPropertiesController(),
   },
 ];
