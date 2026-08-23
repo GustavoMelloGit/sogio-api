@@ -1,6 +1,7 @@
 export const MAX_IMPORT_ROWS = 1000;
 export const MAX_REPORTED_ERRORS = 100;
 export const MAX_MCP_IMPORT_RECORDS = 100;
+export const MAX_IMPORT_COLUMNS = 200;
 
 export type ImportFailure = {
   row: number;

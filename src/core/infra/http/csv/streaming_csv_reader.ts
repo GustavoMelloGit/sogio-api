@@ -1,5 +1,8 @@
 import type { ImportRecordStream } from "../../../application/import/source_record";
-import { ImportRejectedError } from "../../../application/import/import_failure";
+import {
+  ImportRejectedError,
+  MAX_IMPORT_COLUMNS,
+} from "../../../application/import/import_failure";
 
 export const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 export const MAX_IMPORT_FIELD_BYTES = 64 * 1024;
@@ -71,6 +74,12 @@ export async function* readCsvRecordStream(
   };
 
   const finalizeField = (): void => {
+    if (fields.length + 1 > MAX_IMPORT_COLUMNS) {
+      rejectBatch(
+        null,
+        `A row exceeds the maximum of ${MAX_IMPORT_COLUMNS} columns`
+      );
+    }
     fields.push(decoder.decode(Uint8Array.from(fieldBytes)));
     fieldBytes = [];
   };

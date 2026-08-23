@@ -4,7 +4,10 @@ import {
   MAX_IMPORT_BYTES,
   MAX_IMPORT_FIELD_BYTES,
 } from "../../src/core/infra/http/csv/streaming_csv_reader";
-import { ImportRejectedError } from "../../src/core/application/import/import_failure";
+import {
+  ImportRejectedError,
+  MAX_IMPORT_COLUMNS,
+} from "../../src/core/application/import/import_failure";
 import type { SourceRecord } from "../../src/core/application/import/source_record";
 
 function streamFrom(
@@ -192,6 +195,30 @@ describe("readCsvRecordStream — size limits", () => {
     expect(error.report.truncated).toBe(false);
     expect(error.report.failures).toHaveLength(1);
     expect(error.report.failures[0]?.field).toBeNull();
+  });
+
+  it("rejects a header exceeding MAX_IMPORT_COLUMNS, with field: null and truncated: false", async () => {
+    const header = ["a", "b"]
+      .concat(Array.from({ length: MAX_IMPORT_COLUMNS - 1 }, (_, i) => `c${i}`))
+      .join(",");
+    const error = await collectRejection(`${header}\n`, ["a", "b"]);
+
+    expect(error.report.truncated).toBe(false);
+    expect(error.report.failures).toHaveLength(1);
+    expect(error.report.failures[0]?.field).toBeNull();
+  });
+
+  it("allows a header of exactly MAX_IMPORT_COLUMNS columns", async () => {
+    const columns = ["a", "b"].concat(
+      Array.from({ length: MAX_IMPORT_COLUMNS - 2 }, (_, i) => `c${i}`)
+    );
+    const row = columns.map(() => "v").join(",");
+    const records = await collect(`${columns.join(",")}\n${row}\n`, ["a", "b"]);
+
+    expect(records).toHaveLength(1);
+    expect(Object.keys(records[0]?.values ?? {})).toHaveLength(
+      MAX_IMPORT_COLUMNS
+    );
   });
 
   it("allows a field of exactly MAX_IMPORT_FIELD_BYTES bytes", async () => {
