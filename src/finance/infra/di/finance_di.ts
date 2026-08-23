@@ -8,6 +8,7 @@ import { RecordExpenseUseCase } from "../../application/use_case/record_expense"
 import { RecordRevenueUseCase } from "../../application/use_case/record_revenue";
 import { FindPropertyFinancialMovementsUseCase } from "../../application/use_case/find_property_financial_movements";
 import { ImportLedgerEntriesUseCase } from "../../application/use_case/import_ledger_entries";
+import { DeleteLedgerEntryUseCase } from "../../application/use_case/delete_ledger_entry";
 import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
 import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
 import { ImportRunner } from "../../../core/application/import/import_runner";
@@ -15,7 +16,11 @@ import type { LedgerEntryRepository } from "../../domain/repository/ledger_entry
 import { RecordExpenseController } from "../../presentation/controller/record_expense.controller";
 import { RecordRevenueController } from "../../presentation/controller/record_revenue.controller";
 import { FindPropertyFinancialMovementsController } from "../../presentation/controller/find_property_financial_movements.controller";
+import { ImportLedgerEntriesController } from "../../presentation/controller/import_ledger_entries.controller";
+import { DeleteLedgerEntryController } from "../../presentation/controller/delete_ledger_entry.controller";
 import { makeRecordExpenseTool } from "../../presentation/mcp_tool/record_expense.mcp_tool";
+import { makeImportLedgerEntriesTool } from "../../presentation/mcp_tool/import_ledger_entries.mcp_tool";
+import { makeDeleteLedgerEntryTool } from "../../presentation/mcp_tool/delete_ledger_entry.mcp_tool";
 import { LedgerEntryPostgresRepository } from "../database/postgres_repository/ledger_entry_postgres_repository";
 import { RevertRevenueOnStayCancel } from "../../application/handler/revert_revenue_on_stay_cancel";
 import { StayCanceledEvent } from "../../../booking/domain/event/stay_canceled_event";
@@ -106,6 +111,13 @@ export class FinanceDi {
     );
   }
 
+  makeDeleteLedgerEntryUseCase() {
+    return new DeleteLedgerEntryUseCase(
+      this.#ledgerEntryRepository,
+      this.#propertyRepository
+    );
+  }
+
   // Controllers
   makeRecordExpenseController() {
     return new RecordExpenseController(this.makeRecordExpenseUseCase());
@@ -121,8 +133,26 @@ export class FinanceDi {
     );
   }
 
+  makeImportLedgerEntriesController() {
+    return new ImportLedgerEntriesController(
+      this.makeImportLedgerEntriesUseCase()
+    );
+  }
+
+  makeDeleteLedgerEntryController() {
+    return new DeleteLedgerEntryController(this.makeDeleteLedgerEntryUseCase());
+  }
+
   // MCP Tools
   makeRecordExpenseTool() {
     return makeRecordExpenseTool(this.makeRecordExpenseUseCase());
+  }
+
+  makeImportLedgerEntriesTool() {
+    return makeImportLedgerEntriesTool(this.makeImportLedgerEntriesUseCase());
+  }
+
+  makeDeleteLedgerEntryTool() {
+    return makeDeleteLedgerEntryTool(this.makeDeleteLedgerEntryUseCase());
   }
 }
