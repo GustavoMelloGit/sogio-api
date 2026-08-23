@@ -41,7 +41,6 @@ const inputSchema = z.object({
   address: addressSchema.partial().optional(),
   images: z
     .array(z.string().max(2048, "Image URL must be at most 2048 characters"))
-    .min(1, "Images are required")
     .optional(),
   capacity: z
     .number()

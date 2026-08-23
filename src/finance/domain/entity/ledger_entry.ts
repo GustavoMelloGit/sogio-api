@@ -44,10 +44,10 @@ export class LedgerEntry {
     return crypto.randomUUID();
   }
 
-  static #baseEntityData() {
+  static #baseEntityData(occurred_at?: Date) {
     return {
       id: this.#nextId(),
-      created_at: new Date(),
+      created_at: occurred_at ?? new Date(),
       updated_at: new Date(),
     };
   }
@@ -57,7 +57,8 @@ export class LedgerEntry {
   }
 
   public static newExpense(
-    data: WithoutBaseEntity<LedgerEntryData>
+    data: WithoutBaseEntity<LedgerEntryData>,
+    occurred_at?: Date
   ): LedgerEntry {
     if (data.amount >= 0) {
       throw new ValidationError("Amount must be less than 0");
@@ -73,12 +74,13 @@ export class LedgerEntry {
 
     return new LedgerEntry({
       ...data,
-      ...this.#baseEntityData(),
+      ...this.#baseEntityData(occurred_at),
     });
   }
 
   public static newRevenue(
-    data: WithoutBaseEntity<LedgerEntryData>
+    data: WithoutBaseEntity<LedgerEntryData>,
+    occurred_at?: Date
   ): LedgerEntry {
     if (data.amount <= 0) {
       throw new ValidationError("Amount must be greater than 0");
@@ -86,8 +88,13 @@ export class LedgerEntry {
 
     return new LedgerEntry({
       ...data,
-      ...this.#baseEntityData(),
+      ...this.#baseEntityData(occurred_at),
     });
+  }
+
+  public remove(): void {
+    this.#data.deleted_at = new Date();
+    this.#data.updated_at = new Date();
   }
 
   get id() {

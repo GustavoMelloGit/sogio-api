@@ -11,6 +11,7 @@ import { ConflictError } from "../../src/core/application/error/conflict_error";
 
 function makeStayWithTenant(checkIn: Date, checkOut: Date): StayWithTenant {
   const tenant = Tenant.create({
+    owner_id: crypto.randomUUID(),
     name: "Ana Souza",
     phone: "5511999990001",
     sex: "FEMALE",

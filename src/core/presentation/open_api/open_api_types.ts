@@ -9,12 +9,19 @@ export type OpenApiParameter = {
 export type OpenApiRequestBody = {
   description?: string;
   required?: boolean;
-  content: {
-    "application/json": {
-      schema: Record<string, unknown>;
-      example?: Record<string, unknown>;
-    };
-  };
+  content:
+    | {
+        "application/json": {
+          schema: Record<string, unknown>;
+          example?: Record<string, unknown>;
+        };
+      }
+    | {
+        "text/csv": {
+          schema: Record<string, unknown>;
+          example?: string;
+        };
+      };
 };
 
 export type OpenApiResponse = {

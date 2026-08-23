@@ -36,6 +36,25 @@ export class LedgerEntryPostgresRepository implements LedgerEntryRepository {
    * outside `TransactionRunner.run`, unchanged from before.
    */
   async save(entry: LedgerEntry): Promise<void> {
+    const existingEntry = await this.entryOfId(entry.id);
+    if (existingEntry) {
+      await this.#updateEntry(entry);
+    } else {
+      await this.#createEntry(entry);
+    }
+  }
+
+  async entryOfId(id: string): Promise<LedgerEntry | null> {
+    const entry = await currentExecutor().query.ledgerEntriesTable.findFirst({
+      where: eq(ledgerEntriesTable.id, id),
+    });
+
+    if (!entry) return null;
+
+    return LedgerEntry.reconstitute(entry);
+  }
+
+  async #createEntry(entry: LedgerEntry): Promise<void> {
     const data: LedgerEntryData = {
       id: entry.id,
       amount: entry.amount,
@@ -57,11 +76,34 @@ export class LedgerEntryPostgresRepository implements LedgerEntryRepository {
     }
   }
 
+  async #updateEntry(entry: LedgerEntry): Promise<void> {
+    const result = await currentExecutor()
+      .update(ledgerEntriesTable)
+      .set({
+        amount: entry.amount,
+        category: entry.category,
+        description: entry.description,
+        updated_at: entry.updated_at,
+        deleted_at: entry.deleted_at,
+      })
+      .where(eq(ledgerEntriesTable.id, entry.id))
+      .returning();
+
+    if (!result[0]) {
+      throw new Error("Failed to update ledger entry");
+    }
+  }
+
   async propertyBalance(propertyId: string): Promise<number> {
     const result = await db
       .select({ total: sum(ledgerEntriesTable.amount) })
       .from(ledgerEntriesTable)
-      .where(eq(ledgerEntriesTable.property_id, propertyId));
+      .where(
+        and(
+          eq(ledgerEntriesTable.property_id, propertyId),
+          isNull(ledgerEntriesTable.deleted_at)
+        )
+      );
 
     const total = result[0]?.total;
     return total ? Number(total) : 0;
@@ -98,6 +140,7 @@ export class LedgerEntryPostgresRepository implements LedgerEntryRepository {
   ): Promise<PaginatedResult<LedgerEntry>> {
     const whereClause = and(
       eq(ledgerEntriesTable.property_id, propertyId),
+      isNull(ledgerEntriesTable.deleted_at),
       dateFilter?.start_date
         ? gte(ledgerEntriesTable.created_at, dateFilter.start_date)
         : undefined,

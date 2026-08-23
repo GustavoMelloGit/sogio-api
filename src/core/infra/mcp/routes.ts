@@ -122,6 +122,10 @@ export function makeMcpRequestHandler(
     dependencies.authDi.makeUpdateUserPreferencesTool(),
     dependencies.notificationDi.makeGetNotificationPreferencesTool(),
     dependencies.notificationDi.makeUpdateNotificationPreferencesTool(),
+    dependencies.propertyManagementDi.makeImportPropertiesTool(),
+    dependencies.propertyDi.makeImportStaysTool(),
+    dependencies.financeDi.makeImportLedgerEntriesTool(),
+    dependencies.financeDi.makeDeleteLedgerEntryTool(),
   ];
 
   return async function handleMcpRequest(request: Request): Promise<Response> {

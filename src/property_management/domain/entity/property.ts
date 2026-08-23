@@ -22,7 +22,7 @@ export const propertySchema = baseEntitySchema.extend({
     country: z.string().min(1, "Country is required").max(100),
     complement: z.string().max(100).default(""),
   }),
-  images: z.array(z.string().max(2048)).min(1, "Images are required"),
+  images: z.array(z.string().max(2048)),
   capacity: z
     .number()
     .int()

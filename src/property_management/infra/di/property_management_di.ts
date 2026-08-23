@@ -23,9 +23,12 @@ import { DeletePropertySettingUseCase } from "../../application/use_case/delete_
 import { DeletePropertySettingController } from "../../presentation/controller/delete_property_setting.controller";
 import { DeletePropertyUseCase } from "../../application/use_case/delete_property";
 import { DeletePropertyController } from "../../presentation/controller/delete_property.controller";
+import { ImportBatchPropertiesUseCase } from "../../application/use_case/import_batch_properties";
+import { ImportPropertiesController } from "../../presentation/controller/import_properties.controller";
 import type { PropertyOccupancy } from "../../domain/service/property_occupancy";
 import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
 import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
+import { ImportRunner } from "../../../core/application/import/import_runner";
 import { makeListPropertiesTool } from "../../presentation/mcp_tool/list_properties.mcp_tool";
 import { makeDeletePropertyTool } from "../../presentation/mcp_tool/delete_property.mcp_tool";
 import { makeCreatePropertySettingTool } from "../../presentation/mcp_tool/create_property_setting.mcp_tool";
@@ -33,6 +36,7 @@ import { makeGetPropertySettingTool } from "../../presentation/mcp_tool/get_prop
 import { makeUpdatePropertySettingTool } from "../../presentation/mcp_tool/update_property_setting.mcp_tool";
 import { makeDeletePropertySettingTool } from "../../presentation/mcp_tool/delete_property_setting.mcp_tool";
 import { makeListPropertySettingsTool } from "../../presentation/mcp_tool/list_property_settings.mcp_tool";
+import { makeImportPropertiesTool } from "../../presentation/mcp_tool/import_properties.mcp_tool";
 
 export class PropertyManagementDi {
   #propertyRepository: PropertyRepository;
@@ -40,6 +44,7 @@ export class PropertyManagementDi {
   #entitlementService: EntitlementService;
   #propertyOccupancy: PropertyOccupancy;
   #transactionRunner: TransactionRunner;
+  #importRunner: ImportRunner;
 
   constructor(
     entitlementService: EntitlementService,
@@ -50,6 +55,7 @@ export class PropertyManagementDi {
     this.#entitlementService = entitlementService;
     this.#propertyOccupancy = propertyOccupancy;
     this.#transactionRunner = new DrizzleTransactionRunner();
+    this.#importRunner = new ImportRunner(this.#transactionRunner);
   }
 
   // Use Cases
@@ -105,6 +111,13 @@ export class PropertyManagementDi {
       this.#transactionRunner
     );
   }
+  makeImportBatchPropertiesUseCase() {
+    return new ImportBatchPropertiesUseCase(
+      this.#propertyRepository,
+      this.#entitlementService,
+      this.#importRunner
+    );
+  }
 
   // Controllers
   makeCreatePropertyController() {
@@ -149,6 +162,11 @@ export class PropertyManagementDi {
   makeDeletePropertyController() {
     return new DeletePropertyController(this.makeDeletePropertyUseCase());
   }
+  makeImportPropertiesController() {
+    return new ImportPropertiesController(
+      this.makeImportBatchPropertiesUseCase()
+    );
+  }
 
   // MCP Tools
   makeListPropertiesTool() {
@@ -177,5 +195,8 @@ export class PropertyManagementDi {
   }
   makeListPropertySettingsTool() {
     return makeListPropertySettingsTool(this.makeListPropertySettingsUseCase());
+  }
+  makeImportPropertiesTool() {
+    return makeImportPropertiesTool(this.makeImportBatchPropertiesUseCase());
   }
 }

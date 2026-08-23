@@ -10,6 +10,7 @@ import "../helpers/server";
 const WIRED_EVENTS = [
   "stay_booked",
   "stay_canceled",
+  "stay_imported",
   "user_created",
   "subscription_payment_failed",
   "subscription_trial_ending",
@@ -29,6 +30,7 @@ describe("Event handler registration", () => {
     expect(handlerCounts()).toEqual({
       stay_booked: 2,
       stay_canceled: 1,
+      stay_imported: 1,
       user_created: 1,
       subscription_payment_failed: 2,
       subscription_trial_ending: 1,

@@ -49,6 +49,10 @@ export class InMemoryRateLimiter implements RateLimiter {
     return this.#consumeNew(key, policy, now);
   }
 
+  clear(): void {
+    this.#entries.clear();
+  }
+
   #consumeExisting(
     key: string,
     entry: Entry,

@@ -1,6 +1,7 @@
 import { baseSchema } from "./base_schema";
 import { relations } from "drizzle-orm";
 import { propertiesTable } from "./property_schemas";
+import { usersTable } from "./auth_schemas";
 import {
   pgTable,
   pgEnum,
@@ -8,16 +9,28 @@ import {
   uuid,
   timestamp,
   integer,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const sexEnum = pgEnum("sex", ["MALE", "FEMALE", "OTHER"]);
 
-export const tenantsTable = pgTable("tenants", {
-  ...baseSchema,
-  name: varchar({ length: 255 }).notNull(),
-  phone: varchar({ length: 15 }).notNull().unique(),
-  sex: sexEnum("sex").notNull(),
-});
+export const tenantsTable = pgTable(
+  "tenants",
+  {
+    ...baseSchema,
+    owner_id: uuid()
+      .references(() => usersTable.id, {
+        onDelete: "cascade",
+      })
+      .notNull(),
+    name: varchar({ length: 255 }).notNull(),
+    phone: varchar({ length: 15 }).notNull(),
+    sex: sexEnum("sex").notNull(),
+  },
+  table => [
+    uniqueIndex("tenants_owner_id_phone_idx").on(table.owner_id, table.phone),
+  ]
+);
 
 export const tenantsRelations = relations(tenantsTable, ({ many }) => ({
   stays: many(staysTable),

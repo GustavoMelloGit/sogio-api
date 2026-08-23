@@ -11,6 +11,7 @@ export type DateFilter = {
 
 export interface LedgerEntryRepository {
   save(entry: LedgerEntry): Promise<void>;
+  entryOfId(id: string): Promise<LedgerEntry | null>;
   propertyBalance(propertyId: string): Promise<number>;
   findByPropertyId(
     propertyId: string,

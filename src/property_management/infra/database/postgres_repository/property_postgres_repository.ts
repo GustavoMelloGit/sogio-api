@@ -85,26 +85,43 @@ export class PropertyPostgresRepository implements PropertyRepository {
     property: Property,
     ensureWithinQuota: (currentCount: number) => void
   ): Promise<void> {
-    await db.transaction(async tx => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(${PROPERTY_QUOTA_LOCK_NAMESPACE}, hashtext(${property.user_id}))`
+    const ambientExecutor = currentExecutor();
+    if (ambientExecutor === db) {
+      await db.transaction(tx =>
+        this.#saveNewWithinQuota(property, ensureWithinQuota, tx)
       );
+    } else {
+      await this.#saveNewWithinQuota(
+        property,
+        ensureWithinQuota,
+        ambientExecutor
+      );
+    }
+  }
 
-      const result = await tx
-        .select({ total: count() })
-        .from(propertiesTable)
-        .where(
-          and(
-            eq(propertiesTable.user_id, property.user_id),
-            isNull(propertiesTable.deleted_at)
-          )
-        );
-      const currentCount = result[0]?.total ?? 0;
+  async #saveNewWithinQuota(
+    property: Property,
+    ensureWithinQuota: (currentCount: number) => void,
+    executor: DbExecutor
+  ): Promise<void> {
+    await executor.execute(
+      sql`select pg_advisory_xact_lock(${PROPERTY_QUOTA_LOCK_NAMESPACE}, hashtext(${property.user_id}))`
+    );
 
-      ensureWithinQuota(currentCount);
+    const result = await executor
+      .select({ total: count() })
+      .from(propertiesTable)
+      .where(
+        and(
+          eq(propertiesTable.user_id, property.user_id),
+          isNull(propertiesTable.deleted_at)
+        )
+      );
+    const currentCount = result[0]?.total ?? 0;
 
-      await this.#createProperty(property, tx);
-    });
+    ensureWithinQuota(currentCount);
+
+    await this.#createProperty(property, executor);
   }
 
   async #createAddress(

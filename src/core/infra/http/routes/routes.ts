@@ -77,6 +77,10 @@ const propertyControllers: Route[] = [
     authenticated: true,
     controller: propertyDi.makeCreateExternalBookingSourceController(),
   },
+  {
+    authenticated: true,
+    controller: propertyDi.makeImportStaysController(),
+  },
 ];
 
 const financeControllers: Route[] = [
@@ -91,6 +95,14 @@ const financeControllers: Route[] = [
   {
     authenticated: true,
     controller: financeDi.makeFindPropertyFinancialMovementsController(),
+  },
+  {
+    authenticated: true,
+    controller: financeDi.makeImportLedgerEntriesController(),
+  },
+  {
+    authenticated: true,
+    controller: financeDi.makeDeleteLedgerEntryController(),
   },
 ];
 
@@ -137,6 +149,10 @@ const propertyManagementControllers: Route[] = [
     // gate.
     authenticated: true,
     controller: propertyManagementDi.makeDeletePropertyController(),
+  },
+  {
+    authenticated: true,
+    controller: propertyManagementDi.makeImportPropertiesController(),
   },
 ];
 
