@@ -4,9 +4,22 @@ import {
   subscriptionsTable,
 } from "../../../src/core/infra/database/drizzle/schema";
 import { eq } from "drizzle-orm";
+import type { TotalCapabilityValues } from "../../../src/billing/domain/capability/capability_registry";
 
 export const FREE_PLAN_ID = "00000000-0000-4000-8000-000000000001";
 export const PRO_PLAN_ID = "00000000-0000-4000-8000-000000000002";
+
+const FREE_PLAN_CAPABILITIES: TotalCapabilityValues = {
+  max_properties: 1,
+  export_reports: false,
+  bulk_import: false,
+};
+
+const PRO_PLAN_CAPABILITIES: TotalCapabilityValues = {
+  max_properties: 5,
+  export_reports: true,
+  bulk_import: true,
+};
 
 export async function seedPlans(): Promise<void> {
   await db
@@ -17,12 +30,12 @@ export async function seedPlans(): Promise<void> {
       name: "Free",
       price_amount: 0,
       billing_interval: "monthly",
-      capabilities: { max_properties: 1 },
+      capabilities: FREE_PLAN_CAPABILITIES,
       trial_days: 0,
     })
     .onConflictDoUpdate({
       target: plansTable.code,
-      set: { capabilities: { max_properties: 1 }, trial_days: 0 },
+      set: { capabilities: FREE_PLAN_CAPABILITIES, trial_days: 0 },
     });
 
   await db
@@ -33,13 +46,13 @@ export async function seedPlans(): Promise<void> {
       name: "Pro",
       price_amount: 2500,
       billing_interval: "monthly",
-      capabilities: { max_properties: 5, bulk_import: true },
+      capabilities: PRO_PLAN_CAPABILITIES,
       trial_days: 14,
     })
     .onConflictDoUpdate({
       target: plansTable.code,
       set: {
-        capabilities: { max_properties: 5, bulk_import: true },
+        capabilities: PRO_PLAN_CAPABILITIES,
         trial_days: 14,
       },
     });

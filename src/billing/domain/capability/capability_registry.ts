@@ -53,6 +53,17 @@ export const CAPABILITY_REGISTRY = [
   },
 ] as const satisfies readonly CapabilityRegistryEntry[];
 
+type CapabilityRegistryEntryUnion = (typeof CAPABILITY_REGISTRY)[number];
+
+export type TotalCapabilityValues = {
+  [K in CapabilityRegistryEntryUnion["key"]]: Extract<
+    CapabilityRegistryEntryUnion,
+    { key: K }
+  >["kind"] extends "access"
+    ? boolean
+    : number;
+};
+
 export type AccessCapabilityKey = Extract<
   (typeof CAPABILITY_REGISTRY)[number],
   { kind: "access" }
