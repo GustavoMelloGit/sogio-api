@@ -111,23 +111,30 @@ async function databaseExists(sql: SQL, name: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-function pushSchema(url: string): void {
+function pushSchema(url: string): string | null {
   const result = Bun.spawnSync(["bun", "x", "drizzle-kit", "push", "--force"], {
     cwd: worktreeRoot(),
     env: { ...environmentWithoutGitOverrides(), DATABASE_URL: url },
     stdout: "pipe",
     stderr: "pipe",
   });
-  if (result.exitCode !== 0) {
-    throw new Error(
-      [
-        `drizzle-kit push failed for ${databaseNameOf(url)}`,
-        result.stdout.toString().trim(),
-        result.stderr.toString().trim(),
-      ]
-        .filter(Boolean)
-        .join("\n")
-    );
+  const stderr = result.stderr.toString().trim();
+  if (result.exitCode === 0 && stderr === "") return null;
+
+  return [
+    `drizzle-kit push failed for ${databaseNameOf(url)}`,
+    result.stdout.toString().trim(),
+    stderr,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function createDatabase(sql: SQL, name: string): Promise<void> {
+  try {
+    await sql.unsafe(`create database ${quoteIdentifier(name)}`);
+  } catch (error) {
+    if (!(await databaseExists(sql, name))) throw error;
   }
 }
 
@@ -136,16 +143,28 @@ export async function ensureTestDatabase(): Promise<string> {
   const name = databaseNameOf(url);
   assertTestDatabase(name);
 
-  await withMaintenanceConnection(async sql => {
-    if (await databaseExists(sql, name)) return;
-    try {
-      await sql.unsafe(`create database ${quoteIdentifier(name)}`);
-    } catch (error) {
-      if (!(await databaseExists(sql, name))) throw error;
-    }
+  const created = await withMaintenanceConnection(async sql => {
+    if (await databaseExists(sql, name)) return false;
+    await createDatabase(sql, name);
+    return true;
   });
 
-  pushSchema(url);
+  const failure = pushSchema(url);
+  if (!failure) return url;
+  if (created) throw new Error(failure);
+
+  console.warn(
+    `[test-database] drizzle-kit push failed against the existing ${name}; recreating it from scratch`
+  );
+  await withMaintenanceConnection(async sql => {
+    await sql.unsafe(
+      `drop database if exists ${quoteIdentifier(name)} with (force)`
+    );
+    await createDatabase(sql, name);
+  });
+
+  const retry = pushSchema(url);
+  if (retry) throw new Error(retry);
   return url;
 }
 
