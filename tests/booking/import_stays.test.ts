@@ -321,4 +321,78 @@ describe("POST /import/stays", () => {
       .where(eq(staysTable.property_id, property.id));
     expect(stays).toHaveLength(1);
   });
+
+  it("200 — a phone already registered by another owner creates a separate tenant, never leaking that owner's name into the ledger", async () => {
+    const { user: owner1 } = await createUserFixture({
+      name: "Owner Um",
+      email: "import-stays-tenant-scope-owner1@sogio.dev",
+      password: "password123",
+    });
+    const { user: owner2 } = await createUserFixture({
+      name: "Owner Dois",
+      email: "import-stays-tenant-scope-owner2@sogio.dev",
+      password: "password123",
+    });
+    const property1 = await createPropertyFixture({ userId: owner1.id });
+    const property2 = await createPropertyFixture({ userId: owner2.id });
+    const token1 = await createAuthToken(owner1.id);
+    const token2 = await createAuthToken(owner2.id);
+
+    const sharedPhone = "5511966660000";
+
+    const bookRes = await api(`/booking/property/${property1.id}/book`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token1 },
+      body: JSON.stringify({
+        guests: 2,
+        check_in: "2035-01-10T12:00:00.000Z",
+        check_out: "2035-01-15T12:00:00.000Z",
+        price: 90000,
+        source: "DIRECT",
+        tenant: {
+          name: "Nome Sigiloso Do Hospede",
+          phone: sharedPhone,
+          sex: "FEMALE",
+        },
+      }),
+    });
+    expect(bookRes.status).toBe(200);
+
+    const csv = [
+      HEADER,
+      stayRow({
+        propertyId: property2.id,
+        checkIn: "2035-02-10",
+        checkOut: "2035-02-15",
+        price: 100000,
+        phone: sharedPhone,
+        name: "Nome Que O Segundo Owner Importou",
+      }),
+    ].join("\n");
+
+    const res = await importCsv(token2, csv);
+    const body = (await res.json()) as ImportSuccessBody;
+
+    expect(res.status).toBe(200);
+    expect(body.imported).toBe(1);
+
+    const tenants = await db
+      .select()
+      .from(tenantsTable)
+      .where(eq(tenantsTable.phone, sharedPhone));
+    expect(tenants).toHaveLength(2);
+
+    const owner2Tenant = tenants.find(tenant => tenant.owner_id === owner2.id);
+    expect(owner2Tenant?.name).toBe("Nome Que O Segundo Owner Importou");
+
+    const entries = await db
+      .select()
+      .from(ledgerEntriesTable)
+      .where(eq(ledgerEntriesTable.property_id, property2.id));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.description).toContain(
+      "Nome Que O Segundo Owner Importou"
+    );
+    expect(entries[0]?.description).not.toContain("Nome Sigiloso Do Hospede");
+  });
 });
