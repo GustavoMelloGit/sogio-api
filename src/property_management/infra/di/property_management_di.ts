@@ -24,6 +24,7 @@ import { DeletePropertySettingController } from "../../presentation/controller/d
 import { DeletePropertyUseCase } from "../../application/use_case/delete_property";
 import { DeletePropertyController } from "../../presentation/controller/delete_property.controller";
 import { ImportPropertiesUseCase } from "../../application/use_case/import_properties";
+import { ImportPropertiesController } from "../../presentation/controller/import_properties.controller";
 import type { PropertyOccupancy } from "../../domain/service/property_occupancy";
 import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
 import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
@@ -35,6 +36,7 @@ import { makeGetPropertySettingTool } from "../../presentation/mcp_tool/get_prop
 import { makeUpdatePropertySettingTool } from "../../presentation/mcp_tool/update_property_setting.mcp_tool";
 import { makeDeletePropertySettingTool } from "../../presentation/mcp_tool/delete_property_setting.mcp_tool";
 import { makeListPropertySettingsTool } from "../../presentation/mcp_tool/list_property_settings.mcp_tool";
+import { makeImportPropertiesTool } from "../../presentation/mcp_tool/import_properties.mcp_tool";
 
 export class PropertyManagementDi {
   #propertyRepository: PropertyRepository;
@@ -160,6 +162,9 @@ export class PropertyManagementDi {
   makeDeletePropertyController() {
     return new DeletePropertyController(this.makeDeletePropertyUseCase());
   }
+  makeImportPropertiesController() {
+    return new ImportPropertiesController(this.makeImportPropertiesUseCase());
+  }
 
   // MCP Tools
   makeListPropertiesTool() {
@@ -188,5 +193,8 @@ export class PropertyManagementDi {
   }
   makeListPropertySettingsTool() {
     return makeListPropertySettingsTool(this.makeListPropertySettingsUseCase());
+  }
+  makeImportPropertiesTool() {
+    return makeImportPropertiesTool(this.makeImportPropertiesUseCase());
   }
 }
