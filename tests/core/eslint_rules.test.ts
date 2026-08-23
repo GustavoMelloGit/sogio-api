@@ -1,5 +1,6 @@
 import { describe, it } from "bun:test";
 import { RuleTester } from "eslint";
+import { zodArrayMax } from "../../eslint-rules/zod_array_max.js";
 import { zodIntBounds } from "../../eslint-rules/zod_int_bounds.js";
 import { zodStringMax } from "../../eslint-rules/zod_string_max.js";
 import { handlerOnlyEventHandlers } from "../../eslint-rules/handler_only_event_handlers.js";
@@ -39,6 +40,41 @@ describe("sogio/zod-int-bounds", () => {
         {
           code: "const inputSchema = z.object({ page: z.int().positive() });",
           errors: [{ messageId: "missingBounds" }],
+        },
+      ],
+    });
+  });
+});
+
+describe("sogio/zod-array-max", () => {
+  it("enforces an upper bound on the number of items in a zod array", () => {
+    ruleTester.run("zod-array-max", zodArrayMax as never, {
+      valid: [
+        "const inputSchema = z.array(z.string().max(100)).max(50);",
+        "const inputSchema = z.array(z.string().max(100)).length(3);",
+        "const inputSchema = z.array(z.string().max(100)).max(50).optional();",
+        "const inputSchema = z.object({ tags: z.array(z.string().max(20)).max(10) });",
+        "const outputSchema = z.object({ images: z.array(z.string()) });",
+        "const stayItemOutputSchema = z.object({ images: z.array(z.string()) });",
+        "const listResponseSchema = z.object({ images: z.array(z.string()) });",
+        "const value = builder.array();",
+      ],
+      invalid: [
+        {
+          code: "const inputSchema = z.array(z.string().max(100));",
+          errors: [{ messageId: "missingMax" }],
+        },
+        {
+          code: "const inputSchema = z.array(z.string().max(100)).optional();",
+          errors: [{ messageId: "missingMax" }],
+        },
+        {
+          code: "const inputSchema = z.object({ images: z.array(z.string().max(2048)) });",
+          errors: [{ messageId: "missingMax" }],
+        },
+        {
+          code: "const inputSchema = z.array(z.string().max(100)).min(1);",
+          errors: [{ messageId: "missingMax" }],
         },
       ],
     });

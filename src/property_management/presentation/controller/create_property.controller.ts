@@ -1,5 +1,6 @@
 import z from "zod";
 import type { CreatePropertyUseCase } from "../../application/use_case/create_property";
+import { MAX_PROPERTY_IMAGES } from "../../domain/entity/property";
 import type { User } from "../../../auth/domain/entity/user";
 import {
   HttpControllerMethod,
@@ -55,9 +56,9 @@ const inputSchema = z.object({
     .min(1, "Name is required")
     .max(100, "Name must be at most 100 characters"),
   address: addressSchema,
-  images: z.array(
-    z.string().max(2048, "Image URL must be at most 2048 characters")
-  ),
+  images: z
+    .array(z.string().max(2048, "Image URL must be at most 2048 characters"))
+    .max(MAX_PROPERTY_IMAGES, `At most ${MAX_PROPERTY_IMAGES} images`),
   capacity: z
     .number()
     .int()

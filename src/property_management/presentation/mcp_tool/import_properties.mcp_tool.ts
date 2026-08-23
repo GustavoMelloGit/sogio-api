@@ -6,7 +6,10 @@ import {
   MAX_MCP_IMPORT_RECORDS,
 } from "../../../core/application/import/import_failure";
 import type { ImportRecordStream } from "../../../core/application/import/source_record";
-import { MAX_PROPERTY_CAPACITY } from "../../domain/entity/property";
+import {
+  MAX_PROPERTY_CAPACITY,
+  MAX_PROPERTY_IMAGES,
+} from "../../domain/entity/property";
 
 const recordSchema = z.object({
   name: z
@@ -55,6 +58,7 @@ const recordSchema = z.object({
     .optional(),
   images: z
     .array(z.string().max(2048, "Image URL must be at most 2048 characters"))
+    .max(MAX_PROPERTY_IMAGES, `At most ${MAX_PROPERTY_IMAGES} images`)
     .optional(),
 });
 
