@@ -9,6 +9,7 @@ export const tenantSexSchema = z.enum(["MALE", "FEMALE", "OTHER"]);
 export type TenantSex = z.infer<typeof tenantSexSchema>;
 
 export const tenantSchema = baseEntitySchema.extend({
+  owner_id: z.uuid(),
   name: z.string().min(3).max(100),
   phone: z
     .string()
@@ -48,6 +49,10 @@ export class Tenant {
 
   get id() {
     return this.#data.id;
+  }
+
+  get owner_id() {
+    return this.#data.owner_id;
   }
 
   get name() {

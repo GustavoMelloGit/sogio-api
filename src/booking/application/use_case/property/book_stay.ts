@@ -61,10 +61,16 @@ export class BookStayUseCase implements UseCase<Input, Output> {
       throw new ResourceNotFoundError("Property");
     }
 
-    let tenant = await this.tenantRepository.findByPhone(input.tenant.phone);
+    let tenant = await this.tenantRepository.findByPhoneForOwner(
+      user.id,
+      input.tenant.phone
+    );
 
     if (!tenant) {
-      const newTenant = Tenant.create(input.tenant);
+      const newTenant = Tenant.create({
+        ...input.tenant,
+        owner_id: user.id,
+      });
       tenant = await this.tenantRepository.save(newTenant);
     }
 

@@ -184,11 +184,15 @@ export class ImportStaysUseCase
     }
 
     try {
-      let tenant = await this.tenantRepository.findByPhone(data.tenant_phone);
+      let tenant = await this.tenantRepository.findByPhoneForOwner(
+        user.id,
+        data.tenant_phone
+      );
 
       if (!tenant && mode === "write") {
         tenant = await this.tenantRepository.save(
           Tenant.create({
+            owner_id: user.id,
             name: data.tenant_name,
             phone: data.tenant_phone,
             sex: data.tenant_sex,

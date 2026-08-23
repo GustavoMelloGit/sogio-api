@@ -10,9 +10,15 @@ import {
 } from "../../../../core/infra/database/drizzle/schema";
 
 export class TenantPostgresRepository implements TenantRepository {
-  async findByPhone(phone: string): Promise<Tenant | null> {
+  async findByPhoneForOwner(
+    ownerId: string,
+    phone: string
+  ): Promise<Tenant | null> {
     const tenant = await currentExecutor().query.tenantsTable.findFirst({
-      where: eq(tenantsTable.phone, phone),
+      where: and(
+        eq(tenantsTable.owner_id, ownerId),
+        eq(tenantsTable.phone, phone)
+      ),
     });
 
     return tenant ? Tenant.reconstitute(tenant) : null;
@@ -21,6 +27,7 @@ export class TenantPostgresRepository implements TenantRepository {
   async save(tenant: Tenant): Promise<Tenant> {
     const data: TenantData = {
       id: tenant.id,
+      owner_id: tenant.owner_id,
       name: tenant.name,
       phone: tenant.phone,
       sex: tenant.sex,
