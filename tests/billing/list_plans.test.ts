@@ -43,7 +43,7 @@ describe("GET /billing/plans", () => {
       billing_interval: "monthly",
       capabilities: {
         max_properties: 5,
-        export_reports: false,
+        export_reports: true,
         bulk_import: true,
       },
       trial_days: 14,

@@ -17,7 +17,7 @@ const FREE_PLAN_CAPABILITIES: TotalCapabilityValues = {
 
 const PRO_PLAN_CAPABILITIES: TotalCapabilityValues = {
   max_properties: 5,
-  export_reports: false,
+  export_reports: true,
   bulk_import: true,
 };
 
