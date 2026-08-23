@@ -28,6 +28,10 @@ import { RecordRevenueOnStayImported } from "../../application/handler/record_re
 import { StayImportedEvent } from "../../../booking/domain/event/stay_imported_event";
 import type { PropertyRepository } from "../../../property_management/domain/repository/property_repository";
 import { PropertyPostgresRepository } from "../../../property_management/infra/database/postgres_repository/property_postgres_repository";
+import type { DisplayPreferencesService } from "../../../auth/application/service/display_preferences_service";
+import { UserDisplayPreferencesService } from "../../../auth/application/service/user_display_preferences_service";
+import { StayLedgerPreferences } from "../../application/service/stay_ledger_preferences";
+import { AuthPostgresRepository } from "../../../auth/infra/database/postgres_repository/auth_postgres_repository";
 
 export class FinanceDi {
   #logger: Logger;
@@ -36,6 +40,8 @@ export class FinanceDi {
   #propertyRepository: PropertyRepository;
   #transactionRunner: TransactionRunner;
   #importRunner: ImportRunner;
+  #displayPreferencesService: DisplayPreferencesService;
+  #stayLedgerPreferences: StayLedgerPreferences;
 
   constructor() {
     this.#logger = new ConsoleLogger();
@@ -44,6 +50,13 @@ export class FinanceDi {
     this.#propertyRepository = new PropertyPostgresRepository();
     this.#transactionRunner = new DrizzleTransactionRunner();
     this.#importRunner = new ImportRunner(this.#transactionRunner);
+    this.#displayPreferencesService = new UserDisplayPreferencesService(
+      new AuthPostgresRepository()
+    );
+    this.#stayLedgerPreferences = new StayLedgerPreferences(
+      this.#propertyRepository,
+      this.#displayPreferencesService
+    );
   }
 
   registerEventHandlers(): void {
@@ -65,19 +78,22 @@ export class FinanceDi {
   makeRecordRevenueOnStayPaymentConfirmedHandler() {
     return new RecordRevenueOnStayPaymentConfirmed(
       this.#logger,
-      this.#ledgerEntryRepository
+      this.#ledgerEntryRepository,
+      this.#stayLedgerPreferences
     );
   }
   makeRevertRevenueOnStayCancelHandler() {
     return new RevertRevenueOnStayCancel(
       this.#logger,
-      this.#ledgerEntryRepository
+      this.#ledgerEntryRepository,
+      this.#stayLedgerPreferences
     );
   }
   makeRecordRevenueOnStayImportedHandler() {
     return new RecordRevenueOnStayImported(
       this.#logger,
-      this.#ledgerEntryRepository
+      this.#ledgerEntryRepository,
+      this.#stayLedgerPreferences
     );
   }
 

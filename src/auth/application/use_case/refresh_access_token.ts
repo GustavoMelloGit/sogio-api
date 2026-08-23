@@ -4,7 +4,7 @@ import type { IssuedCredentialRepository } from "../../domain/repository/delegat
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 import type { RefreshRotationGraceCache } from "../../domain/service/refresh_rotation_grace_cache";
 import { OAUTH_MCP_SCOPE } from "../../domain/service/oauth_scope_policy";
-import { revokeConsentCascadeIfNotAlreadyRevoked } from "../service/consent_cascade";
+import type { ConsentCascade } from "../service/consent_cascade";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 import type { TokenExchangeResult } from "./token_exchange_result";
 
@@ -74,7 +74,8 @@ export class RefreshAccessTokenUseCase
     private readonly refreshTokenTtlMs: number,
     private readonly graceWindowMs: number,
     private readonly consentAbsoluteLifetimeMs: number,
-    private readonly consentInactivityTtlMs: number
+    private readonly consentInactivityTtlMs: number,
+    private readonly consentCascade: ConsentCascade
   ) {}
 
   async execute(input: RefreshAccessTokenInput): Promise<TokenExchangeResult> {
@@ -110,11 +111,7 @@ export class RefreshAccessTokenUseCase
         this.consentInactivityTtlMs
       )
     ) {
-      await revokeConsentCascadeIfNotAlreadyRevoked(
-        consent,
-        this.consentRepository,
-        this.issuedCredentialRepository
-      );
+      await this.consentCascade.revokeIfNotAlreadyRevoked(consent);
       return { outcome: "invalid_grant" };
     }
 

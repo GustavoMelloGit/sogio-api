@@ -9,7 +9,7 @@ import type { AuthorizationRequestRepository } from "../../domain/repository/del
 import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
 import type { IssuedCredentialRepository } from "../../domain/repository/delegated_access/issued_credential_repository";
 import { redirectUriDisplayAnchor } from "../../domain/service/redirect_uri_policy";
-import { revokeConsentCascadeIfNotAlreadyRevoked } from "../service/consent_cascade";
+import type { ConsentCascade } from "../service/consent_cascade";
 
 export type ConnectedApp = {
   consentId: string;
@@ -74,7 +74,8 @@ export class ListConnectedAppsUseCase implements UseCase<void, ConnectedApp[]> {
     private readonly authorizationCodeRepository: AuthorizationCodeRepository,
     private readonly consentAbsoluteLifetimeMs: number,
     private readonly consentInactivityTtlMs: number,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly consentCascade: ConsentCascade
   ) {}
 
   async execute(_input: void, user: User): Promise<ConnectedApp[]> {
@@ -96,11 +97,7 @@ export class ListConnectedAppsUseCase implements UseCase<void, ConnectedApp[]> {
         this.consentInactivityTtlMs
       )
     ) {
-      await revokeConsentCascadeIfNotAlreadyRevoked(
-        consent,
-        this.consentRepository,
-        this.issuedCredentialRepository
-      );
+      await this.consentCascade.revokeIfNotAlreadyRevoked(consent);
       return null;
     }
 

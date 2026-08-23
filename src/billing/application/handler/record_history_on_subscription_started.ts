@@ -1,7 +1,7 @@
 import type { EventHandler } from "../../../core/application/event/event_handler";
 import type { SubscriptionStartedEvent } from "../../domain/event/subscription_started_event";
 import type { RecordSubscriptionHistoryEntryUseCase } from "../use_case/record_subscription_history_entry";
-import { deriveAccessUntil } from "./derive_access_until";
+import { AccessUntilPolicy } from "../../domain/policy/access_until_policy";
 
 export class RecordHistoryOnSubscriptionStarted
   implements EventHandler<SubscriptionStartedEvent>
@@ -18,7 +18,7 @@ export class RecordHistoryOnSubscriptionStarted
       type: "started",
       resulting_status: event.status,
       occurred_at: event.occurred_at,
-      access_until: deriveAccessUntil(
+      access_until: AccessUntilPolicy.resolve(
         event.status,
         event.trial_ends_at,
         event.current_period_end

@@ -4,7 +4,16 @@ import {
   type UserData,
   type UserRole,
 } from "../../../domain/entity/user";
-import type { AuthRepository } from "../../../domain/repository/auth_repository";
+import type {
+  AuthRepository,
+  UserPreferences,
+} from "../../../domain/repository/auth_repository";
+import {
+  DEFAULT_LOCALE,
+  DEFAULT_TIME_ZONE,
+  isSupportedLocale,
+  isSupportedTimeZone,
+} from "../../../../core/domain/locale/locale";
 import { db } from "../../../../core/infra/database/drizzle/database";
 import {
   usersTable,
@@ -25,6 +34,10 @@ function rowToUserData(row: UserRow): UserData {
     email: row.email,
     password: row.password,
     role,
+    locale: isSupportedLocale(row.locale) ? row.locale : DEFAULT_LOCALE,
+    time_zone: isSupportedTimeZone(row.time_zone)
+      ? row.time_zone
+      : DEFAULT_TIME_ZONE,
     created_at: row.created_at,
     updated_at: row.updated_at,
     deleted_at: row.deleted_at ?? undefined,
@@ -47,6 +60,8 @@ export class AuthPostgresRepository implements AuthRepository {
       email: input.email,
       password: input.password,
       role: input.role,
+      locale: input.locale,
+      time_zone: input.time_zone,
       created_at: input.created_at,
       updated_at: input.updated_at,
       deleted_at: input.deleted_at,
@@ -74,6 +89,20 @@ export class AuthPostgresRepository implements AuthRepository {
     await db
       .update(usersTable)
       .set({ password: passwordHash, updated_at: new Date() })
+      .where(eq(usersTable.id, userId));
+  }
+
+  async updatePreferences(
+    userId: string,
+    preferences: UserPreferences
+  ): Promise<void> {
+    await db
+      .update(usersTable)
+      .set({
+        locale: preferences.locale,
+        time_zone: preferences.time_zone,
+        updated_at: new Date(),
+      })
       .where(eq(usersTable.id, userId));
   }
 

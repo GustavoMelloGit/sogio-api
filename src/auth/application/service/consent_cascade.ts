@@ -23,35 +23,34 @@ import type { IssuedCredentialRepository } from "../../domain/repository/delegat
  * (`revokeAllByConsent` only touches rows where `revoked_at IS NULL`) and
  * completes the second.
  */
-export async function revokeConsentCascade(
-  consentId: string,
-  consentRepository: ConsentRepository,
-  issuedCredentialRepository: IssuedCredentialRepository
-): Promise<void> {
-  await issuedCredentialRepository.revokeAllByConsent(consentId);
-  await consentRepository.revoke(consentId);
-}
+export class ConsentCascade {
+  constructor(
+    private readonly consentRepository: ConsentRepository,
+    private readonly issuedCredentialRepository: IssuedCredentialRepository
+  ) {}
 
-/**
- * Achado 3 da revisão pós-implementação: a variante que os caminhos guiados
- * por `Consent#isUsable` chamam quando o predicado dá `false` — a
- * verificação de credencial do `/mcp`, a troca de código e a renovação.
- * Recascatear um Consentimento já revogado por ação explícita do usuário só
- * carimbaria um novo `revoked_at` sobre um que já está correto; o cascade
- * só roda quando a causa da não-usabilidade é a expiração de E9 (vida
- * absoluta ou inatividade), que ainda não foi persistida em lugar nenhum.
- */
-export async function revokeConsentCascadeIfNotAlreadyRevoked(
-  consent: Pick<Consent, "id" | "revoked_at">,
-  consentRepository: ConsentRepository,
-  issuedCredentialRepository: IssuedCredentialRepository
-): Promise<void> {
-  if (consent.revoked_at) {
-    return;
+  async revoke(consentId: string): Promise<void> {
+    await this.issuedCredentialRepository.revokeAllByConsent(consentId);
+    await this.consentRepository.revoke(consentId);
   }
-  await revokeConsentCascade(
-    consent.id,
-    consentRepository,
-    issuedCredentialRepository
-  );
+
+  /**
+   * Achado 3 da revisão pós-implementação: a variante que os caminhos
+   * guiados por `Consent#isUsable` chamam quando o predicado dá `false` — a
+   * verificação de credencial do `/mcp`, a troca de código e a renovação.
+   * Recascatear um Consentimento já revogado por ação explícita do usuário
+   * só carimbaria um novo `revoked_at` sobre um que já está correto; o
+   * cascade só roda quando a causa da não-usabilidade é a expiração de E9
+   * (vida absoluta ou inatividade), que ainda não foi persistida em lugar
+   * nenhum.
+   */
+  async revokeIfNotAlreadyRevoked(
+    consent: Pick<Consent, "id" | "revoked_at">
+  ): Promise<void> {
+    if (consent.revoked_at) {
+      return;
+    }
+
+    await this.revoke(consent.id);
+  }
 }

@@ -3,7 +3,7 @@ import type { UseCase } from "../../../core/application/use_case/use_case";
 import type { User } from "../../domain/entity/user";
 import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
 import type { IssuedCredentialRepository } from "../../domain/repository/delegated_access/issued_credential_repository";
-import { revokeConsentCascade } from "../service/consent_cascade";
+import type { ConsentCascade } from "../service/consent_cascade";
 
 export type RevokeConsentInput = {
   consentId: string;
@@ -32,7 +32,8 @@ export type RevokeConsentInput = {
 export class RevokeConsentUseCase implements UseCase<RevokeConsentInput, void> {
   constructor(
     private readonly consentRepository: ConsentRepository,
-    private readonly issuedCredentialRepository: IssuedCredentialRepository
+    private readonly issuedCredentialRepository: IssuedCredentialRepository,
+    private readonly consentCascade: ConsentCascade
   ) {}
 
   async execute(input: RevokeConsentInput, user: User): Promise<void> {
@@ -46,10 +47,6 @@ export class RevokeConsentUseCase implements UseCase<RevokeConsentInput, void> {
       return;
     }
 
-    await revokeConsentCascade(
-      consent.id,
-      this.consentRepository,
-      this.issuedCredentialRepository
-    );
+    await this.consentCascade.revoke(consent.id);
   }
 }

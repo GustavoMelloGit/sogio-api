@@ -73,6 +73,8 @@ export async function createAdminFixture(input: {
     email: row.email,
     password: row.password,
     role: row.role as "admin",
+    locale: "pt-BR",
+    time_zone: "America/Sao_Paulo",
     created_at: row.created_at,
     updated_at: row.updated_at,
     deleted_at: row.deleted_at ?? null,

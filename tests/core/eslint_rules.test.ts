@@ -2,6 +2,9 @@ import { describe, it } from "bun:test";
 import { RuleTester } from "eslint";
 import { zodIntBounds } from "../../eslint-rules/zod_int_bounds.js";
 import { zodStringMax } from "../../eslint-rules/zod_string_max.js";
+import { handlerOnlyEventHandlers } from "../../eslint-rules/handler_only_event_handlers.js";
+import { serviceOnlyServiceObjects } from "../../eslint-rules/service_only_service_objects.js";
+import tsParser from "@typescript-eslint/parser";
 
 const ruleTester = new RuleTester({
   languageOptions: { ecmaVersion: 2022, sourceType: "module" },
@@ -75,5 +78,100 @@ describe("sogio/zod-string-max", () => {
         },
       ],
     });
+  });
+});
+
+const tsRuleTester = new RuleTester({
+  languageOptions: {
+    parser: tsParser as never,
+    ecmaVersion: 2022,
+    sourceType: "module",
+  },
+});
+
+describe("sogio/handler-only-event-handlers", () => {
+  it("keeps application/handler/ for event handlers only", () => {
+    tsRuleTester.run(
+      "handler-only-event-handlers",
+      handlerOnlyEventHandlers as never,
+      {
+        valid: [
+          "export class NotifyOnX implements EventHandler<XEvent> { async handle() {} }",
+          "export class NotifyOnX implements Something, EventHandler<XEvent> { async handle() {} }",
+          "export type StayReference = { id: string };",
+          "export interface Whatever { id: string }",
+          "function helper() {} export class NotifyOnX implements EventHandler<XEvent> { async handle() { helper(); } }",
+          "const DATE = 1; export class NotifyOnX implements EventHandler<XEvent> { async handle() {} }",
+          'export type { Thing } from "./thing";',
+        ],
+        invalid: [
+          {
+            code: "export function describeStayRevenue() { return 1; }",
+            errors: [{ messageId: "notAnEventHandler" }],
+          },
+          {
+            code: "export const STAY_TIME_ZONE = 'America/Sao_Paulo';",
+            errors: [{ messageId: "notAnEventHandler" }],
+          },
+          {
+            code: "export class PlainHelper { run() {} }",
+            errors: [{ messageId: "notAnEventHandler" }],
+          },
+          {
+            code: "export class NotifyOnX implements SomethingElse { async handle() {} }",
+            errors: [{ messageId: "notAnEventHandler" }],
+          },
+          {
+            code: 'export * from "./helpers";',
+            errors: [{ messageId: "unnamedExport" }],
+          },
+          {
+            code: "function helper() {} export { helper };",
+            errors: [{ messageId: "notAnEventHandler" }],
+          },
+        ],
+      }
+    );
+  });
+});
+
+describe("sogio/service-only-service-objects", () => {
+  it("keeps application/service/ for application services and their ports", () => {
+    tsRuleTester.run(
+      "service-only-service-objects",
+      serviceOnlyServiceObjects as never,
+      {
+        valid: [
+          "export class SessionManager implements ISessionManager { async createSession() {} }",
+          "export interface Hasher { hash(value: string): Promise<string> }",
+          "export type NotifyInput = { user_id: string };",
+          "const DEFAULTS = { locale: 'pt-BR' }; export class X { run() { return DEFAULTS; } }",
+          "function helper() {} export class X { run() { helper(); } }",
+          'export type { Thing } from "./thing";',
+        ],
+        invalid: [
+          {
+            code: "export function revokeConsentCascade() {}",
+            errors: [{ messageId: "notAServiceObject" }],
+          },
+          {
+            code: "export const STAY_TIME_ZONE = 'America/Sao_Paulo';",
+            errors: [{ messageId: "notAServiceObject" }],
+          },
+          {
+            code: "export async function composePasswordResetEmail() {}",
+            errors: [{ messageId: "notAServiceObject" }],
+          },
+          {
+            code: 'export * from "./helpers";',
+            errors: [{ messageId: "unnamedExport" }],
+          },
+          {
+            code: "function helper() {} export { helper };",
+            errors: [{ messageId: "notAServiceObject" }],
+          },
+        ],
+      }
+    );
   });
 });

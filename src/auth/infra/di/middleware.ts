@@ -7,6 +7,7 @@ import {
   SessionManager,
   type ISessionManager,
 } from "../../application/service/session_manager";
+import { ConsentCascade } from "../../application/service/consent_cascade";
 import type { CredentialVerifier } from "../../application/service/credential_verifier";
 import type { AuthRepository } from "../../domain/repository/auth_repository";
 import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
@@ -56,7 +57,11 @@ export class MiddlewareDi {
       this.#delegatedSecretService,
       `${apiBaseUrl}${MCP_RESOURCE_PATH}`,
       consentAbsoluteLifetimeMs,
-      consentInactivityTtlMs
+      consentInactivityTtlMs,
+      new ConsentCascade(
+        this.#consentRepository,
+        this.#issuedCredentialRepository
+      )
     );
   }
 }

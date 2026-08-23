@@ -6,7 +6,10 @@ import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
 import { createAuthToken } from "../helpers/fixtures/auth_token";
 import { db } from "../../src/core/infra/database/drizzle/database";
-import { ledgerEntriesTable } from "../../src/core/infra/database/drizzle/schema";
+import {
+  ledgerEntriesTable,
+  usersTable,
+} from "../../src/core/infra/database/drizzle/schema";
 
 const TABLES = [
   "stays",
@@ -37,12 +40,23 @@ async function bookStay(
   });
 }
 
-async function ownerWithProperty() {
+async function ownerWithProperty(preferences?: {
+  locale: string;
+  time_zone: string;
+}) {
   const { user } = await createUserFixture({
     name: "João Silva",
     email: "joao@sogio.dev",
     password: "password123",
   });
+
+  if (preferences) {
+    await db
+      .update(usersTable)
+      .set(preferences)
+      .where(eq(usersTable.id, user.id));
+  }
+
   const property = await createPropertyFixture({ userId: user.id });
   const token = await createAuthToken(user.id);
 
@@ -147,6 +161,48 @@ describe("Ledger descriptions for stay revenue and cancellation", () => {
     const entries = await ledgerFor(property.id);
     expect(descriptionsOf(entries, "revenue")).toEqual([
       "Pagamento de estadia: Ana Souza (31/05/2040 a 02/06/2040)",
+    ]);
+  });
+
+  it("writes the entry in the language and time zone the owner chose", async () => {
+    const { property, token } = await ownerWithProperty({
+      locale: "en-US",
+      time_zone: "America/New_York",
+    });
+
+    const bookRes = await bookStay(token, property.id, {
+      check_in: "2040-06-01T12:00:00.000Z",
+      check_out: "2040-06-03T02:00:00.000Z",
+    });
+    expect(bookRes.status).toBe(200);
+
+    const entries = await ledgerFor(property.id);
+    expect(descriptionsOf(entries, "revenue")).toEqual([
+      "Stay payment: Ana Souza (06/01/2040 to 06/02/2040)",
+    ]);
+  });
+
+  it("writes the cancellation entry in the owner's language too", async () => {
+    const { property, token } = await ownerWithProperty({
+      locale: "en-US",
+      time_zone: "America/Sao_Paulo",
+    });
+
+    const bookRes = await bookStay(token, property.id, {
+      check_in: "2040-06-01T12:00:00.000Z",
+      check_out: "2040-06-03T12:00:00.000Z",
+    });
+    const bookBody = (await bookRes.json()) as { data: { id: string } };
+
+    const res = await api(`/booking/stay/${bookBody.data.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer " + token },
+    });
+    expect(res.status).toBe(200);
+
+    const entries = await ledgerFor(property.id);
+    expect(descriptionsOf(entries, "expense")).toEqual([
+      "Stay canceled: Ana Souza (06/01/2040 to 06/03/2040)",
     ]);
   });
 });

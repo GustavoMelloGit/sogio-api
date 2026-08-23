@@ -15,6 +15,8 @@ const outputSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
   email: z.string().email(),
+  locale: z.string(),
+  time_zone: z.string(),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
 });
@@ -40,6 +42,8 @@ export class GetUserController implements Controller {
       id: user.id,
       name: user.name,
       email: user.email,
+      locale: user.locale,
+      time_zone: user.time_zone,
       created_at: user.created_at,
       updated_at: user.updated_at,
     };
