@@ -19,12 +19,14 @@ const recordInputSchema = z.object({
   check_in: z
     .string()
     .max(10)
-    .describe("Check-in date, in YYYY-MM-DD or DD/MM/YYYY format."),
+    .describe(
+      "Check-in date, in YYYY-MM-DD or DD/MM/YYYY format. It is anchored at the property's check-in time (property setting check_in_time, default 14:00) in the owner's time zone."
+    ),
   check_out: z
     .string()
     .max(10)
     .describe(
-      "Check-out date, in YYYY-MM-DD or DD/MM/YYYY format. Must be after check_in."
+      "Check-out date, in YYYY-MM-DD or DD/MM/YYYY format. Must be a later calendar day than check_in. It is anchored at the property's check-out time (property setting check_out_time, default 11:00) in the owner's time zone."
     ),
   guests: z
     .number()

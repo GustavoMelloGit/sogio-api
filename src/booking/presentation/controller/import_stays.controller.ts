@@ -46,7 +46,11 @@ const CSV_EXAMPLE = [
 const CSV_LAYOUT_DESCRIPTION =
   "Header row required; other columns are ignored. Required columns: " +
   `${REQUIRED_COLUMNS.join(", ")}. Optional: entrance_code (generated when absent). ` +
-  "Dates (check_in, check_out) accept YYYY-MM-DD or DD/MM/YYYY. price is in cents.";
+  "Dates (check_in, check_out) accept YYYY-MM-DD or DD/MM/YYYY. A date carries no time: " +
+  "check_in is anchored at the property's check-in time and check_out at its check-out time, " +
+  "both in your account's time zone. Those times come from the property settings " +
+  "check_in_time and check_out_time (HH:MM); when absent or unreadable they default to " +
+  "14:00 and 11:00. price is in cents.";
 
 /** Per-IP limit on this write route. Bulk import can write up to
  * `MAX_IMPORT_ROWS` stays per request, so the write amplification is far

@@ -39,7 +39,7 @@ const recordSchema = z.object({
     .max(10)
     .optional()
     .describe(
-      "Optional date the movement happened, as YYYY-MM-DD or DD/MM/YYYY. Defaults to now."
+      "Optional date the movement happened, as YYYY-MM-DD or DD/MM/YYYY. Anchored at the start of that day in the owner's time zone. Defaults to now."
     ),
 });
 

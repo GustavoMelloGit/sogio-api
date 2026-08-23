@@ -5,6 +5,7 @@ import {
 } from "../../../domain/entity/property_setting";
 import type { PropertySettingRepository } from "../../../domain/repository/property_setting_repository";
 import { db } from "../../../../core/infra/database/drizzle/database";
+import { currentExecutor } from "../../../../core/infra/database/drizzle/transaction_context";
 import { propertySettingsTable } from "../../../../core/infra/database/drizzle/schema";
 import type {
   PaginatedResult,
@@ -115,7 +116,7 @@ export class PropertySettingPostgresRepository
     key: string,
     propertyId: string
   ): Promise<PropertySetting | null> {
-    const result = await db
+    const result = await currentExecutor()
       .select()
       .from(propertySettingsTable)
       .where(
