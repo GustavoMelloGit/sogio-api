@@ -1,5 +1,5 @@
 import { UnauthorizedError } from "../../../core/application/error/unauthorized_error";
-import { revokeConsentCascadeIfNotAlreadyRevoked } from "../../application/service/consent_cascade";
+import type { ConsentCascade } from "../../application/service/consent_cascade";
 import type {
   CredentialVerifier,
   Requester,
@@ -79,7 +79,8 @@ export class OAuthCredentialVerifier implements CredentialVerifier {
     private readonly secretService: DelegatedSecretService,
     private readonly expectedResource: string,
     private readonly consentAbsoluteLifetimeMs: number,
-    private readonly consentInactivityTtlMs: number
+    private readonly consentInactivityTtlMs: number,
+    private readonly consentCascade: ConsentCascade
   ) {}
 
   async verify(accessToken: string): Promise<Requester> {
@@ -117,11 +118,7 @@ export class OAuthCredentialVerifier implements CredentialVerifier {
         this.consentInactivityTtlMs
       )
     ) {
-      await revokeConsentCascadeIfNotAlreadyRevoked(
-        consent,
-        this.consentRepository,
-        this.issuedCredentialRepository
-      );
+      await this.consentCascade.revokeIfNotAlreadyRevoked(consent);
       throw new UnauthorizedError("Unauthorized");
     }
 

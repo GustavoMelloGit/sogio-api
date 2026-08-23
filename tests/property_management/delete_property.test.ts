@@ -22,6 +22,7 @@ import { StayCanceledEvent } from "../../src/booking/domain/event/stay_canceled_
 import { DrizzleTransactionRunner } from "../../src/core/infra/database/drizzle/drizzle_transaction_runner";
 import { LedgerEntryPostgresRepository } from "../../src/finance/infra/database/postgres_repository/ledger_entry_postgres_repository";
 import { UserDisplayPreferencesService } from "../../src/auth/application/service/user_display_preferences_service";
+import { StayLedgerPreferences } from "../../src/finance/application/service/stay_ledger_preferences";
 import { AuthPostgresRepository } from "../../src/auth/infra/database/postgres_repository/auth_postgres_repository";
 import { RevertRevenueOnStayCancel } from "../../src/finance/application/handler/revert_revenue_on_stay_cancel";
 import { ConflictError } from "../../src/core/application/error/conflict_error";
@@ -137,8 +138,10 @@ function makeDeletePropertyUseCaseWithFailingLedger(): DeletePropertyUseCase {
     new RevertRevenueOnStayCancel(
       new ConsoleLogger(),
       new FailingLedgerEntryRepository(),
-      new PropertyPostgresRepository(),
-      new UserDisplayPreferencesService(new AuthPostgresRepository())
+      new StayLedgerPreferences(
+        new PropertyPostgresRepository(),
+        new UserDisplayPreferencesService(new AuthPostgresRepository())
+      )
     )
   );
   const cancelStayService = new CancelStayService(

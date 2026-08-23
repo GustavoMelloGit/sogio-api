@@ -17,6 +17,12 @@ alwaysApply: true
   - **`src/<bc>/application`**: Contains the application-specific logic, such as use cases and data transfer objects.
   - **`src/<bc>/infra`**: Contains the implementation details of the application, such as database repositories, web frameworks, and dependency injection.
   - **`src/<bc>/presentation`**: Contains the API controllers, which handle incoming HTTP requests, and the MCP tools, which handle incoming MCP tool calls — both call the appropriate use cases.
+- **Each directory under a layer has one meaning, and lint enforces it.**
+  - **`application/service/`** holds **application services**: objects that coordinate collaborators to carry out one application task, plus the outbound ports the application declares for infrastructure to implement (`Hasher`, `CredentialVerifier`). No business rules of their own. Enforced by `sogio/service-only-service-objects` — only classes and interfaces may be exported.
+  - **`application/content/`** holds the **text a bounded context addresses to a user**, resolved by locale: email bodies, ledger entry descriptions. Pure functions, no collaborators. (`notification` is the documented exception — its copy lives inside `NOTIFICATION_TYPE_REGISTRY`, because there "which types exist" and "what each one says" are one declaration.)
+  - **`application/handler/`** holds event handlers and nothing else — see below.
+  - **`domain/`** holds business rules: entities, value objects, policies, domain services, repository interfaces.
+  - The lint rules cannot prove a class _is_ an application service or that a function _is_ content. What they prove is that the file publishes the right **shape**, which forces the question at the moment of writing.
 - **`application/handler/` holds event handlers and nothing else.** A file there exports exactly one class implementing `EventHandler`; anything a handler needs but is not a handler — a text composer, a lookup helper, a pure derivation — belongs in `application/service/` or `domain/`. The directory is the list of things a bounded context reacts to; a helper drifting into it makes that list stop meaning anything. Enforced by `sogio/handler-only-event-handlers` (`eslint-rules/handler_only_event_handlers.js`), which allows non-exported helpers inside a handler file and type-only exports.
 - The project uses Bun as the JavaScript runtime and toolkit.
 - The project uses TypeScript as the programming language.

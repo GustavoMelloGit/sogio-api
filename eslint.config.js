@@ -57,4 +57,11 @@ export default defineConfig([
       "sogio/handler-only-event-handlers": "error",
     },
   },
+  {
+    files: ["src/**/application/service/**/*.ts"],
+    plugins: { sogio: sogioPlugin },
+    rules: {
+      "sogio/service-only-service-objects": "error",
+    },
+  },
 ]);

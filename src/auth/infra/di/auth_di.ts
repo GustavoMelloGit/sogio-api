@@ -13,6 +13,7 @@ import { RegisterAppUseCase } from "../../application/use_case/register_app";
 import { InitiateAuthorizationUseCase } from "../../application/use_case/initiate_authorization";
 import { GetPendingAuthorizationRequestUseCase } from "../../application/use_case/get_pending_authorization_request";
 import { DecideAuthorizationRequestUseCase } from "../../application/use_case/decide_authorization_request";
+import { ConsentCascade } from "../../application/service/consent_cascade";
 import { GetUserPreferencesUseCase } from "../../application/use_case/get_user_preferences";
 import { UpdateUserPreferencesUseCase } from "../../application/use_case/update_user_preferences";
 import { GetUserPreferencesController } from "../../presentation/controller/auth/get_user_preferences.controller";
@@ -303,6 +304,13 @@ export class AuthDi {
     );
   }
 
+  makeConsentCascade() {
+    return new ConsentCascade(
+      this.#consentRepository,
+      this.#issuedCredentialRepository
+    );
+  }
+
   makeDecideAuthorizationRequestUseCase() {
     return new DecideAuthorizationRequestUseCase(
       this.#authorizationRequestRepository,
@@ -312,7 +320,8 @@ export class AuthDi {
       this.#issuedCredentialRepository,
       this.#delegatedSecretService,
       consentAbsoluteLifetimeMs,
-      consentInactivityTtlMs
+      consentInactivityTtlMs,
+      this.makeConsentCascade()
     );
   }
 
@@ -334,7 +343,8 @@ export class AuthDi {
       refreshTokenTtlMs,
       refreshRotationGraceWindowMs,
       consentAbsoluteLifetimeMs,
-      consentInactivityTtlMs
+      consentInactivityTtlMs,
+      this.makeConsentCascade()
     );
   }
 
@@ -348,7 +358,8 @@ export class AuthDi {
       refreshTokenTtlMs,
       refreshRotationGraceWindowMs,
       consentAbsoluteLifetimeMs,
-      consentInactivityTtlMs
+      consentInactivityTtlMs,
+      this.makeConsentCascade()
     );
   }
 
@@ -389,7 +400,8 @@ export class AuthDi {
   makeRevokeConsentUseCase() {
     return new RevokeConsentUseCase(
       this.#consentRepository,
-      this.#issuedCredentialRepository
+      this.#issuedCredentialRepository,
+      this.makeConsentCascade()
     );
   }
 
@@ -403,7 +415,8 @@ export class AuthDi {
       this.#authorizationCodeRepository,
       consentAbsoluteLifetimeMs,
       consentInactivityTtlMs,
-      this.#logger
+      this.#logger,
+      this.makeConsentCascade()
     );
   }
 

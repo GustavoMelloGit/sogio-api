@@ -3,6 +3,7 @@ import { RuleTester } from "eslint";
 import { zodIntBounds } from "../../eslint-rules/zod_int_bounds.js";
 import { zodStringMax } from "../../eslint-rules/zod_string_max.js";
 import { handlerOnlyEventHandlers } from "../../eslint-rules/handler_only_event_handlers.js";
+import { serviceOnlyServiceObjects } from "../../eslint-rules/service_only_service_objects.js";
 import tsParser from "@typescript-eslint/parser";
 
 const ruleTester = new RuleTester({
@@ -127,6 +128,47 @@ describe("sogio/handler-only-event-handlers", () => {
           {
             code: "function helper() {} export { helper };",
             errors: [{ messageId: "notAnEventHandler" }],
+          },
+        ],
+      }
+    );
+  });
+});
+
+describe("sogio/service-only-service-objects", () => {
+  it("keeps application/service/ for application services and their ports", () => {
+    tsRuleTester.run(
+      "service-only-service-objects",
+      serviceOnlyServiceObjects as never,
+      {
+        valid: [
+          "export class SessionManager implements ISessionManager { async createSession() {} }",
+          "export interface Hasher { hash(value: string): Promise<string> }",
+          "export type NotifyInput = { user_id: string };",
+          "const DEFAULTS = { locale: 'pt-BR' }; export class X { run() { return DEFAULTS; } }",
+          "function helper() {} export class X { run() { helper(); } }",
+          'export type { Thing } from "./thing";',
+        ],
+        invalid: [
+          {
+            code: "export function revokeConsentCascade() {}",
+            errors: [{ messageId: "notAServiceObject" }],
+          },
+          {
+            code: "export const STAY_TIME_ZONE = 'America/Sao_Paulo';",
+            errors: [{ messageId: "notAServiceObject" }],
+          },
+          {
+            code: "export async function composePasswordResetEmail() {}",
+            errors: [{ messageId: "notAServiceObject" }],
+          },
+          {
+            code: 'export * from "./helpers";',
+            errors: [{ messageId: "unnamedExport" }],
+          },
+          {
+            code: "function helper() {} export { helper };",
+            errors: [{ messageId: "notAServiceObject" }],
           },
         ],
       }

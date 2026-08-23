@@ -6,7 +6,7 @@ import {
   isPasswordResetQuotaExceeded,
   passwordResetQuotaWindowStart,
 } from "../../domain/service/password_reset_quota_policy";
-import { composePasswordResetEmail } from "../service/password_reset_email_composer";
+import { composePasswordResetEmail } from "../content/password_reset_email_composer";
 import type { EmailService } from "../../../core/application/email/email_service";
 import type { Logger } from "../../../core/application/logger/logger";
 import type { UseCase } from "../../../core/application/use_case/use_case";

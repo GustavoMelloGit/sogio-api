@@ -1,12 +1,10 @@
-import type { DisplayPreferencesService } from "../../../auth/application/service/display_preferences_service";
 import type { StayCanceledEvent } from "../../../booking/domain/event/stay_canceled_event";
 import type { EventHandler } from "../../../core/application/event/event_handler";
 import type { Logger } from "../../../core/application/logger/logger";
-import type { PropertyRepository } from "../../../property_management/domain/repository/property_repository";
 import { LedgerEntry } from "../../domain/entity/ledger_entry";
 import type { LedgerEntryRepository } from "../../domain/repository/ledger_entry_repository";
-import { describeStayCancellation } from "../service/stay_ledger_description";
-import { stayLedgerPreferences } from "../service/stay_ledger_preferences";
+import { describeStayCancellation } from "../content/stay_ledger_description";
+import type { StayLedgerPreferences } from "../service/stay_ledger_preferences";
 
 export class RevertRevenueOnStayCancel
   implements EventHandler<StayCanceledEvent>
@@ -14,8 +12,7 @@ export class RevertRevenueOnStayCancel
   constructor(
     private readonly logger: Logger,
     private readonly ledgerEntryRepository: LedgerEntryRepository,
-    private readonly propertyRepository: PropertyRepository,
-    private readonly displayPreferencesService: DisplayPreferencesService
+    private readonly stayLedgerPreferences: StayLedgerPreferences
   ) {}
 
   async handle(event: StayCanceledEvent): Promise<void> {
@@ -24,10 +21,8 @@ export class RevertRevenueOnStayCancel
       stayId: event.stay_id,
     });
 
-    const preferences = await stayLedgerPreferences(
-      event.property_id,
-      this.propertyRepository,
-      this.displayPreferencesService
+    const preferences = await this.stayLedgerPreferences.ofProperty(
+      event.property_id
     );
 
     const ledgerEntry = LedgerEntry.newExpense({

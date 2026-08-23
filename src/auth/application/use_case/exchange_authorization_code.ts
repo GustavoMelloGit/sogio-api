@@ -5,7 +5,7 @@ import type { IssuedCredentialRepository } from "../../domain/repository/delegat
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 import { redirectUriMatches } from "../../domain/service/redirect_uri_policy";
 import { verifyPkceS256 } from "../../domain/service/pkce_policy";
-import { revokeConsentCascadeIfNotAlreadyRevoked } from "../service/consent_cascade";
+import type { ConsentCascade } from "../service/consent_cascade";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 import type { TokenExchangeResult } from "./token_exchange_result";
 
@@ -106,7 +106,8 @@ export class ExchangeAuthorizationCodeUseCase
     private readonly refreshTokenTtlMs: number,
     private readonly graceWindowMs: number,
     private readonly consentAbsoluteLifetimeMs: number,
-    private readonly consentInactivityTtlMs: number
+    private readonly consentInactivityTtlMs: number,
+    private readonly consentCascade: ConsentCascade
   ) {}
 
   async execute(
@@ -151,11 +152,7 @@ export class ExchangeAuthorizationCodeUseCase
         this.consentInactivityTtlMs
       )
     ) {
-      await revokeConsentCascadeIfNotAlreadyRevoked(
-        consent,
-        this.consentRepository,
-        this.issuedCredentialRepository
-      );
+      await this.consentCascade.revokeIfNotAlreadyRevoked(consent);
       return { outcome: "invalid_grant" };
     }
 
