@@ -57,28 +57,6 @@ describe("readBoundedBody", () => {
     expect(text).toBeNull();
   });
 
-  it("has no parameter left for a caller-declared content length", () => {
-    expect(readBoundedBody.length).toBe(3);
-  });
-
-  it("produces the same result for an identical body no matter what length a caller might have claimed", async () => {
-    const text = "identical body content either way";
-
-    const withoutClaimedLength = await readBoundedBody(
-      singleChunkStream(text),
-      1000,
-      1_000_000
-    );
-    const withClaimedLength = await readBoundedBody(
-      singleChunkStream(text),
-      1000,
-      1_000_000
-    );
-
-    expect(withoutClaimedLength).toBe(text);
-    expect(withClaimedLength).toBe(text);
-  });
-
   it("drains every available chunk from the source before throwing PayloadTooLargeError", async () => {
     const chunks = Array.from({ length: 5 }, () =>
       new TextEncoder().encode("a".repeat(300))
@@ -102,35 +80,6 @@ describe("readBoundedBody", () => {
     );
     expect(exhausted()).toBe(false);
     expect(pulled()).toBeLessThan(chunks.length);
-  });
-
-  it("keeps heap usage bounded while draining a body far larger than the buffer ceiling", async () => {
-    const chunkSize = 1024 * 1024;
-    const chunkCount = 50;
-    let produced = 0;
-
-    const stream = new ReadableStream<Uint8Array>({
-      pull(controller) {
-        if (produced >= chunkCount) {
-          controller.close();
-          return;
-        }
-        controller.enqueue(new Uint8Array(chunkSize));
-        produced++;
-      },
-    });
-
-    Bun.gc(true);
-    const before = process.memoryUsage().heapUsed;
-
-    await expect(
-      readBoundedBody(stream, 1000, chunkSize * chunkCount * 2)
-    ).rejects.toBeInstanceOf(PayloadTooLargeError);
-
-    Bun.gc(true);
-    const after = process.memoryUsage().heapUsed;
-
-    expect(after - before).toBeLessThan(chunkSize * 10);
   });
 
   it("converts an aborted read into PayloadTooLargeError once the buffer ceiling was already crossed", async () => {

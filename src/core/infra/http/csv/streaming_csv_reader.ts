@@ -3,6 +3,7 @@ import {
   ImportRejectedError,
   MAX_IMPORT_COLUMNS,
 } from "../../../application/import/import_failure";
+import { MAX_REQUEST_BODY_BYTES } from "../body/body_limits";
 
 export const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 export const MAX_IMPORT_FIELD_BYTES = 64 * 1024;
@@ -95,7 +96,7 @@ export async function* readCsvRecordStream(
   const drainRemainingBody = async (): Promise<void> => {
     let drainedBytes = totalBytes;
     try {
-      while (drainedBytes < MAX_IMPORT_BYTES) {
+      while (drainedBytes < MAX_REQUEST_BODY_BYTES) {
         const { done, value } = await reader.read();
         if (done) {
           return;

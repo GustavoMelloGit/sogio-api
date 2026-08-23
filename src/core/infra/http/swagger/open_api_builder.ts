@@ -52,7 +52,10 @@ export class OpenApiBuilder {
         operation.security = [{ bearerAuth: [] }];
       }
 
-      if (controller.openApiSpec.requestBody) {
+      if (
+        controller.openApiSpec.requestBody &&
+        controller.bodyMode !== "stream"
+      ) {
         operation.responses = this.#withPayloadTooLargeResponse(
           controller.openApiSpec.responses
         );
