@@ -4,8 +4,19 @@ import { basename, dirname } from "node:path";
 
 const MAX_IDENTIFIER_LENGTH = 63;
 
+function environmentWithoutGitOverrides(): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key, value]) => value !== undefined && !key.startsWith("GIT_")
+    )
+  ) as Record<string, string>;
+}
+
 function git(...args: string[]): string {
-  const result = Bun.spawnSync(["git", ...args], { cwd: import.meta.dir });
+  const result = Bun.spawnSync(["git", ...args], {
+    cwd: import.meta.dir,
+    env: environmentWithoutGitOverrides(),
+  });
   if (result.exitCode !== 0) {
     throw new Error(
       `git ${args.join(" ")} failed: ${result.stderr.toString().trim()}`
@@ -103,7 +114,7 @@ async function databaseExists(sql: SQL, name: string): Promise<boolean> {
 function pushSchema(url: string): void {
   const result = Bun.spawnSync(["bun", "x", "drizzle-kit", "push", "--force"], {
     cwd: worktreeRoot(),
-    env: { ...process.env, DATABASE_URL: url },
+    env: { ...environmentWithoutGitOverrides(), DATABASE_URL: url },
     stdout: "pipe",
     stderr: "pipe",
   });
