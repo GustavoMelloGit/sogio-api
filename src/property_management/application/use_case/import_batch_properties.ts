@@ -107,12 +107,12 @@ function toImportFailure(row: number, error: z.ZodError): ImportFailure {
   };
 }
 
-export type ImportPropertiesInput = {
+export type ImportBatchPropertiesInput = {
   records: ImportRecordStream;
 };
 
-export class ImportPropertiesUseCase
-  implements UseCase<ImportPropertiesInput, ImportOutcome>
+export class ImportBatchPropertiesUseCase
+  implements UseCase<ImportBatchPropertiesInput, ImportOutcome>
 {
   constructor(
     private readonly propertyRepository: PropertyRepository,
@@ -121,7 +121,7 @@ export class ImportPropertiesUseCase
   ) {}
 
   async execute(
-    input: ImportPropertiesInput,
+    input: ImportBatchPropertiesInput,
     user: User
   ): Promise<ImportOutcome> {
     const entitlement = await this.entitlementService.entitlementOf(user.id);

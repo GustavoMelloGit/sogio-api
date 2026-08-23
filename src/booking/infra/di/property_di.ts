@@ -3,7 +3,7 @@ import type { ExternalBookingSourcesRepository } from "../../domain/repository/e
 import { BookStayUseCase } from "../../application/use_case/property/book_stay";
 import { CreateExternalBookingSourceUseCase } from "../../application/use_case/property/create_external_booking_source";
 import { ReconcileExternalBookingsUseCase } from "../../application/use_case/property/reconcile_external_bookings";
-import { ImportStaysUseCase } from "../../application/use_case/import_stays";
+import { ImportBatchStaysUseCase } from "../../application/use_case/import_batch_stays";
 import type { BookingPolicy } from "../../domain/policy/booking_policy";
 import type { StayRepository } from "../../domain/repository/stay_repository";
 import type { TenantRepository } from "../../domain/repository/tenant_repository";
@@ -69,8 +69,8 @@ export class PropertyDi {
       this.#entranceCodeGenerator
     );
   }
-  makeImportStaysUseCase() {
-    return new ImportStaysUseCase(
+  makeImportBatchStaysUseCase() {
+    return new ImportBatchStaysUseCase(
       this.#tenantRepository,
       this.#propertyRepository,
       this.#stayRepository,
@@ -101,7 +101,7 @@ export class PropertyDi {
     return new BookStayController(this.makeBookStayUseCase());
   }
   makeImportStaysController() {
-    return new ImportStaysController(this.makeImportStaysUseCase());
+    return new ImportStaysController(this.makeImportBatchStaysUseCase());
   }
   makeReconcileExternalBookingController() {
     return new ReconcileExternalBookingController(
@@ -119,6 +119,6 @@ export class PropertyDi {
     return makeBookStayTool(this.makeBookStayUseCase());
   }
   makeImportStaysTool() {
-    return makeImportStaysTool(this.makeImportStaysUseCase());
+    return makeImportStaysTool(this.makeImportBatchStaysUseCase());
   }
 }

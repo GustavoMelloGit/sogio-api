@@ -92,6 +92,11 @@ export class LedgerEntry {
     });
   }
 
+  public remove(): void {
+    this.#data.deleted_at = new Date();
+    this.#data.updated_at = new Date();
+  }
+
   get id() {
     return this.#data.id;
   }

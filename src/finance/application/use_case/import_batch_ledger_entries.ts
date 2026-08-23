@@ -115,12 +115,12 @@ function toImportFailure(row: number, error: z.ZodError): ImportFailure {
   };
 }
 
-export type ImportLedgerEntriesInput = {
+export type ImportBatchLedgerEntriesInput = {
   records: ImportRecordStream;
 };
 
-export class ImportLedgerEntriesUseCase
-  implements UseCase<ImportLedgerEntriesInput, ImportOutcome>
+export class ImportBatchLedgerEntriesUseCase
+  implements UseCase<ImportBatchLedgerEntriesInput, ImportOutcome>
 {
   constructor(
     private readonly ledgerEntryRepository: LedgerEntryRepository,
@@ -129,7 +129,7 @@ export class ImportLedgerEntriesUseCase
   ) {}
 
   async execute(
-    input: ImportLedgerEntriesInput,
+    input: ImportBatchLedgerEntriesInput,
     user: User
   ): Promise<ImportOutcome> {
     const propertyCache = new Map<string, Property | null>();

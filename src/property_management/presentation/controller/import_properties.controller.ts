@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ImportPropertiesUseCase } from "../../application/use_case/import_properties";
+import type { ImportBatchPropertiesUseCase } from "../../application/use_case/import_batch_properties";
 import type { User } from "../../../auth/domain/entity/user";
 import {
   HttpControllerMethod,
@@ -113,7 +113,7 @@ export class ImportPropertiesController implements Controller {
     },
   };
 
-  constructor(private readonly useCase: ImportPropertiesUseCase) {}
+  constructor(private readonly useCase: ImportBatchPropertiesUseCase) {}
 
   async handle(
     request: ControllerRequest,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ImportStaysUseCase } from "../../application/use_case/import_stays";
+import type { ImportBatchStaysUseCase } from "../../application/use_case/import_batch_stays";
 import { tenantSexSchema } from "../../domain/entity/tenant";
 import { MAX_STAY_PRICE_IN_CENTS } from "../../domain/entity/stay";
 import { MAX_PROPERTY_CAPACITY } from "../../../property_management/domain/entity/property";
@@ -103,7 +103,7 @@ function toRecordStream(
 }
 
 /**
- * Wires `ImportStaysUseCase` as a bulk-write MCP tool. Unlike the HTTP route,
+ * Wires `ImportBatchStaysUseCase` as a bulk-write MCP tool. Unlike the HTTP route,
  * this tool never touches a file: `records` is a structured array already
  * bounded by `MAX_MCP_IMPORT_RECORDS`, adapted to the same
  * `ImportRecordStream` contract the CSV route feeds the use case — the use
@@ -115,7 +115,7 @@ function toRecordStream(
  * otherwise collapse the row-by-row report into "Internal server error".
  */
 export function makeImportStaysTool(
-  useCase: ImportStaysUseCase
+  useCase: ImportBatchStaysUseCase
 ): McpToolDefinition<typeof inputSchema> {
   return {
     name: "import_stays",

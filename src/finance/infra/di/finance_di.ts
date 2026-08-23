@@ -7,7 +7,7 @@ import { RecordRevenueOnStayPaymentConfirmed } from "../../application/handler/r
 import { RecordExpenseUseCase } from "../../application/use_case/record_expense";
 import { RecordRevenueUseCase } from "../../application/use_case/record_revenue";
 import { FindPropertyFinancialMovementsUseCase } from "../../application/use_case/find_property_financial_movements";
-import { ImportLedgerEntriesUseCase } from "../../application/use_case/import_ledger_entries";
+import { ImportBatchLedgerEntriesUseCase } from "../../application/use_case/import_batch_ledger_entries";
 import { DeleteLedgerEntryUseCase } from "../../application/use_case/delete_ledger_entry";
 import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
 import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
@@ -119,8 +119,8 @@ export class FinanceDi {
     );
   }
 
-  makeImportLedgerEntriesUseCase() {
-    return new ImportLedgerEntriesUseCase(
+  makeImportBatchLedgerEntriesUseCase() {
+    return new ImportBatchLedgerEntriesUseCase(
       this.#ledgerEntryRepository,
       this.#propertyRepository,
       this.#importRunner
@@ -151,7 +151,7 @@ export class FinanceDi {
 
   makeImportLedgerEntriesController() {
     return new ImportLedgerEntriesController(
-      this.makeImportLedgerEntriesUseCase()
+      this.makeImportBatchLedgerEntriesUseCase()
     );
   }
 
@@ -165,7 +165,9 @@ export class FinanceDi {
   }
 
   makeImportLedgerEntriesTool() {
-    return makeImportLedgerEntriesTool(this.makeImportLedgerEntriesUseCase());
+    return makeImportLedgerEntriesTool(
+      this.makeImportBatchLedgerEntriesUseCase()
+    );
   }
 
   makeDeleteLedgerEntryTool() {

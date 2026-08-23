@@ -4,7 +4,7 @@ import {
   type ControllerRequest,
 } from "../../../core/presentation/controller/controller";
 import type { User } from "../../../auth/domain/entity/user";
-import type { ImportLedgerEntriesUseCase } from "../../application/use_case/import_ledger_entries";
+import type { ImportBatchLedgerEntriesUseCase } from "../../application/use_case/import_batch_ledger_entries";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
 import type { RateLimitPolicy } from "../../../core/application/rate_limit/rate_limit_policy";
 import { ValidationError } from "../../../core/application/error/validation_error";
@@ -111,7 +111,7 @@ export class ImportLedgerEntriesController implements Controller {
     },
   };
 
-  constructor(private readonly useCase: ImportLedgerEntriesUseCase) {}
+  constructor(private readonly useCase: ImportBatchLedgerEntriesUseCase) {}
 
   async handle(request: ControllerRequest, user: User): Promise<unknown> {
     const contentType = request.headers["content-type"] ?? "";

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ImportPropertiesUseCase } from "../../application/use_case/import_properties";
+import type { ImportBatchPropertiesUseCase } from "../../application/use_case/import_batch_properties";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 import {
   ImportRejectedError,
@@ -107,14 +107,14 @@ async function* toRecordStream(
 }
 
 /**
- * Wires the existing `ImportPropertiesUseCase` (already used by
+ * Wires the existing `ImportBatchPropertiesUseCase` (already used by
  * `POST /import/properties`) as an MCP tool. Records arrive already
  * structured, so this tool never touches a file — it only adapts the typed
  * array into the same `ImportRecordStream` contract the CSV controller
  * builds, and lets the use case's own schema run the real validation.
  */
 export function makeImportPropertiesTool(
-  useCase: ImportPropertiesUseCase
+  useCase: ImportBatchPropertiesUseCase
 ): McpToolDefinition<typeof inputSchema> {
   return {
     name: "import_properties",

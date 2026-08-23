@@ -129,12 +129,12 @@ function toImportFailure(row: number, error: z.ZodError): ImportFailure {
   };
 }
 
-export type ImportStaysInput = {
+export type ImportBatchStaysInput = {
   records: ImportRecordStream;
 };
 
-export class ImportStaysUseCase
-  implements UseCase<ImportStaysInput, ImportOutcome>
+export class ImportBatchStaysUseCase
+  implements UseCase<ImportBatchStaysInput, ImportOutcome>
 {
   constructor(
     private readonly tenantRepository: TenantRepository,
@@ -146,7 +146,10 @@ export class ImportStaysUseCase
     private readonly importRunner: ImportRunner
   ) {}
 
-  async execute(input: ImportStaysInput, user: User): Promise<ImportOutcome> {
+  async execute(
+    input: ImportBatchStaysInput,
+    user: User
+  ): Promise<ImportOutcome> {
     const propertyCache = new Map<string, BookingProperty | null>();
 
     return this.importRunner.run(input.records, (record, mode) =>

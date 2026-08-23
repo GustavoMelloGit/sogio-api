@@ -1,4 +1,4 @@
-import type { ImportStaysUseCase } from "../../application/use_case/import_stays";
+import type { ImportBatchStaysUseCase } from "../../application/use_case/import_batch_stays";
 import {
   HttpControllerMethod,
   type Controller,
@@ -131,7 +131,7 @@ export class ImportStaysController implements Controller {
     },
   };
 
-  constructor(private readonly useCase: ImportStaysUseCase) {}
+  constructor(private readonly useCase: ImportBatchStaysUseCase) {}
 
   async handle(request: ControllerRequest, user: User) {
     const contentType = (request.headers["content-type"] ?? "").toLowerCase();

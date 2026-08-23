@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ImportLedgerEntriesUseCase } from "../../application/use_case/import_ledger_entries";
+import type { ImportBatchLedgerEntriesUseCase } from "../../application/use_case/import_batch_ledger_entries";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 import type { ImportRecordStream } from "../../../core/application/import/source_record";
 import {
@@ -74,7 +74,7 @@ async function* toImportRecordStream(
 }
 
 export function makeImportLedgerEntriesTool(
-  useCase: ImportLedgerEntriesUseCase
+  useCase: ImportBatchLedgerEntriesUseCase
 ): McpToolDefinition<typeof inputSchema> {
   return {
     name: "import_ledger_entries",

@@ -23,7 +23,7 @@ import { DeletePropertySettingUseCase } from "../../application/use_case/delete_
 import { DeletePropertySettingController } from "../../presentation/controller/delete_property_setting.controller";
 import { DeletePropertyUseCase } from "../../application/use_case/delete_property";
 import { DeletePropertyController } from "../../presentation/controller/delete_property.controller";
-import { ImportPropertiesUseCase } from "../../application/use_case/import_properties";
+import { ImportBatchPropertiesUseCase } from "../../application/use_case/import_batch_properties";
 import { ImportPropertiesController } from "../../presentation/controller/import_properties.controller";
 import type { PropertyOccupancy } from "../../domain/service/property_occupancy";
 import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
@@ -111,8 +111,8 @@ export class PropertyManagementDi {
       this.#transactionRunner
     );
   }
-  makeImportPropertiesUseCase() {
-    return new ImportPropertiesUseCase(
+  makeImportBatchPropertiesUseCase() {
+    return new ImportBatchPropertiesUseCase(
       this.#propertyRepository,
       this.#entitlementService,
       this.#importRunner
@@ -163,7 +163,9 @@ export class PropertyManagementDi {
     return new DeletePropertyController(this.makeDeletePropertyUseCase());
   }
   makeImportPropertiesController() {
-    return new ImportPropertiesController(this.makeImportPropertiesUseCase());
+    return new ImportPropertiesController(
+      this.makeImportBatchPropertiesUseCase()
+    );
   }
 
   // MCP Tools
@@ -195,6 +197,6 @@ export class PropertyManagementDi {
     return makeListPropertySettingsTool(this.makeListPropertySettingsUseCase());
   }
   makeImportPropertiesTool() {
-    return makeImportPropertiesTool(this.makeImportPropertiesUseCase());
+    return makeImportPropertiesTool(this.makeImportBatchPropertiesUseCase());
   }
 }
