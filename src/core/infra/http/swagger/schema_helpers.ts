@@ -31,6 +31,23 @@ export function bodyFromZod(
   };
 }
 
+export function csvBody(
+  description: string,
+  example: string,
+  opts?: { required?: boolean }
+): OpenApiRequestBody {
+  return {
+    description,
+    required: opts?.required ?? true,
+    content: {
+      "text/csv": {
+        schema: { type: "string", format: "binary" },
+        example,
+      },
+    },
+  };
+}
+
 export function responseFromZod(
   description: string,
   schema: z.ZodTypeAny,

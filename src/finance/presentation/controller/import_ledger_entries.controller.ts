@@ -10,7 +10,10 @@ import type { RateLimitPolicy } from "../../../core/application/rate_limit/rate_
 import { ValidationError } from "../../../core/application/error/validation_error";
 import { readCsvRecordStream } from "../../../core/infra/http/csv/streaming_csv_reader";
 import { importRejectedResponse } from "../../../core/presentation/controller/import_response";
-import { errorResponse } from "../../../core/infra/http/swagger/schema_helpers";
+import {
+  csvBody,
+  errorResponse,
+} from "../../../core/infra/http/swagger/schema_helpers";
 
 const REQUIRED_COLUMNS = ["property_id", "kind", "amount", "category"] as const;
 
@@ -20,6 +23,18 @@ const RATE_LIMIT_POLICY: RateLimitPolicy = {
   maxAttempts: 10,
 };
 
+const CSV_EXAMPLE = [
+  "property_id,kind,amount,category,description,occurred_at",
+  "3fa85f64-5717-4562-b3fc-2c963f66afa6,expense,15000,MANUTENÇÃO,Reparo no encanamento,15/01/2026",
+  "3fa85f64-5717-4562-b3fc-2c963f66afa6,revenue,120000,Aluguel,,",
+].join("\n");
+
+const CSV_LAYOUT_DESCRIPTION = `Header row is required; column order doesn't matter and unknown columns are ignored.
+
+Required columns: property_id (UUID owned by the caller), kind (expense or revenue), amount (positive integer cents — the sign is derived from kind), category (for expense: MANUTENÇÃO, ESTADIA, AQUISIÇÕES, FINANCIAMENTO, GASTOS_FIXOS, OUTROS; for revenue: free text up to 100 characters).
+
+Optional columns: description (up to 500 characters) and occurred_at (YYYY-MM-DD or DD/MM/YYYY, maps to the entry's created_at; defaults to now).`;
+
 export class ImportLedgerEntriesController implements Controller {
   path = "/import/ledger-entries";
   method = HttpControllerMethod.POST;
@@ -28,18 +43,11 @@ export class ImportLedgerEntriesController implements Controller {
 
   openApiSpec: OpenApiOperation = {
     summary: "Import ledger entries",
-    description: `Imports financial movements (expenses and revenues) in bulk from a CSV file. The request body is the raw file content — Content-Type must be text/csv, not multipart/form-data.
-
-Header row is required; column order doesn't matter and unknown columns are ignored. Required columns: property_id (UUID owned by the caller), kind (expense or revenue), amount (positive integer cents — the sign is derived from kind), category (for expense: MANUTENÇÃO, ESTADIA, AQUISIÇÕES, FINANCIAMENTO, GASTOS_FIXOS, OUTROS; for revenue: free text up to 100 characters). Optional columns: description (up to 500 characters) and occurred_at (YYYY-MM-DD or DD/MM/YYYY, maps to the entry's created_at; defaults to now).
-
-Example:
-
-property_id,kind,amount,category,description,occurred_at
-3fa85f64-5717-4562-b3fc-2c963f66afa6,expense,15000,MANUTENÇÃO,Reparo no encanamento,15/01/2026
-3fa85f64-5717-4562-b3fc-2c963f66afa6,revenue,120000,Aluguel,,
-
-The batch is accepted or rejected as a whole: a rejected batch writes nothing. Up to 1000 rows and 5 MB per request. Reimporting an already-accepted batch is not deduplicated — every row is inserted again; use DELETE /finance/properties/:property_id/movements/:entry_id to remove duplicates.`,
+    description:
+      "Imports financial movements (expenses and revenues) in bulk from a CSV file. The request body is the raw file content — Content-Type must be text/csv, not multipart/form-data. " +
+      "The batch is accepted or rejected as a whole: a rejected batch writes nothing. Up to 1000 rows and 5 MB per request. Reimporting an already-accepted batch is not deduplicated — every row is inserted again; use DELETE /finance/properties/:property_id/movements/:entry_id to remove duplicates.",
     tags: ["Finance"],
+    requestBody: csvBody(CSV_LAYOUT_DESCRIPTION, CSV_EXAMPLE),
     responses: {
       "200": {
         description: "Batch accepted",

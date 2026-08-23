@@ -7,7 +7,10 @@ import {
 import type { User } from "../../../auth/domain/entity/user";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
 import type { RateLimitPolicy } from "../../../core/application/rate_limit/rate_limit_policy";
-import { errorResponse } from "../../../core/infra/http/swagger/schema_helpers";
+import {
+  csvBody,
+  errorResponse,
+} from "../../../core/infra/http/swagger/schema_helpers";
 import { readCsvRecordStream } from "../../../core/infra/http/csv/streaming_csv_reader";
 import { importRejectedResponse } from "../../../core/presentation/controller/import_response";
 import { ValidationError } from "../../../core/application/error/validation_error";
@@ -40,6 +43,11 @@ const CSV_EXAMPLE = [
   ].join(","),
 ].join("\n");
 
+const CSV_LAYOUT_DESCRIPTION =
+  "Header row required; other columns are ignored. Required columns: " +
+  `${REQUIRED_COLUMNS.join(", ")}. Optional: entrance_code (generated when absent). ` +
+  "Dates (check_in, check_out) accept YYYY-MM-DD or DD/MM/YYYY. price is in cents.";
+
 /** Per-IP limit on this write route. Bulk import can write up to
  * `MAX_IMPORT_ROWS` stays per request, so the write amplification is far
  * higher than a single booking (R-4). */
@@ -58,15 +66,14 @@ export class ImportStaysController implements Controller {
   openApiSpec: OpenApiOperation = {
     summary: "Import stays in bulk",
     description:
-      "Imports stays from a CSV file, one stay per row (Content-Type: text/csv, header row required, other columns are ignored). " +
+      "Imports stays from a CSV file, one stay per row (Content-Type: text/csv). " +
       "Every row goes through the exact same policies as booking a single stay — including the overlap check — so a stay whose " +
       "dates overlap another stay of the same property (already stored or earlier in the same file) surfaces as a line-level " +
-      "failure in the 422 report, not a special case for historic data. Dates accept YYYY-MM-DD or DD/MM/YYYY. price is in cents. " +
-      "entrance_code is optional and generated when absent. The whole batch is accepted or rejected as one: on any failure nothing " +
+      "failure in the 422 report, not a special case for historic data. The whole batch is accepted or rejected as one: on any failure nothing " +
       "is written, and the 422 body lists every row-level failure found while reading the rest of the file (best-effort for " +
-      "overlap/state failures once a row has already failed — see `truncated`). Example:\n\n" +
-      CSV_EXAMPLE,
+      "overlap/state failures once a row has already failed — see `truncated`).",
     tags: ["Booking"],
+    requestBody: csvBody(CSV_LAYOUT_DESCRIPTION, CSV_EXAMPLE),
     responses: {
       "200": {
         description: "Import accepted",

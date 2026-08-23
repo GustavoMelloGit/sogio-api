@@ -9,6 +9,7 @@ import {
 } from "../../../core/presentation/controller/controller";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
 import {
+  csvBody,
   errorResponse,
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
@@ -61,19 +62,14 @@ const CSV_LAYOUT_EXAMPLE = [
   "Apartamento Vista Mar,4,Avenida Beira Mar,1200,Praia do Canto,Vitória,ES,29055-000,Brasil,Apto 302,https://cdn.sogio.com/1.jpg|https://cdn.sogio.com/2.jpg",
 ].join("\n");
 
-const DESCRIPTION = `Imports properties in bulk from a CSV file.
+const CSV_LAYOUT_DESCRIPTION =
+  "The first line is the header; column order does not matter and unknown columns are ignored. " +
+  "Required columns: `name`, `capacity`, `street`, `number`, `neighborhood`, `city`, `state`, `zip_code`, `country`. " +
+  "Optional: `complement` (defaults to empty) and `images` — multiple URLs in a single cell, separated by `|`.";
 
-The request body must be the raw CSV content, sent with \`Content-Type: text/csv\` — not wrapped in JSON or multipart/form-data. The first line is the header; column order does not matter and unknown columns are ignored.
-
-Required columns: \`name\`, \`capacity\`, \`street\`, \`number\`, \`neighborhood\`, \`city\`, \`state\`, \`zip_code\`, \`country\`. Optional: \`complement\` (defaults to empty) and \`images\` — multiple URLs in a single cell, separated by \`|\`.
-
-Example file:
-
-\`\`\`csv
-${CSV_LAYOUT_EXAMPLE}
-\`\`\`
-
-Up to 1000 rows per file. The batch is accepted or rejected as a whole: the first invalid row rolls back the entire import, and the response reports every row-level failure found (up to 100) so the file can be fixed and resubmitted. If the batch would push the account over its property quota, the entire batch is rejected with 403 — never partially imported.`;
+const DESCRIPTION =
+  "Imports properties in bulk from a CSV file. The request body must be the raw CSV content, sent with `Content-Type: text/csv` — not wrapped in JSON or multipart/form-data. " +
+  "Up to 1000 rows per file. The batch is accepted or rejected as a whole: the first invalid row rolls back the entire import, and the response reports every row-level failure found (up to 100) so the file can be fixed and resubmitted. If the batch would push the account over its property quota, the entire batch is rejected with 403 — never partially imported.";
 
 export class ImportPropertiesController implements Controller {
   path = "/import/properties";
@@ -85,6 +81,7 @@ export class ImportPropertiesController implements Controller {
     summary: "Import properties",
     description: DESCRIPTION,
     tags: ["Properties"],
+    requestBody: csvBody(CSV_LAYOUT_DESCRIPTION, CSV_LAYOUT_EXAMPLE),
     responses: {
       "200": responseFromZod("Batch imported", outputSchema, {
         imported: 42,
