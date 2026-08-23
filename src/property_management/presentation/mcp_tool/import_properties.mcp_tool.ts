@@ -118,6 +118,7 @@ export function makeImportPropertiesTool(
 ): McpToolDefinition<typeof inputSchema> {
   return {
     name: "import_properties",
+    requiredCapability: "bulk_import",
     description: `Imports properties in bulk, up to ${MAX_MCP_IMPORT_RECORDS} records per call. The batch is accepted or rejected as a whole: a record that fails validation rolls back the entire import, and the failures are returned so they can be fixed and retried. If the batch would push the account over its property quota, the entire batch is rejected — never partially imported.`,
     inputSchema,
     annotations: {

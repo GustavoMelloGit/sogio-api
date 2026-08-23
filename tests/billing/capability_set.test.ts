@@ -39,7 +39,7 @@ describe("CapabilitySet — accessor must match the registered kind (D-9)", () =
   });
 
   it("limitOf() throws IllegalStateError when the key is an access capability", () => {
-    const set = CapabilitySet.of({ export_reports: true });
+    const set = CapabilitySet.of({ export_reports: true, bulk_import: false });
 
     expect(() => set.limitOf("export_reports")).toThrow(IllegalStateError);
   });
@@ -70,13 +70,14 @@ describe("CapabilitySet.of — resolution ignores keys outside the registry (D-7
     expect(set.toRecord()).toEqual({
       max_properties: 5,
       export_reports: false,
+      bulk_import: false,
     });
   });
 });
 
 describe("CapabilitySet.of — reports a fallback when a value falls back to the registry default (C-5)", () => {
   it("reports reason 'absent' when a capability key is missing entirely", () => {
-    const set = CapabilitySet.of({ export_reports: true });
+    const set = CapabilitySet.of({ export_reports: true, bulk_import: false });
 
     expect(set.fallbacks).toEqual([
       { key: "max_properties", reason: "absent" },
@@ -87,6 +88,7 @@ describe("CapabilitySet.of — reports a fallback when a value falls back to the
     const set = CapabilitySet.of({
       max_properties: "not-a-number",
       export_reports: true,
+      bulk_import: false,
     });
 
     expect(set.fallbacks).toEqual([
@@ -95,7 +97,11 @@ describe("CapabilitySet.of — reports a fallback when a value falls back to the
   });
 
   it("reports no fallback when every capability resolves from an explicit, correctly-typed value", () => {
-    const set = CapabilitySet.of({ max_properties: 5, export_reports: true });
+    const set = CapabilitySet.of({
+      max_properties: 5,
+      export_reports: true,
+      bulk_import: false,
+    });
 
     expect(set.fallbacks).toEqual([]);
   });

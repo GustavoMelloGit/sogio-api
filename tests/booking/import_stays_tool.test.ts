@@ -112,7 +112,7 @@ function registerImportStaysTool(user: User): RegisteredTool {
   return registerMcpTool(
     server,
     user,
-    CapabilitySet.of({}),
+    CapabilitySet.of({ bulk_import: true }),
     propertyDi.makeImportStaysTool()
   );
 }

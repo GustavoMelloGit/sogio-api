@@ -72,7 +72,11 @@ function makeEntry(
     name: "Fallback Test",
     price_amount: 1000,
     billing_interval: "monthly",
-    capabilities: { max_properties: 3, export_reports: false },
+    capabilities: {
+      max_properties: 3,
+      export_reports: false,
+      bulk_import: false,
+    },
     trial_days: 0,
     is_offered: true,
     ...overrides,
@@ -110,6 +114,7 @@ describe("SyncPlanCatalogEntryUseCase — capability fallback warns on the write
     );
     expect(call?.[1]?.fallbacks).toEqual([
       { key: "export_reports", reason: "absent" },
+      { key: "bulk_import", reason: "absent" },
     ]);
   });
 
@@ -132,6 +137,7 @@ describe("SyncPlanCatalogEntryUseCase — capability fallback warns on the write
     );
     expect(call?.[1]?.fallbacks).toEqual([
       { key: "export_reports", reason: "wrong_type" },
+      { key: "bulk_import", reason: "absent" },
     ]);
   });
 

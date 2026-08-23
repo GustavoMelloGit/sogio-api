@@ -82,7 +82,10 @@ async function callTool(
   return handler(input, extra);
 }
 
-function registerImportPropertiesTool(user: User): RegisteredTool {
+function registerImportPropertiesTool(
+  user: User,
+  capabilities: CapabilitySet = CapabilitySet.of({ bulk_import: true })
+): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
   const propertyManagementDi = new PropertyManagementDi(
     makeTestEntitlementService(),
@@ -92,7 +95,7 @@ function registerImportPropertiesTool(user: User): RegisteredTool {
   return registerMcpTool(
     server,
     user,
-    CapabilitySet.of({}),
+    capabilities,
     propertyManagementDi.makeImportPropertiesTool()
   );
 }
@@ -119,6 +122,28 @@ function textOf(result: CallToolResult): string {
 describe("import_properties tool", () => {
   beforeEach(async () => {
     await truncate(TABLES);
+  });
+
+  it("a plan without bulk_import cannot call the tool at all", async () => {
+    const { user } = await createUserFixture({
+      name: "Dono de Imóvel",
+      email: "import.tool-no-capability@sogio.dev",
+      password: "password123",
+    });
+    const registeredTool = registerImportPropertiesTool(
+      user,
+      CapabilitySet.of({})
+    );
+
+    const result = await callTool(
+      registeredTool,
+      { records: [propertyRecord("Casa Bloqueada")] },
+      makeExtra()
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("bulk data imports");
+    expect(await countPropertiesOfUser(user.id)).toBe(0);
   });
 
   it("imports an accepted batch without images and persists the properties", async () => {

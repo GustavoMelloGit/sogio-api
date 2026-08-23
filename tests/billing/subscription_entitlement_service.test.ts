@@ -10,7 +10,7 @@ const proPlan = Plan.create({
   name: "Pro",
   price_amount: 4990,
   billing_interval: "monthly",
-  capabilities: { max_properties: 5, export_reports: true },
+  capabilities: { max_properties: 5, export_reports: true, bulk_import: false },
   trial_days: 14,
 });
 

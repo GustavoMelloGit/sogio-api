@@ -15,7 +15,10 @@ describe("AccessCapabilityKey (C-1)", () => {
       > => entry.kind === "access"
     );
 
-    expect(accessEntries.map(entry => entry.key)).toEqual(["export_reports"]);
+    expect(accessEntries.map(entry => entry.key)).toEqual([
+      "export_reports",
+      "bulk_import",
+    ]);
   });
 
   it("accepts a known access capability key as an AccessCapabilityKey", () => {

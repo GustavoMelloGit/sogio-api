@@ -475,7 +475,11 @@ describe("SubscriptionAccessPolicy", () => {
       name: "Pro",
       price_amount: 4990,
       billing_interval: "monthly",
-      capabilities: { max_properties: 5, export_reports: true },
+      capabilities: {
+        max_properties: 5,
+        export_reports: true,
+        bulk_import: false,
+      },
       trial_days: 14,
     });
 
@@ -484,7 +488,11 @@ describe("SubscriptionAccessPolicy", () => {
       name: "Free",
       price_amount: 0,
       billing_interval: "monthly",
-      capabilities: { max_properties: 1, export_reports: false },
+      capabilities: {
+        max_properties: 1,
+        export_reports: false,
+        bulk_import: false,
+      },
       trial_days: 0,
     });
 

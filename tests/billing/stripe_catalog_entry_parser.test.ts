@@ -81,7 +81,11 @@ describe("parseStripeCatalogEntry — a fully valid entry (DA-4)", () => {
       name: "Pro",
       price_amount: 2500,
       billing_interval: "monthly",
-      capabilities: { max_properties: 5, export_reports: false },
+      capabilities: {
+        max_properties: 5,
+        export_reports: false,
+        bulk_import: false,
+      },
       trial_days: 14,
       is_offered: true,
     });
@@ -267,7 +271,7 @@ describe("parseStripeCatalogEntry — sogio_export_reports (D-3)", () => {
       "Capability metadata absent for one or more capabilities; falling back to registry defaults (D-3)",
       {
         price_id: "price_test_1",
-        capabilities: ["export_reports"],
+        capabilities: ["export_reports", "bulk_import"],
       },
     ]);
   });
@@ -275,7 +279,11 @@ describe("parseStripeCatalogEntry — sogio_export_reports (D-3)", () => {
   it("does not warn about export_reports when the metadata sets it explicitly", () => {
     const { logger, warnCalls } = makeSpyLogger();
     const price = makePrice({
-      metadata: { ...VALID_METADATA, sogio_export_reports: "true" },
+      metadata: {
+        ...VALID_METADATA,
+        sogio_export_reports: "true",
+        sogio_bulk_import: "true",
+      },
     });
 
     const entry = parseStripeCatalogEntry(price, logger);
@@ -318,6 +326,7 @@ describe("parseStripeCatalogEntry — sogio_export_reports (D-3)", () => {
     expect(parseStripeCatalogEntry(price, silentLogger)?.capabilities).toEqual({
       max_properties: 5,
       export_reports: false,
+      bulk_import: false,
     });
   });
 });
