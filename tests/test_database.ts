@@ -1,9 +1,8 @@
+import { SQL } from "bun";
 import { createHash } from "node:crypto";
 import { basename, dirname } from "node:path";
-import { Client } from "pg";
 
 const MAX_IDENTIFIER_LENGTH = 63;
-const DUPLICATE_DATABASE = "42P04";
 
 function git(...args: string[]): string {
   const result = Bun.spawnSync(["git", ...args], { cwd: import.meta.dir });
@@ -83,18 +82,22 @@ function quoteIdentifier(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
-async function withMaintenanceClient<T>(
-  fn: (client: Client) => Promise<T>
+async function withMaintenanceConnection<T>(
+  fn: (sql: SQL) => Promise<T>
 ): Promise<T> {
   const url = new URL(baseDatabaseUrl());
   url.pathname = "/postgres";
-  const client = new Client({ connectionString: url.toString() });
-  await client.connect();
+  const sql = new SQL({ url: url.toString(), max: 1 });
   try {
-    return await fn(client);
+    return await fn(sql);
   } finally {
-    await client.end();
+    await sql.close();
   }
+}
+
+async function databaseExists(sql: SQL, name: string): Promise<boolean> {
+  const rows = await sql`select 1 from pg_database where datname = ${name}`;
+  return rows.length > 0;
 }
 
 function pushSchema(url: string): void {
@@ -122,16 +125,12 @@ export async function ensureTestDatabase(): Promise<string> {
   const name = databaseNameOf(url);
   assertTestDatabase(name);
 
-  await withMaintenanceClient(async client => {
-    const existing = await client.query(
-      "select 1 from pg_database where datname = $1",
-      [name]
-    );
-    if (existing.rowCount) return;
+  await withMaintenanceConnection(async sql => {
+    if (await databaseExists(sql, name)) return;
     try {
-      await client.query(`create database ${quoteIdentifier(name)}`);
+      await sql.unsafe(`create database ${quoteIdentifier(name)}`);
     } catch (error) {
-      if ((error as { code?: string }).code !== DUPLICATE_DATABASE) throw error;
+      if (!(await databaseExists(sql, name))) throw error;
     }
   });
 
@@ -143,17 +142,18 @@ export async function pruneTestDatabases(): Promise<string[]> {
   const base = databaseNameOf(baseDatabaseUrl());
   const alive = new Set(worktreeRoots().map(testDatabaseNameFor));
 
-  return withMaintenanceClient(async client => {
-    const { rows } = await client.query<{ datname: string }>(
-      "select datname from pg_database where datname like $1 order by datname",
-      [`${base}\\_%`]
-    );
+  return withMaintenanceConnection(async sql => {
+    const rows = (await sql`
+      select datname from pg_database
+      where datname like ${`${base}\\_%`}
+      order by datname
+    `) as { datname: string }[];
 
     const dropped: string[] = [];
     for (const { datname } of rows) {
       if (alive.has(datname)) continue;
       assertTestDatabase(datname);
-      await client.query(
+      await sql.unsafe(
         `drop database if exists ${quoteIdentifier(datname)} with (force)`
       );
       dropped.push(datname);

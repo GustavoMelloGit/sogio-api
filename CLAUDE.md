@@ -38,13 +38,18 @@ bun run db:migrate    # Executa migrations pendentes
 
 ```bash
 # Testes
-bun run db:push:test  # Cria o schema `test` no banco e aplica o schema Drizzle (obrigatório antes do primeiro run)
+bun run db:push:test  # Cria o banco de teste desta worktree e aplica o schema Drizzle
+bun run db:prune:test # Dropa os bancos de teste órfãos (worktrees que já não existem)
 bun run test          # Executa todos os testes
 ```
 
 Os testes ficam em `tests/<bounded context>/<test name>.test.ts`.
 
-> **Pré-requisito**: o arquivo `.env.test` na raiz do projeto deve conter a variável `DATABASE_URL` com as credenciais reais do banco local, a variável `API_BASE_URL` (ex: `http://localhost:4000`) — obrigatória fora de `development` desde a introdução dos documentos de descoberta OAuth —, a variável `FRONT_BASE_URL` (ex: `http://localhost:5173`) — obrigatória fora de `development` desde a introdução do `/authorize` (redirect de consentimento do protocolo OAuth) —, as variáveis `RESEND_API_KEY` e `PASSWORD_RESET_EMAIL_FROM` — obrigatórias fora de `development` desde a introdução da recuperação de senha por email —, e as variáveis `STRIPE_SECRET_KEY` e `STRIPE_WEBHOOK_SECRET` — obrigatórias fora de `development` desde a integração com o gateway de pagamento; em `test` todas podem ser valores fake, já que os adapters Resend e Stripe nunca são exercidos de verdade nos testes (a verificação de assinatura do webhook é testada localmente, assinando o payload com o mesmo segredo fake — ver `tests/billing/stripe_webhook_verifier.test.ts`).
+**Cada worktree tem o seu próprio banco de teste.** O nome sai do path da worktree (`tests/test_database.ts`): a worktree principal continua usando o banco declarado no `DATABASE_URL` do `.env.test` (`sogio_test`), e cada worktree em `.claude/worktrees/<branch>` usa `sogio_test_<slug>_<hash-do-path>`. O preload `tests/preload_test_database.ts` roda antes de `tests/setup.ts`, cria o banco se ele não existir, aplica o schema Drizzle e só então reescreve `process.env.DATABASE_URL` — por isso `environments.ts` nunca pode ser importado por esse módulo, e por isso `db:push:test` deixou de ser obrigatório antes do primeiro run (continua existindo para preparar o banco sem rodar a suíte). O custo é ~1,9 s por execução, contra uma suíte de ~43 s.
+
+Sem isso, dois agentes em worktrees diferentes se destroem: o helper `truncate()` (`tests/helpers/database.ts`) roda `TRUNCATE ... CASCADE`, então uma suíte apaga as fixtures da outra no meio do run. Nunca apontar duas worktrees para o mesmo banco.
+
+> **Pré-requisito**: o arquivo `.env.test` (gitignored, copiado para cada worktree) deve conter a variável `DATABASE_URL` com as credenciais reais do banco local, a variável `API_BASE_URL` (ex: `http://localhost:4000`) — obrigatória fora de `development` desde a introdução dos documentos de descoberta OAuth —, a variável `FRONT_BASE_URL` (ex: `http://localhost:5173`) — obrigatória fora de `development` desde a introdução do `/authorize` (redirect de consentimento do protocolo OAuth) —, as variáveis `RESEND_API_KEY` e `PASSWORD_RESET_EMAIL_FROM` — obrigatórias fora de `development` desde a introdução da recuperação de senha por email —, e as variáveis `STRIPE_SECRET_KEY` e `STRIPE_WEBHOOK_SECRET` — obrigatórias fora de `development` desde a integração com o gateway de pagamento; em `test` todas podem ser valores fake, já que os adapters Resend e Stripe nunca são exercidos de verdade nos testes (a verificação de assinatura do webhook é testada localmente, assinando o payload com o mesmo segredo fake — ver `tests/billing/stripe_webhook_verifier.test.ts`).
 
 ## Arquitetura
 
