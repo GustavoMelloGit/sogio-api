@@ -6,6 +6,7 @@ import {
 } from "../../../core/domain/entity/base_entity";
 import { Address } from "../value_object/address";
 import type { DeepPartial } from "../../../core/application/types/deep_partial";
+import { definedValuesOf } from "../../../core/application/types/defined_values";
 
 export const MAX_PROPERTY_CAPACITY = 1_000;
 
@@ -31,12 +32,6 @@ export const propertySchema = baseEntitySchema.extend({
 });
 
 export type PropertyData = z.infer<typeof propertySchema>;
-
-function definedValuesOf<Value extends object>(value: Value): Partial<Value> {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, entry]) => entry !== undefined)
-  ) as Partial<Value>;
-}
 
 /**
  * @kind Entity, Aggregate Root
