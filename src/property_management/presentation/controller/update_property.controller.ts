@@ -31,6 +31,14 @@ const addressSchema = z.object({
     .default(""),
 });
 
+const addressPatchSchema = addressSchema
+  .extend({
+    complement: z
+      .string()
+      .max(100, "Complement must be at most 100 characters"),
+  })
+  .partial();
+
 const inputSchema = z.object({
   property_id: z.uuid(),
   name: z
@@ -38,7 +46,7 @@ const inputSchema = z.object({
     .min(1, "Name is required")
     .max(100, "Name must be at most 100 characters")
     .optional(),
-  address: addressSchema.partial().optional(),
+  address: addressPatchSchema.optional(),
   images: z
     .array(z.string().max(2048, "Image URL must be at most 2048 characters"))
     .optional(),

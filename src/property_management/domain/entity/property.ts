@@ -32,6 +32,12 @@ export const propertySchema = baseEntitySchema.extend({
 
 export type PropertyData = z.infer<typeof propertySchema>;
 
+function definedValuesOf<Value extends object>(value: Value): Partial<Value> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined)
+  ) as Partial<Value>;
+}
+
 /**
  * @kind Entity, Aggregate Root
  */
@@ -78,14 +84,21 @@ export class Property {
   public changeDetails(
     data: DeepPartial<SafeUpdateEntity<PropertyData>>
   ): void {
-    const safeData = propertySchema.partial().parse(data);
+    const { address, ...details } = data;
+    const safeData = propertySchema
+      .omit({ address: true })
+      .partial()
+      .parse(details);
 
     this.#name = safeData.name ?? this.#name;
     this.#images = safeData.images ?? this.#images;
     this.#capacity = safeData.capacity ?? this.#capacity;
 
-    if (safeData.address) {
-      this.#address = Address.create(safeData.address);
+    if (address) {
+      this.#address = Address.create({
+        ...this.#address.data,
+        ...definedValuesOf(address),
+      });
     }
 
     this.#updated_at = new Date();
