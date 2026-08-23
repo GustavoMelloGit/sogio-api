@@ -10,7 +10,9 @@ import type { TenantRepository } from "../../domain/repository/tenant_repository
 import { BookStayController } from "../../presentation/controller/property/book_stay.controller";
 import { CreateExternalBookingSourceController } from "../../presentation/controller/property/create_external_booking.controller";
 import { ReconcileExternalBookingController } from "../../presentation/controller/property/reconcile_external_booking.controller";
+import { ImportStaysController } from "../../presentation/controller/import_stays.controller";
 import { makeBookStayTool } from "../../presentation/mcp_tool/book_stay.mcp_tool";
+import { makeImportStaysTool } from "../../presentation/mcp_tool/import_stays.mcp_tool";
 import { ICalendarAdapter } from "../adapter/i_calendar_adapter";
 import { PostgresBookingPolicy } from "../database/postgres_policies/postgres_booking_policy";
 import { ExternalBookingSourcePostgresRepository } from "../database/postgres_repository/external_booking_source_postgres_repository";
@@ -98,6 +100,9 @@ export class PropertyDi {
   makeBookStayController() {
     return new BookStayController(this.makeBookStayUseCase());
   }
+  makeImportStaysController() {
+    return new ImportStaysController(this.makeImportStaysUseCase());
+  }
   makeReconcileExternalBookingController() {
     return new ReconcileExternalBookingController(
       this.makeReconcileExternalBookingUseCase()
@@ -112,5 +117,8 @@ export class PropertyDi {
   // MCP Tools
   makeBookStayTool() {
     return makeBookStayTool(this.makeBookStayUseCase());
+  }
+  makeImportStaysTool() {
+    return makeImportStaysTool(this.makeImportStaysUseCase());
   }
 }
