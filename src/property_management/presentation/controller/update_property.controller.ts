@@ -1,5 +1,6 @@
 import z from "zod";
 import type { UpdatePropertyUseCase } from "../../application/use_case/update_property";
+import { MAX_PROPERTY_IMAGES } from "../../domain/entity/property";
 import type { User } from "../../../auth/domain/entity/user";
 import {
   HttpControllerMethod,
@@ -49,6 +50,7 @@ const inputSchema = z.object({
   address: addressPatchSchema.optional(),
   images: z
     .array(z.string().max(2048, "Image URL must be at most 2048 characters"))
+    .max(MAX_PROPERTY_IMAGES, `At most ${MAX_PROPERTY_IMAGES} images`)
     .optional(),
   capacity: z
     .number()

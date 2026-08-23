@@ -9,6 +9,7 @@ import type { DeepPartial } from "../../../core/application/types/deep_partial";
 import { definedValuesOf } from "../../../core/application/types/defined_values";
 
 export const MAX_PROPERTY_CAPACITY = 1_000;
+export const MAX_PROPERTY_IMAGES = 50;
 
 export const propertySchema = baseEntitySchema.extend({
   name: z.string().min(1, "Name is required").max(100),
@@ -23,7 +24,7 @@ export const propertySchema = baseEntitySchema.extend({
     country: z.string().min(1, "Country is required").max(100),
     complement: z.string().max(100).default(""),
   }),
-  images: z.array(z.string().max(2048)),
+  images: z.array(z.string().max(2048)).max(MAX_PROPERTY_IMAGES),
   capacity: z
     .number()
     .int()

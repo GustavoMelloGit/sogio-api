@@ -4,7 +4,11 @@ import type { User } from "../../../auth/domain/entity/user";
 import type { EntitlementService } from "../../../billing/application/service/entitlement_service";
 import type { Entitlement } from "../../../billing/domain/value_object/entitlement";
 import type { PropertyRepository } from "../../domain/repository/property_repository";
-import { Property, MAX_PROPERTY_CAPACITY } from "../../domain/entity/property";
+import {
+  Property,
+  MAX_PROPERTY_CAPACITY,
+  MAX_PROPERTY_IMAGES,
+} from "../../domain/entity/property";
 import { CapabilityLimitPolicy } from "../../../billing/domain/policy/capability_limit_policy";
 import type {
   ImportRunner,
@@ -77,9 +81,11 @@ const propertyImportRecordSchema = z
           : []
       )
       .pipe(
-        z.array(
-          z.string().max(2048, "Image URL must be at most 2048 characters")
-        )
+        z
+          .array(
+            z.string().max(2048, "Image URL must be at most 2048 characters")
+          )
+          .max(MAX_PROPERTY_IMAGES, `At most ${MAX_PROPERTY_IMAGES} images`)
       ),
   })
   .transform(data => ({

@@ -40,6 +40,10 @@ export default defineConfig([
     files: ["src/**/*.ts"],
     plugins: { sogio: sogioPlugin },
     rules: {
+      "sogio/zod-array-max": [
+        "error",
+        { ignoredSchemaNames: IGNORED_SCHEMA_NAMES },
+      ],
       "sogio/zod-int-bounds": [
         "error",
         { ignoredSchemaNames: IGNORED_SCHEMA_NAMES },
