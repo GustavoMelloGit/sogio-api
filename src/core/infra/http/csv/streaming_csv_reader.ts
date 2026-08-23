@@ -189,6 +189,6 @@ export async function* readCsvRecordStream(
       yield { row: currentRow, values: buildRecordValues(header, record) };
     }
   } finally {
-    reader.releaseLock();
+    await reader.cancel();
   }
 }
