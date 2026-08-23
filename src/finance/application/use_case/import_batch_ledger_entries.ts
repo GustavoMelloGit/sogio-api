@@ -21,33 +21,8 @@ import type {
   SourceRecord,
 } from "../../../core/application/import/source_record";
 import type { ImportFailure } from "../../../core/application/import/import_failure";
-
-function parseImportDate(value: string): Date | null {
-  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (iso) {
-    return toCalendarDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
-  }
-
-  const brazilian = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (brazilian) {
-    return toCalendarDate(
-      Number(brazilian[3]),
-      Number(brazilian[2]),
-      Number(brazilian[1])
-    );
-  }
-
-  return null;
-}
-
-function toCalendarDate(year: number, month: number, day: number): Date | null {
-  const date = new Date(year, month - 1, day);
-  const isValid =
-    date.getFullYear() === year &&
-    date.getMonth() === month - 1 &&
-    date.getDate() === day;
-  return isValid ? date : null;
-}
+import { CalendarDate } from "../../../core/domain/calendar/calendar_date";
+import { WallClockTime } from "../../../core/domain/calendar/wall_clock_time";
 
 const ledgerEntryImportRecordSchema = z
   .object({
@@ -80,7 +55,7 @@ const ledgerEntryImportRecordSchema = z
       .transform((value, ctx) => {
         if (!value || value.trim().length === 0) return undefined;
 
-        const parsed = parseImportDate(value.trim());
+        const parsed = CalendarDate.parse(value);
         if (!parsed) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -186,10 +161,15 @@ export class ImportBatchLedgerEntriesUseCase
       property_id: parsed.data.property_id,
     };
 
+    const occurred_at = parsed.data.occurred_at?.atWallClock(
+      WallClockTime.MIDNIGHT,
+      user.time_zone
+    );
+
     const entry =
       parsed.data.kind === "expense"
-        ? LedgerEntry.newExpense(entryData, parsed.data.occurred_at)
-        : LedgerEntry.newRevenue(entryData, parsed.data.occurred_at);
+        ? LedgerEntry.newExpense(entryData, occurred_at)
+        : LedgerEntry.newRevenue(entryData, occurred_at);
 
     await this.ledgerEntryRepository.save(entry);
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CalendarDate } from "../../../core/domain/calendar/calendar_date";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 import type { User } from "../../../auth/domain/entity/user";
 import type { EventDispatcher } from "../../../core/application/event/event_dispatcher";
@@ -24,46 +25,15 @@ import type { BookingPropertyRepository } from "../../domain/repository/booking_
 import type { StayRepository } from "../../domain/repository/stay_repository";
 import type { TenantRepository } from "../../domain/repository/tenant_repository";
 import type { EntranceCodeGenerator } from "../../domain/service/entrance_code_generator";
-
-const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const BR_DATE_PATTERN = /^(\d{2})\/(\d{2})\/(\d{4})$/;
-
-function parseImportDate(value: string): Date | null {
-  const isoMatch = ISO_DATE_PATTERN.exec(value);
-  const brMatch = BR_DATE_PATTERN.exec(value);
-
-  let year: number;
-  let month: number;
-  let day: number;
-
-  if (isoMatch) {
-    year = Number(isoMatch[1]);
-    month = Number(isoMatch[2]);
-    day = Number(isoMatch[3]);
-  } else if (brMatch) {
-    day = Number(brMatch[1]);
-    month = Number(brMatch[2]);
-    year = Number(brMatch[3]);
-  } else {
-    return null;
-  }
-
-  const date = new Date(Date.UTC(year, month - 1, day));
-
-  const isValid =
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day;
-
-  return isValid ? date : null;
-}
+import type { PropertyCheckTimesService } from "../../../property_management/application/service/property_check_times_service";
+import type { PropertyCheckTimes } from "../../../property_management/domain/service/property_check_times";
 
 function dateField(fieldLabel: string) {
   return z
     .string()
     .max(32, `${fieldLabel} must be at most 32 characters`)
     .transform((value, ctx) => {
-      const date = parseImportDate(value);
+      const date = CalendarDate.parse(value);
 
       if (!date) {
         ctx.addIssue({
@@ -115,7 +85,7 @@ const stayImportRecordSchema = z
       .optional()
       .transform(value => (value && value.length > 0 ? value : undefined)),
   })
-  .refine(data => data.check_in < data.check_out, {
+  .refine(data => data.check_in.isBefore(data.check_out), {
     message: "check_in must be before check_out",
     path: ["check_in"],
   });
@@ -143,7 +113,8 @@ export class ImportBatchStaysUseCase
     private readonly bookingPolicy: BookingPolicy,
     private readonly eventDispatcher: EventDispatcher,
     private readonly entranceCodeGenerator: EntranceCodeGenerator,
-    private readonly importRunner: ImportRunner
+    private readonly importRunner: ImportRunner,
+    private readonly propertyCheckTimesService: PropertyCheckTimesService
   ) {}
 
   async execute(
@@ -151,9 +122,10 @@ export class ImportBatchStaysUseCase
     user: User
   ): Promise<ImportOutcome> {
     const propertyCache = new Map<string, BookingProperty | null>();
+    const checkTimesCache = new Map<string, PropertyCheckTimes>();
 
     return this.importRunner.run(input.records, (record, mode) =>
-      this.#applyRecord(record, mode, user, propertyCache)
+      this.#applyRecord(record, mode, user, propertyCache, checkTimesCache)
     );
   }
 
@@ -161,7 +133,8 @@ export class ImportBatchStaysUseCase
     record: SourceRecord,
     mode: ImportMode,
     user: User,
-    propertyCache: Map<string, BookingProperty | null>
+    propertyCache: Map<string, BookingProperty | null>,
+    checkTimesCache: Map<string, PropertyCheckTimes>
   ): Promise<ImportFailure | null> {
     const parsed = stayImportRecordSchema.safeParse(record.values);
 
@@ -186,6 +159,16 @@ export class ImportBatchStaysUseCase
       };
     }
 
+    const checkTimes = await this.#checkTimesOf(property.id, checkTimesCache);
+    const check_in = data.check_in.atWallClock(
+      checkTimes.check_in,
+      user.time_zone
+    );
+    const check_out = data.check_out.atWallClock(
+      checkTimes.check_out,
+      user.time_zone
+    );
+
     try {
       let tenant = await this.tenantRepository.findByPhoneForOwner(
         user.id,
@@ -209,8 +192,8 @@ export class ImportBatchStaysUseCase
           tenant_id: tenant?.id ?? crypto.randomUUID(),
           entrance_code:
             data.entrance_code ?? this.entranceCodeGenerator.generate(),
-          check_in: data.check_in,
-          check_out: data.check_out,
+          check_in,
+          check_out,
           price: data.price,
           source: data.source,
         },
@@ -240,5 +223,20 @@ export class ImportBatchStaysUseCase
       }
       throw error;
     }
+  }
+
+  async #checkTimesOf(
+    property_id: string,
+    checkTimesCache: Map<string, PropertyCheckTimes>
+  ): Promise<PropertyCheckTimes> {
+    const cached = checkTimesCache.get(property_id);
+
+    if (cached) return cached;
+
+    const checkTimes =
+      await this.propertyCheckTimesService.checkTimesOf(property_id);
+    checkTimesCache.set(property_id, checkTimes);
+
+    return checkTimes;
   }
 }

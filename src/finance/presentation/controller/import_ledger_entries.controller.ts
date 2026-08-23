@@ -33,7 +33,7 @@ const CSV_LAYOUT_DESCRIPTION = `Header row is required; column order doesn't mat
 
 Required columns: property_id (UUID owned by the caller), kind (expense or revenue), amount (positive integer cents — the sign is derived from kind), category (for expense: MANUTENÇÃO, ESTADIA, AQUISIÇÕES, FINANCIAMENTO, GASTOS_FIXOS, OUTROS; for revenue: free text up to 100 characters).
 
-Optional columns: description (up to 500 characters) and occurred_at (YYYY-MM-DD or DD/MM/YYYY, maps to the entry's created_at; defaults to now).`;
+Optional columns: description (up to 500 characters) and occurred_at (YYYY-MM-DD or DD/MM/YYYY, maps to the entry's created_at; defaults to now). A date carries no time: occurred_at is anchored at the start of that day in your account's time zone.`;
 
 export class ImportLedgerEntriesController implements Controller {
   path = "/import/ledger-entries";

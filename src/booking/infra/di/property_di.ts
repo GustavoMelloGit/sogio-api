@@ -29,6 +29,9 @@ import { CryptoEntranceCodeGenerator } from "../service/crypto_entrance_code_gen
 import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
 import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
 import { ImportRunner } from "../../../core/application/import/import_runner";
+import type { PropertyCheckTimesService } from "../../../property_management/application/service/property_check_times_service";
+import { SettingPropertyCheckTimesService } from "../../../property_management/application/service/setting_property_check_times_service";
+import { PropertySettingPostgresRepository } from "../../../property_management/infra/database/postgres_repository/property_setting_postgres_repository";
 
 export class PropertyDi {
   #tenantRepository: TenantRepository;
@@ -42,6 +45,7 @@ export class PropertyDi {
   #entranceCodeGenerator: EntranceCodeGenerator;
   #transactionRunner: TransactionRunner;
   #importRunner: ImportRunner;
+  #propertyCheckTimesService: PropertyCheckTimesService;
 
   constructor() {
     this.#logger = new ConsoleLogger();
@@ -56,6 +60,10 @@ export class PropertyDi {
     this.#entranceCodeGenerator = new CryptoEntranceCodeGenerator();
     this.#transactionRunner = new DrizzleTransactionRunner();
     this.#importRunner = new ImportRunner(this.#transactionRunner);
+    this.#propertyCheckTimesService = new SettingPropertyCheckTimesService(
+      new PropertySettingPostgresRepository(),
+      this.#logger
+    );
   }
 
   // Use Cases
@@ -77,7 +85,8 @@ export class PropertyDi {
       this.#bookingPolicy,
       this.#eventDispatcher,
       this.#entranceCodeGenerator,
-      this.#importRunner
+      this.#importRunner,
+      this.#propertyCheckTimesService
     );
   }
   makeReconcileExternalBookingUseCase() {
