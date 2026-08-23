@@ -15,6 +15,7 @@ import {
   isSupportedTimeZone,
 } from "../../../../core/domain/locale/locale";
 import { db } from "../../../../core/infra/database/drizzle/database";
+import { currentExecutor } from "../../../../core/infra/database/drizzle/transaction_context";
 import {
   usersTable,
   propertiesTable,
@@ -46,7 +47,7 @@ function rowToUserData(row: UserRow): UserData {
 
 export class AuthPostgresRepository implements AuthRepository {
   async findUserById(id: string): Promise<User | null> {
-    const user = await db.query.usersTable.findFirst({
+    const user = await currentExecutor().query.usersTable.findFirst({
       where: eq(usersTable.id, id),
     });
 
@@ -66,7 +67,10 @@ export class AuthPostgresRepository implements AuthRepository {
       updated_at: input.updated_at,
       deleted_at: input.deleted_at,
     };
-    const result = await db.insert(usersTable).values(data).returning();
+    const result = await currentExecutor()
+      .insert(usersTable)
+      .values(data)
+      .returning();
 
     const row = result[0];
 
@@ -78,7 +82,7 @@ export class AuthPostgresRepository implements AuthRepository {
   }
 
   async findUserByEmail(email: string): Promise<User | null> {
-    const user = await db.query.usersTable.findFirst({
+    const user = await currentExecutor().query.usersTable.findFirst({
       where: eq(usersTable.email, email),
     });
 

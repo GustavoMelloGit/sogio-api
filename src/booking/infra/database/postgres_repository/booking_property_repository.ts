@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { db } from "../../../../core/infra/database/drizzle/database";
+import { currentExecutor } from "../../../../core/infra/database/drizzle/transaction_context";
 import { BookingProperty } from "../../../domain/entity/booking_property";
 import type { BookingPropertyRepository } from "../../../domain/repository/booking_property_repository";
 import { propertiesTable } from "../../../../core/infra/database/drizzle/schema";
@@ -14,7 +14,7 @@ export class BookingPropertyPostgresRepository
   implements BookingPropertyRepository
 {
   async allFromUser(userId: string): Promise<Array<BookingProperty>> {
-    const properties = await db.query.propertiesTable.findMany({
+    const properties = await currentExecutor().query.propertiesTable.findMany({
       where: and(
         eq(propertiesTable.user_id, userId),
         isNull(propertiesTable.deleted_at)
@@ -24,7 +24,7 @@ export class BookingPropertyPostgresRepository
     return properties.map(property => BookingProperty.reconstitute(property));
   }
   async propertyOfId(id: string): Promise<BookingProperty | null> {
-    const property = await db.query.propertiesTable.findFirst({
+    const property = await currentExecutor().query.propertiesTable.findFirst({
       where: and(
         eq(propertiesTable.id, id),
         isNull(propertiesTable.deleted_at)
