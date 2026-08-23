@@ -40,6 +40,37 @@ function buildCsv(rows: string[]): string {
   return [HEADER, ...rows].join("\n");
 }
 
+const HEADER_MISSING_COUNTRY =
+  "name,capacity,street,number,neighborhood,city,state,zip_code";
+
+function makePacedRejectedCsvStream(
+  totalPaddingBytes: number,
+  chunkBytes: number,
+  delayMs: number
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  let sentHeader = false;
+  let remaining = totalPaddingBytes;
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (!sentHeader) {
+        sentHeader = true;
+        controller.enqueue(encoder.encode(HEADER_MISSING_COUNTRY + "\n"));
+        return;
+      }
+      if (remaining <= 0) {
+        controller.close();
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      const size = Math.min(chunkBytes, remaining);
+      remaining -= size;
+      controller.enqueue(new Uint8Array(size).fill(120));
+    },
+  });
+}
+
 async function upgradeToPro(userId: string): Promise<void> {
   await db
     .update(subscriptionsTable)
@@ -269,5 +300,44 @@ describe("POST /import/properties", () => {
     expect(body.failures[0]?.row).toBe(3);
     expect(body.failures[0]?.field).toBe("capacity");
     expect(await countPropertiesOfUser(user.id)).toBe(0);
+  });
+
+  it("keeps the keep-alive connection usable after a CSV rejected for a missing required column, so the next request on it is served quickly", async () => {
+    const { user } = await createUserFixture({
+      name: "Dono de Imóvel",
+      email: "import.connection-survives@sogio.dev",
+      password: "password123",
+    });
+    await upgradeToPro(user.id);
+    const token = await createAuthToken(user.id);
+
+    const rejected = await api("/import/properties", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "text/csv",
+      },
+      body: makePacedRejectedCsvStream(3 * 1024 * 1024, 64 * 1024, 5),
+      duplex: "half",
+    } as RequestInit);
+    const rejectedBody = (await rejected.json()) as {
+      failures: Array<{ row: number; field: string | null; message: string }>;
+    };
+
+    expect(rejected.status).toBe(422);
+    expect(rejectedBody.failures.some(f => f.field === "country")).toBe(true);
+
+    const CONNECTION_SURVIVAL_TIMEOUT_MS = 3_000;
+    const start = performance.now();
+    const followUp = await api("/property/user/all", {
+      method: "GET",
+      headers: { Authorization: "Bearer " + token },
+      signal: AbortSignal.timeout(CONNECTION_SURVIVAL_TIMEOUT_MS),
+    });
+    const elapsedMs = performance.now() - start;
+    await followUp.json();
+
+    expect(followUp.status).toBe(200);
+    expect(elapsedMs).toBeLessThan(CONNECTION_SURVIVAL_TIMEOUT_MS);
   });
 });

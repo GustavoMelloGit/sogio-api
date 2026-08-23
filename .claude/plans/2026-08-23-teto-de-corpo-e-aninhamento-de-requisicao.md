@@ -28,27 +28,50 @@ fora desta entrega.
 As sete perguntas que o Orquestrador levantou, respondidas contra o código real.
 Nenhuma delas é decisão do Desenvolvedor.
 
-### D1 — São **dois** tetos de tamanho, com donos diferentes, e nenhum é redundante
+### D1 — São **dois** números, e o que cada um significa é _reter_ versus _ler_
 
-O adaptador não é o primeiro a tocar o corpo: quem aceita a conexão e alimenta
-`request.body` é o `Bun.serve()`. Tudo que o runtime bufferizar **antes** de
-chamar o handler está fora do alcance de qualquer código nosso — e o default do
-Bun é `maxRequestBodySize: 128 MB`. Um teto só no adaptador, portanto, não
-consegue honrar o critério "sem materializar o payload" em toda a sua extensão.
-Daí a divisão:
+**Revisado após medição em runtime — ver D1-bis.** A versão anterior chamava o
+`maxRequestBodySize` do `Bun.serve` de "piso do processo". Ele não é: o Bun só o
+aplica quando há `Content-Length`. Sob `Transfer-Encoding: chunked` ele é
+ignorado por completo (medido: 2 MB passaram inteiros por um teto de 256 KB).
+Um teto que só vale para quem declara o próprio tamanho vale exatamente para o
+chamador honesto — quem não quer ser limitado omite o header.
 
-| Teto                      | Onde é aplicado                                | Valor    | Cobre                                                                |
-| ------------------------- | ---------------------------------------------- | -------- | -------------------------------------------------------------------- |
-| `MAX_REQUEST_BODY_BYTES`  | `Bun.serve({ maxRequestBodySize })`            | **8 MB** | Todo o processo: rotas comuns, rotas de importação, `/mcp`, `/docs`  |
-| `MAX_BUFFERED_BODY_BYTES` | `ControllerRequestParser` + boundary do `/mcp` | **1 MB** | Todo corpo que precisa virar string/objeto (tudo que não é `stream`) |
+A correção não é achar outro lugar para o teto do processo. É parar de tratá-lo
+como coisa do runtime e assumi-lo no leitor, que é o único ponto por onde todo
+byte de todo corpo passa. Daí a divisão, que deixou de ser "quem aplica" e
+passou a ser **o que o número limita**:
 
-**Por que 8 MB no socket.** É o **piso do processo**, e ele é dimensionado pelo
-maior corpo que alguma rota legitimamente aceita: `MAX_IMPORT_BYTES = 5 MB`.
-Precisa ficar **estritamente acima** desse valor — se ficar igual ou abaixo, um
-CSV de 5 MB + 1 byte passa a ser cortado pelo Bun com um `413` seco em vez de
-receber o relatório `422` do `readCsvRecordStream`, que é a resposta que a
-importação promete ao usuário. 8 MB dá essa folga sem ser generoso: acima disso
-não existe caso de uso.
+| Número                    | Limita                                                       | Valor    | Quem aplica                                                                                       |
+| ------------------------- | ------------------------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------- |
+| `MAX_BUFFERED_BODY_BYTES` | Quanto é **retido** de um corpo não-stream                   | **1 MB** | O leitor com teto, contando                                                                       |
+| `MAX_REQUEST_BODY_BYTES`  | Quanto é **lido** de um corpo qualquer, retido ou descartado | **8 MB** | O leitor com teto, contando; o `Bun.serve` só antecipa o corte para quem declara `Content-Length` |
+
+**Por que 8 MB de orçamento de leitura.** É o dimensionamento do maior corpo que
+uma rota legitimamente aceita (`MAX_IMPORT_BYTES = 5 MB`) mais folga, e precisa
+ficar **estritamente acima** desse valor — se ficar igual ou abaixo, um CSV de
+5 MB + 1 byte passa a ser cortado antes de receber o relatório `422` do
+`readCsvRecordStream`, que é a resposta que a importação promete ao usuário.
+8 MB também é o que dá ao maior lote plausível de importação por tool MCP
+(~100 registros gordos) o direito de ser recusado **sem** perder a conexão
+(D2-bis): abaixo disso, um cliente MCP que manda um lote grande demais vê a
+chamada seguinte pendurar, que é o pior sintoma possível nessa superfície.
+
+### D1-bis — `maxRequestBodySize` do Bun não é trava, é atalho
+
+Medido, mesmo `Bun.serve`, `maxRequestBodySize: 262144`, corpo de 2 MB:
+
+| Transporte                   | Resultado                                            |
+| ---------------------------- | ---------------------------------------------------- |
+| `Content-Length: 2 MB`       | `413` antes do handler rodar, 0 bytes vistos         |
+| `Transfer-Encoding: chunked` | **sem corte** — handler rodou e leu os 2 MB inteiros |
+
+É a mesma ironia de D2, uma camada abaixo: o cliente escolhe qual caminho o
+servidor toma pela presença de um header opcional. Por isso o `maxRequestBodySize`
+continua configurado — corta o caso honesto cedo, de graça, sem nem acordar o
+handler — mas **não pode ser citado como garantia em lugar nenhum**. Quem
+garante é a contagem no leitor. Registrado aqui porque alguém vai reencontrar
+essa limitação do Bun e precisa achar a resposta antes de "consertar" o teto.
 
 **Por que 1 MB fora do stream.** O maior corpo legítimo de uma rota não-stream
 hoje é `POST /property` / `PUT /property/:id`: `images` é
@@ -68,19 +91,29 @@ deploy — varia por schema, que é código. Uma env var aqui só criaria uma al
 para alguém "resolver" um `413` em produção afrouxando o teto em vez de olhar o
 schema.
 
-### D2 — `Content-Length` é atalho, nunca garantia: o teto é contado enquanto se lê
+### D2 — O teto é contado enquanto se lê, e o corpo recusado é drenado até o fim
 
-O header é controlado pelo cliente e é **opcional**: em HTTP/1.1 com
-`Transfer-Encoding: chunked` ele simplesmente não existe, e nada impede um
-cliente de declarar `Content-Length: 10` e mandar 500 MB. Então:
+**Revisado após medição em runtime — ver D2-bis para o que caiu e por quê.**
 
-1. **Atalho** — se `Content-Length` existe e já declara mais que o teto, rejeita
-   de cara, sem tocar no stream. É otimização (economiza a leitura), nunca a
-   trava.
-2. **Trava** — o corpo é lido em chunks de `request.body`, com o total de bytes
-   somado a cada chunk. No primeiro chunk que cruza o teto, o leitor cancela o
-   reader e lança. `request.text()` deixa de ser chamado em qualquer caminho do
-   adaptador.
+`Content-Length` **não é consultado em lugar nenhum**. É header opcional (não
+existe sob `Transfer-Encoding: chunked`) e escolhido pelo cliente: usá-lo para
+decidir qualquer coisa deixaria o chamador escolher qual caminho o servidor
+toma, e as duas pontas desse `if` precisam terminar no mesmo lugar de qualquer
+forma (D2-bis). Um caminho só, mesmo comportamento para chamador honesto e
+para chamador hostil.
+
+A trava é contagem de bytes chunk a chunk sobre `request.body`, em duas fases:
+
+1. **Retenção** — enquanto o total acumulado couber no teto, o chunk é
+   retido/decodificado normalmente.
+2. **Dreno** — cruzado o teto, o leitor para de reter e passa a **ler e
+   descartar** cada chunk seguinte, até o fim do stream. Só então lança
+   `PayloadTooLargeError`.
+
+É deliberadamente a mesma forma do `ImportRunner` ("modo escrita → modo
+coleta"): segue até o fim do stream para deixar o transporte limpo e falhar uma
+vez só, no fim, em vez de abandonar a operação no meio. `request.text()` deixa
+de ser chamado em qualquer caminho do adaptador.
 
 Isso **não** transforma rota comum em memória constante, e o plano não deve
 alegar que transforma. `IM-1` (pico constante) é uma propriedade de quem lê por
@@ -88,7 +121,81 @@ stream, e continua sendo exclusiva das três rotas de importação — um corpo 
 precisa estar inteiro em memória para o `JSON.parse` existir. O que muda é que o
 pico deixa de ser **ilimitado** e passa a ser **limitado** por
 `MAX_BUFFERED_BODY_BYTES`: de "o cliente escolhe quanta RAM gastar" para "o
-servidor escolhe". Quem precisar de mais que isso declara `bodyMode: "stream"`,
+servidor escolhe". Nada acima do teto é retido, decodificado ou entregue ao
+`JSON.parse` — o dreno descarta chunk a chunk, com pico de um chunk.
+
+### D2-bis — Por que o corpo recusado precisa ser lido inteiro
+
+Medido em `Bun.serve` cru, fora do projeto: **responder sem consumir o corpo
+dessincroniza a conexão**. Com um corpo de 2 MB rejeitado com `413` e um segundo
+request logo em seguida na mesma conexão keep-alive:
+
+| Descarte do corpo          | 413 | 2º request          |
+| -------------------------- | --- | ------------------- |
+| não toca no corpo          | sim | **pendurou (>4 s)** |
+| `await req.body.cancel()`  | sim | **pendurou (>4 s)** |
+| read parcial + `cancel()`  | sim | **pendurou (>4 s)** |
+| `Connection: close` no 413 | sim | **não resolve**     |
+| dreno completo             | sim | 200 em 0 ms         |
+| dreno-e-descarte           | sim | 200 em 0 ms         |
+
+`cancel()` não devolve a conexão a um estado utilizável, e o Bun não honra o
+`Connection: close` que a RFC 9112 §6.3 prescreve justamente para o servidor que
+não vai ler o corpo todo. Sobra uma opção: ler.
+
+O que estava em jogo não era o teste. Era que **um cliente keep-alive legítimo —
+browser, app — que mandasse um corpo grande demais receberia o `413` e depois
+veria a requisição _seguinte_ pendurar até o timeout.** Trocar "o servidor cai
+com um POST de 500 MB" por "o cliente que erra o tamanho uma vez fica com a
+conexão envenenada, e a API parece fora do ar" seria um péssimo negócio: a
+segunda falha é mais frequente, atinge quem não está atacando ninguém, e não
+tem sintoma que aponte para a causa.
+
+**O dreno tem orçamento, e ele é o `MAX_REQUEST_BODY_BYTES`.** Sem orçamento, o
+dreno seria trabalho ilimitado: sob `chunked` nada corta o stream (D1-bis), e um
+cliente que fluxa sem parar prenderia um worker lendo para sempre — slowloris
+com outro nome. Com orçamento, o dreno tem **dois finais**, e só um deles pode
+ser seguido de um `413` numa conexão viva:
+
+1. **Stream esgotado dentro do orçamento** → responde `413`, e a conexão
+   continua utilizável. É o caso para o qual o dreno existe: quem errou o
+   tamanho uma vez.
+2. **Orçamento estourado** → para de ler, responde `413` em best-effort e
+   **aceita que aquela conexão morra**. Quem fluxa 8 MB sem parar não ia reusar
+   a conexão de qualquer forma; o custo dele é uma conexão inutilizada, o nosso
+   é um socket ocioso até o timeout — o mesmo que qualquer cliente consegue
+   segurar sem enviar byte nenhum. Não há como forçar o fechamento: o Bun não
+   honra `Connection: close` (medido). No dia em que honrar, é aqui que entra.
+
+**O custo, dito honestamente:** paga-se o tempo e a banda de ler até 8 MB que
+serão jogados fora, por requisição recusada. Não é zero sob muitas conexões
+simultâneas — mas a defesa contra _isso_ é limite de conexão e timeout de
+ociosidade no servidor, outra alavanca, fora do escopo desta entrega, e que já
+valia igual para as três rotas de importação, que leem 5 MB por stream desde
+sempre.
+
+**`AbortError` no meio do dreno.** O veredito é decidido pelo que já foi
+**contado**, nunca pela forma como o stream terminou:
+
+- abort **depois** de cruzar o teto → `PayloadTooLargeError` (`413`). O veredito
+  já existia antes do abort, e o abort é frequentemente consequência do próprio
+  corte. Deixar o `AbortError` subir viraria `500` no `errorCodeMap`, que é a
+  resposta errada para um fato que já conhecíamos;
+- abort **antes** de cruzar o teto → não é corpo grande demais, é cliente que
+  desistiu. Não se fabrica um `413` para isso: mentiria no log e destruiria a
+  única métrica que diria se o teto está apertado demais ("quantos 413 por
+  dia"). O erro sobe como está. Vira um `500` não mapeado no log, o que é
+  factualmente "não conseguimos ler a requisição", e a resposta não vai para
+  ninguém porque o cliente já foi embora. Se isso virar ruído de log observado
+  — e só então —, ganha erro tipado e caminho de log silencioso; hoje seria
+  generalidade especulativa.
+
+**O atalho de `Content-Length` morre, e some sem substituto.** Ele existia para
+economizar a leitura; a plataforma acabou de provar que a leitura não é
+opcional. Mantê-lo drenando seria o mesmo I/O, a mesma memória e o mesmo
+resultado por um caminho a mais — dead weight que diverge na primeira
+manutenção. Some junto com ele a assimetria entre chamador com e sem
+`Content-Length`, que era o cliente escolhendo o ramo do servidor. Quem precisar de mais que isso declara `bodyMode: "stream"`,
 que é o mecanismo que já existe para essa necessidade e não muda em nada.
 
 ### D3 — `413` é erro tipado no mapeamento existente, não resposta ad-hoc do adaptador
@@ -180,7 +287,7 @@ Aplicada **só no ramo JSON** de `#parseBody`, depois do desvio de
 `x-www-form-urlencoded` (`parameterSource: "form"`, o `/token` do OAuth): corpo
 de formulário não vira árvore.
 
-### D6 — As rotas `bodyMode: "stream"` seguem literalmente intocadas
+### D6 — As rotas `bodyMode: "stream"` seguem intocadas **no teto de bytes**
 
 Confirmado no código: `ControllerRequestParser.parse()` desvia para o ramo
 `stream` na **primeira linha**, devolve `bodyStream` cru e nunca chega em
@@ -188,17 +295,48 @@ Confirmado no código: `ControllerRequestParser.parse()` desvia para o ramo
 dois métodos, então nenhuma linha do caminho de importação muda de
 comportamento. Não há duplicação nem contradição de tetos:
 
-| Teto                      | Quem aplica                           | Escopo                           |
-| ------------------------- | ------------------------------------- | -------------------------------- |
-| `MAX_IMPORT_BYTES` (5 MB) | `readCsvRecordStream`, contando bytes | Só as 3 rotas de importação      |
-| `MAX_IMPORT_FIELD_BYTES`  | `readCsvRecordStream`                 | Campo do CSV                     |
-| `MAX_IMPORT_ROWS`         | `ImportRunner`                        | Linhas do lote                   |
-| `MAX_BUFFERED_BODY_BYTES` | `ControllerRequestParser` + `/mcp`    | Só o que **não** é stream        |
-| `MAX_REQUEST_BODY_BYTES`  | `Bun.serve`                           | Processo inteiro, acima de todos |
+| Teto                      | Quem aplica                           | Escopo                              |
+| ------------------------- | ------------------------------------- | ----------------------------------- |
+| `MAX_IMPORT_BYTES` (5 MB) | `readCsvRecordStream`, contando bytes | Só as 3 rotas de importação         |
+| `MAX_IMPORT_FIELD_BYTES`  | `readCsvRecordStream`                 | Campo do CSV                        |
+| `MAX_IMPORT_ROWS`         | `ImportRunner`                        | Linhas do lote                      |
+| `MAX_BUFFERED_BODY_BYTES` | O leitor com teto (HTTP e `/mcp`)     | Só o que **não** é stream, retido   |
+| `MAX_REQUEST_BODY_BYTES`  | O leitor com teto e o de CSV          | Quanto qualquer corpo pode ser lido |
 
 A única relação entre eles que precisa ser mantida é
 `MAX_REQUEST_BODY_BYTES > MAX_IMPORT_BYTES` (D1) — e ela é travada por teste,
 não por comentário.
+
+### D6-bis — O caminho de importação já tem o bug de D2-bis, hoje, e ele entra nesta entrega
+
+O que **não** muda para as rotas de importação é o teto de bytes. O que muda é
+outra coisa, que a investigação de D2-bis expôs e que ninguém tinha visto:
+`readCsvRecordStream` termina com
+
+```
+} finally {
+  await reader.cancel();
+}
+```
+
+Ou seja, **toda** rejeição de importação cancela o reader com bytes por ler — e,
+pela sonda B, `cancel()` envenena a conexão. Não é um caso de canto: a rejeição
+mais comum de todas é "coluna obrigatória ausente", que dispara depois de ler
+**a primeira linha** de um arquivo que pode ter megabytes. Hoje, quem sobe um
+CSV com o cabeçalho errado recebe o `422` correto e vê a requisição seguinte
+pendurar.
+
+É bug pré-existente, não regressão desta PR — mas entra aqui, por dois motivos:
+é literalmente o mesmo defeito, com a mesma correção de duas fases; e sem ele a
+IE-1 nasceria falsa em três rotas, o que é pior que não ter invariante. A
+correção é a mesma: no caminho de rejeição, drenar e descartar até o fim do
+stream (com o mesmo orçamento `MAX_REQUEST_BODY_BYTES`) antes de propagar o
+`ImportRejectedError`; o `cancel()` do `finally` só continua fazendo sentido no
+caminho de sucesso, em que o stream já foi lido até o fim.
+
+Isto é leitura de código mais a sonda B, não medição no Sogio: a task começa
+pelo teste que reproduz (importação rejeitada seguida de requisição na mesma
+conexão), para provar o diagnóstico antes de corrigi-lo.
 
 ### D7 — Como se testa "sem materializar" sem alocar 500 MB
 
@@ -211,13 +349,27 @@ teste nunca passa de alguns MB. (Se o `duplex: "half"` do `fetch` do Bun não
 cooperar, o plano B é escrever `Transfer-Encoding: chunked` num socket cru — que
 tem o bônus de provar o caso "sem `Content-Length`" de D2.)
 
+**A prova que faltava, e que a suíte completa encontrou por acidente: a conexão
+sobrevive à recusa.** Depois de um `413`, a requisição seguinte do **mesmo
+cliente keep-alive** precisa ser atendida normalmente, dentro de um timeout
+curto. Sem essa afirmação, qualquer "otimização" futura que evite ler o corpo
+reintroduz D2-bis em silêncio — e o sintoma aparece longe da causa, num teste
+que não tem nada a ver. Vale para o adaptador HTTP e para `/mcp`.
+
+No unitário do leitor, a afirmação equivalente é de **ordem**: o
+`PayloadTooLargeError` é lançado **depois** de o stream ter sido esgotado, não
+no chunk que cruza o teto. Um contador de chunks puxados na fonte prova as duas
+coisas de uma vez (esgotou tudo; falhou no fim).
+
 O resto se testa direto, e o molde já existe em
 `tests/core/stream_body_adapter.test.ts` (controller descartável + `Bun.serve`
 em porta 0):
 
 - corpo acima do teto → `413`, e o `handle()` do controller **nunca rodou** (a
   única afirmação que separa "recusou" de "processou e reclamou");
-- `Content-Length` mentindo para baixo não ajuda o atacante (o contador pega);
+- `Content-Length` mentindo para baixo ou ausente não muda nada — o header não
+  é lido, então não há ramo a testar, e sim um ramo a **provar inexistente**:
+  corpo idêntico com e sem `Content-Length` produz a mesma resposta;
 - aninhamento acima de 32 → `422`, controller não rodou, processo vivo;
 - unitário do scanner: colchete dentro de string literal não conta, aspas
   escapadas não confundem o estado;
@@ -234,13 +386,27 @@ em porta 0):
 
 Para `.claude/personas/arquiteto.md`, na família das existentes:
 
-- **IE-1 — Nenhum corpo de requisição é materializado sem teto.** Toda
-  superfície de entrada (adaptador HTTP e `/mcp`) limita bytes **enquanto lê**,
-  nunca confiando em `Content-Length`, e o processo tem um teto de socket acima
-  de todos os tetos de rota. Pico ilimitado de memória por requisição é o vetor
-  de DoS mais barato contra uma VPS pequena; `bodyMode: "stream"` é a única
-  saída para quem precisa aceitar mais, e ela troca "corpo maior" por "leitura
-  incremental", nunca por "sem teto".
+- **IE-1 — Nenhum corpo de requisição é materializado sem teto, e nenhum corpo
+  recusado é abandonado pela metade.** Toda superfície de entrada (adaptador
+  HTTP, `/mcp` e o leitor de CSV) limita bytes **enquanto lê**, sem consultar
+  `Content-Length` — header opcional e escolhido pelo cliente nunca decide qual
+  caminho o servidor toma. São dois números: quanto pode ser **retido**
+  (`MAX_BUFFERED_BODY_BYTES`) e quanto pode ser **lido**, retido ou descartado
+  (`MAX_REQUEST_BODY_BYTES`). O `maxRequestBodySize` do `Bun.serve` **não é
+  trava**: o Bun só o aplica quando há `Content-Length` e o ignora sob
+  `chunked` (medido), então ele é atalho para o chamador honesto e nada mais —
+  quem garante é a contagem no leitor. Cruzado o teto de retenção, o leitor para
+  de reter e passa a **drenar e descartar** até o fim do stream, lançando só
+  então: responder sem consumir o corpo dessincroniza a conexão keep-alive no
+  Bun (`cancel()` não a recupera, `Connection: close` não é honrado, ambos
+  medidos), e a requisição seguinte do mesmo cliente pendura até o timeout — um
+  cliente legítimo que erra o tamanho uma vez fica com a conexão envenenada,
+  falha mais frequente e mais desnorteante que a original. O dreno tem
+  orçamento: estourado ele, para-se de ler e aquela conexão é dada como
+  perdida — cortesia é para quem errou, não para quem fluxa sem parar. O pico de
+  memória segue sendo um chunk. `bodyMode: "stream"` é a única saída para quem
+  precisa aceitar mais, e ela troca "corpo maior" por "leitura incremental",
+  nunca por "sem teto" nem por "sem dreno".
 - **IE-2 — Nenhum texto vira árvore sem teto de profundidade.** Todo corpo JSON
   passa por uma varredura léxica antes do `JSON.parse`, nas duas superfícies.
   Aninhamento profundo cabe em poucos KB, então IE-1 não cobre isto; e o estouro
@@ -257,9 +423,11 @@ Para `.claude/personas/arquiteto.md`, na família das existentes:
   pelo mesmo motivo que `MAX_IMPORT_BYTES` fica em `infra/http/csv/`: é teto de
   transporte, não regra de negócio
 - **`src/core/infra/http/body/bounded_body_reader.ts`** — lê
-  `ReadableStream<Uint8Array>` contando bytes, cancela e lança
-  `PayloadTooLargeError` ao cruzar o teto, decodifica incrementalmente (D2).
-  Recebe o teto como argumento; não conhece rota nem controller
+  `ReadableStream<Uint8Array>` contando bytes e decodificando
+  incrementalmente; cruzado o teto, para de reter e drena/descarta até o fim do
+  stream, e só então lança `PayloadTooLargeError` (D2, D2-bis). Não consulta
+  `Content-Length`. Recebe o teto como argumento; não conhece rota nem
+  controller
 - **`src/core/infra/http/body/json_depth_guard.ts`** — varredura léxica de
   profundidade, com estado de string literal e escape (D5). Função pura
 - **`tests/core/request_body_limits.test.ts`** — testes do adaptador (D7)
@@ -276,6 +444,10 @@ Para `.claude/personas/arquiteto.md`, na família das existentes:
   com corpo: leitura com teto + guarda de profundidade antes de
   `transport.handleRequest`, com `Request` reconstruído; resposta `413` no molde
   de `forbiddenResponse`, com CORS público e `no-store` (D4)
+- **`src/core/infra/http/csv/streaming_csv_reader.ts`** — no caminho de
+  rejeição, drena e descarta até o fim do stream (orçamento
+  `MAX_REQUEST_BODY_BYTES`) antes de propagar o `ImportRejectedError`, em vez de
+  cancelar o reader com bytes por ler (D6-bis)
 - **`src/core/infra/http/routes/routes.ts`** — exporta `bunServeOptions`
   (`routes` + `maxRequestBodySize`) além de `bunRoutes`, para que produção e
   suíte não possam divergir (D1)
@@ -302,9 +474,10 @@ Para `.claude/personas/arquiteto.md`, na família das existentes:
    e `PayloadTooLargeError`; registrar `PayloadTooLargeError → 413` no
    `errorCodeMap`. Nada mais consome ainda
    - Dependencies: none
-2. **Leitor de corpo com teto** — `bounded_body_reader.ts`: atalho de
-   `Content-Length`, contagem por chunk, cancelamento do reader, decodificação
-   incremental, `PayloadTooLargeError` ao cruzar
+2. **Leitor de corpo com teto** — `bounded_body_reader.ts`: contagem por chunk,
+   decodificação incremental, e dreno-e-descarte depois do teto com
+   `PayloadTooLargeError` lançado ao fim do stream. Sem leitura de
+   `Content-Length` e sem `cancel()` (D2-bis)
    - Dependencies: task 1
 3. **Guarda de profundidade** — `json_depth_guard.ts`: varredura léxica com
    estado de string/escape e saída antecipada
@@ -323,24 +496,34 @@ Para `.claude/personas/arquiteto.md`, na família das existentes:
 7. **Documentar o `413` no OpenAPI** — injeção da resposta compartilhada no
    `OpenApiBuilder` para toda operação com `requestBody`
    - Dependencies: task 1
-8. **Unitários do leitor e do scanner** — teto atingido/não atingido,
-   `Content-Length` mentiroso, corpo ausente, colchete dentro de string,
-   aspas escapadas, profundidade no limite e um acima
+8. **Unitários do leitor e do scanner** — teto atingido/não atingido, corpo
+   ausente, **stream esgotado antes do lançamento** (contador de chunks
+   puxados), colchete dentro de string, aspas escapadas, profundidade no limite
+   e um acima. A asserção antiga de que o atalho "nunca chama `getReader()`"
+   morre com o atalho e é substituída pela de ordem acima
    - Dependencies: tasks 2, 3
-9. **Testes do adaptador HTTP** — `413` sem o controller rodar, prova de "parou
-   de puxar" via body em stream, `422` de profundidade, e a afirmação nova em
-   `stream_body_adapter.test.ts` de que rota `stream` acima de 1 MB segue `200`
+9. **Testes do adaptador HTTP** — `413` sem o controller rodar, **conexão
+   keep-alive sobrevive à recusa** (413 seguido de request normal atendido
+   dentro de timeout curto), mesma resposta com e sem `Content-Length`, `422`
+   de profundidade, e a afirmação nova em `stream_body_adapter.test.ts` de que
+   rota `stream` acima de 1 MB segue `200`
    - Dependencies: task 4
 10. **Testes do teto de socket e da relação entre constantes** — wiring de
     `bunServeOptions.maxRequestBodySize`, servidor de brinquedo provando o `413`
     do Bun, e `MAX_REQUEST_BODY_BYTES > MAX_IMPORT_BYTES`
     - Dependencies: task 5
 11. **Testes de `/mcp`** — corpo acima do teto → `413`; aninhamento acima de 32
-    recusado antes do transporte; chamada normal segue funcionando
+    recusado antes do transporte; **chamada normal logo depois de um `413` na
+    mesma conexão é atendida**; chamada normal segue funcionando
     - Dependencies: task 6
-12. **Documentação** — IE-1 e IE-2 em `arquiteto.md`; parágrafo dos dois tetos
-    em `CLAUDE.md`
-    - Dependencies: tasks 4, 5, 6
+12. **Dreno no caminho de rejeição da importação** — teste que reproduz o
+    envenenamento (importação rejeitada seguida de requisição na mesma conexão),
+    depois a correção em `readCsvRecordStream` (D6-bis). Independente das
+    demais: mexe em outro arquivo e em outro caminho
+    - Dependencies: task 2 (reusa a decisão do orçamento, não o código)
+13. **Documentação** — IE-1 e IE-2 em `arquiteto.md`; parágrafo dos tetos em
+    `CLAUDE.md`, incluindo `chunked` escapando do `maxRequestBodySize`
+    - Dependencies: tasks 4, 5, 6, 12
 
 > Tasks 2 e 3 rodam em paralelo depois da 1. Depois delas, 4 e 6 rodam em
 > paralelo, e 5 e 7 já podiam ter rodado em paralelo com 2 e 3. Os testes (8, 9,

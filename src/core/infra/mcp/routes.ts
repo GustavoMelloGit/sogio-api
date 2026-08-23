@@ -24,6 +24,7 @@ import { exceedsMaxJsonDepth } from "../http/body/json_depth_guard";
 import {
   MAX_BUFFERED_BODY_BYTES,
   MAX_JSON_DEPTH,
+  MAX_REQUEST_BODY_BYTES,
 } from "../http/body/body_limits";
 import { McpIdentityResolver } from "./identity_resolver";
 import { createMcpServer } from "./mcp_server";
@@ -205,7 +206,7 @@ export function makeMcpRequestHandler(
         rawBody = await readBoundedBody(
           request.body,
           MAX_BUFFERED_BODY_BYTES,
-          request.headers.get("content-length")
+          MAX_REQUEST_BODY_BYTES
         );
       } catch (error) {
         if (error instanceof PayloadTooLargeError) {

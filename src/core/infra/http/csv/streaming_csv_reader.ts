@@ -33,6 +33,7 @@ export async function* readCsvRecordStream(
   let header: string[] | null = null;
   let currentRow = 1;
   let totalBytes = 0;
+  let exhausted = false;
 
   let fields: string[] = [];
   let fieldBytes: number[] = [];
@@ -91,10 +92,34 @@ export async function* readCsvRecordStream(
     return record;
   };
 
+  const drainRemainingBody = async (): Promise<void> => {
+    let drainedBytes = totalBytes;
+    try {
+      while (drainedBytes < MAX_IMPORT_BYTES) {
+        const { done, value } = await reader.read();
+        if (done) {
+          return;
+        }
+        drainedBytes += value.byteLength;
+      }
+    } catch {
+      return;
+    }
+  };
+
+  const cancelReaderSilently = async (): Promise<void> => {
+    try {
+      await reader.cancel();
+    } catch {
+      return;
+    }
+  };
+
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
+        exhausted = true;
         break;
       }
 
@@ -198,6 +223,9 @@ export async function* readCsvRecordStream(
       yield { row: currentRow, values: buildRecordValues(header, record) };
     }
   } finally {
-    await reader.cancel();
+    if (!exhausted) {
+      await drainRemainingBody();
+    }
+    await cancelReaderSilently();
   }
 }

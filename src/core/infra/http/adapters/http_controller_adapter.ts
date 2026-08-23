@@ -25,7 +25,11 @@ import { resolveCallerIp } from "../../rate_limit/caller_ip_resolver";
 import { env } from "../../config/environments";
 import { readBoundedBody } from "../body/bounded_body_reader";
 import { exceedsMaxJsonDepth } from "../body/json_depth_guard";
-import { MAX_BUFFERED_BODY_BYTES, MAX_JSON_DEPTH } from "../body/body_limits";
+import {
+  MAX_BUFFERED_BODY_BYTES,
+  MAX_JSON_DEPTH,
+  MAX_REQUEST_BODY_BYTES,
+} from "../body/body_limits";
 
 const middlewareDi = new MiddlewareDi();
 const corsMiddleware = new CorsMiddleware();
@@ -103,7 +107,7 @@ class ControllerRequestParser {
     return readBoundedBody(
       this.request.body,
       MAX_BUFFERED_BODY_BYTES,
-      this.request.headers.get("content-length")
+      MAX_REQUEST_BODY_BYTES
     );
   }
 
