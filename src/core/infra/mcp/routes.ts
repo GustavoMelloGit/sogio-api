@@ -107,6 +107,9 @@ export function makeMcpRequestHandler(
 
   const tools: McpToolDefinition<z.ZodRawShape>[] = [
     dependencies.propertyManagementDi.makeListPropertiesTool(),
+    dependencies.propertyManagementDi.makeCreatePropertyTool(),
+    dependencies.propertyManagementDi.makeGetPropertyTool(),
+    dependencies.propertyManagementDi.makeUpdatePropertyTool(),
     dependencies.stayDi.makeListStaysTool(),
     dependencies.financeDi.makeRecordExpenseTool(),
     dependencies.propertyDi.makeBookStayTool(),

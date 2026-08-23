@@ -30,6 +30,9 @@ import type { TransactionRunner } from "../../../core/application/transaction/tr
 import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
 import { ImportRunner } from "../../../core/application/import/import_runner";
 import { makeListPropertiesTool } from "../../presentation/mcp_tool/list_properties.mcp_tool";
+import { makeCreatePropertyTool } from "../../presentation/mcp_tool/create_property.mcp_tool";
+import { makeGetPropertyTool } from "../../presentation/mcp_tool/get_property.mcp_tool";
+import { makeUpdatePropertyTool } from "../../presentation/mcp_tool/update_property.mcp_tool";
 import { makeDeletePropertyTool } from "../../presentation/mcp_tool/delete_property.mcp_tool";
 import { makeCreatePropertySettingTool } from "../../presentation/mcp_tool/create_property_setting.mcp_tool";
 import { makeGetPropertySettingTool } from "../../presentation/mcp_tool/get_property_setting.mcp_tool";
@@ -171,6 +174,15 @@ export class PropertyManagementDi {
   // MCP Tools
   makeListPropertiesTool() {
     return makeListPropertiesTool(this.makeFindUserPropertiesUseCase());
+  }
+  makeCreatePropertyTool() {
+    return makeCreatePropertyTool(this.makeCreatePropertyUseCase());
+  }
+  makeGetPropertyTool() {
+    return makeGetPropertyTool(this.makeFindPropertyUseCase());
+  }
+  makeUpdatePropertyTool() {
+    return makeUpdatePropertyTool(this.makeUpdatePropertyUseCase());
   }
   makeDeletePropertyTool() {
     return makeDeletePropertyTool(this.makeDeletePropertyUseCase());

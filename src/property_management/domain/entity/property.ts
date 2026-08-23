@@ -6,6 +6,7 @@ import {
 } from "../../../core/domain/entity/base_entity";
 import { Address } from "../value_object/address";
 import type { DeepPartial } from "../../../core/application/types/deep_partial";
+import { definedValuesOf } from "../../../core/application/types/defined_values";
 
 export const MAX_PROPERTY_CAPACITY = 1_000;
 
@@ -78,14 +79,21 @@ export class Property {
   public changeDetails(
     data: DeepPartial<SafeUpdateEntity<PropertyData>>
   ): void {
-    const safeData = propertySchema.partial().parse(data);
+    const { address, ...details } = data;
+    const safeData = propertySchema
+      .omit({ address: true })
+      .partial()
+      .parse(details);
 
     this.#name = safeData.name ?? this.#name;
     this.#images = safeData.images ?? this.#images;
     this.#capacity = safeData.capacity ?? this.#capacity;
 
-    if (safeData.address) {
-      this.#address = Address.create(safeData.address);
+    if (address) {
+      this.#address = Address.create({
+        ...this.#address.data,
+        ...definedValuesOf(address),
+      });
     }
 
     this.#updated_at = new Date();
