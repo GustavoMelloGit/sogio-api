@@ -20,13 +20,17 @@ import { env, resendEmailFrom } from "../config/environments";
  * now actually true rather than aspirational.
  */
 const sharedLogger: Logger = new ConsoleLogger();
-const sharedRateLimiter: RateLimiter = new InMemoryRateLimiter();
+const sharedRateLimiter = new InMemoryRateLimiter();
 // `env.RESEND_API_KEY` is only required outside development (see environments.ts);
 // in development, sending is expected to fail loudly if ever exercised.
 const sharedEmailService: EmailService = new ResendEmailService(
   env.RESEND_API_KEY ?? "",
   resendEmailFrom
 );
+
+export function resetSharedRateLimiter(): void {
+  sharedRateLimiter.clear();
+}
 
 export class CoreDi {
   makeLogger(): Logger {

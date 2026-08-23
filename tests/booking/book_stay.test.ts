@@ -568,12 +568,10 @@ describe("PATCH /booking/stay/:stay_id", () => {
       headers: { Authorization: "Bearer " + token },
       body: JSON.stringify({ price: 20000 }),
     });
-    const patchBody = (await patchRes.json()) as {
-      data: Record<string, unknown>;
-    };
+    const patchBody = (await patchRes.json()) as Record<string, unknown>;
 
     expect(patchRes.status).toBe(200);
-    expect(patchBody.data.price).toBe(20000);
+    expect(patchBody.price).toBe(20000);
   });
 
   it("409 — rejects updating a stay's dates to overlap another stay on the same property", async () => {
