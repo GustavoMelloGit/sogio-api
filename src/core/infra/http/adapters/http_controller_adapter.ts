@@ -23,6 +23,9 @@ import { serializeDatesRecursively } from "../utils/date_serializer";
 import { CoreDi } from "../../di/core_di";
 import { resolveCallerIp } from "../../rate_limit/caller_ip_resolver";
 import { env } from "../../config/environments";
+import { readBoundedBody } from "../body/bounded_body_reader";
+import { exceedsMaxJsonDepth } from "../body/json_depth_guard";
+import { MAX_BUFFERED_BODY_BYTES, MAX_JSON_DEPTH } from "../body/body_limits";
 
 const middlewareDi = new MiddlewareDi();
 const corsMiddleware = new CorsMiddleware();
@@ -97,11 +100,11 @@ class ControllerRequestParser {
   }
 
   async #readRawBody(): Promise<string | null> {
-    if (this.request.body === null) {
-      return null;
-    }
-
-    return this.request.text();
+    return readBoundedBody(
+      this.request.body,
+      MAX_BUFFERED_BODY_BYTES,
+      this.request.headers.get("content-length")
+    );
   }
 
   #parseParams(): Record<string, string> {
@@ -160,6 +163,12 @@ class ControllerRequestParser {
       contentType.includes("application/x-www-form-urlencoded")
     ) {
       return Object.fromEntries(new URLSearchParams(this.#rawBody).entries());
+    }
+
+    if (exceedsMaxJsonDepth(this.#rawBody, MAX_JSON_DEPTH)) {
+      throw new ValidationError(
+        `Request body exceeds the maximum nesting depth of ${MAX_JSON_DEPTH}`
+      );
     }
 
     let body: unknown;

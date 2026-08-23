@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "./core/infra/database/drizzle/database";
 import { env } from "./core/infra/config/environments";
-import { bunRoutes } from "./core/infra/http/routes/routes";
+import { bunServeOptions } from "./core/infra/http/routes/routes";
 import { CoreDi } from "./core/infra/di/core_di";
 import type { Logger } from "./core/application/logger/logger";
 import { NotificationDi } from "./notification/infra/di/notification_di";
@@ -25,8 +25,8 @@ async function main() {
   await checkDatabaseConnection(logger);
 
   const server = Bun.serve({
+    ...bunServeOptions,
     port: env.PORT,
-    routes: bunRoutes,
     hostname: env.SERVER_HOSTNAME,
   });
 
