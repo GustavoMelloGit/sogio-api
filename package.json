@@ -15,7 +15,7 @@
     "format:check": "prettier --check .",
     "format:lint": "npm run lint && npm run format",
     "prepare": "husky",
-    "test": "TZ=UTC bun test --env-file=.env.test --preload ./tests/preload_test_database.ts --preload ./tests/setup.ts",
+    "test": "bun test --env-file=.env.test --preload ./tests/preload_test_database.ts --preload ./tests/setup.ts",
     "db:push": "drizzle-kit push",
     "db:push:test": "bun --env-file=.env.test scripts/setup_test_database.ts",
     "db:prune:test": "bun --env-file=.env.test scripts/prune_test_databases.ts",

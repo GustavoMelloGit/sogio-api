@@ -130,13 +130,27 @@ describe("CalendarDate.atWallClock", () => {
   });
 
   it("is independent of the process time zone", () => {
-    expect(process.env.TZ).toBe("UTC");
-
+    const originalTimeZone = process.env.TZ;
     const date = CalendarDate.parse("2026-07-10")!;
 
-    expect(
-      date.atWallClock(WallClockTime.of(14, 0), "America/Sao_Paulo").getTime()
-    ).toBe(Date.UTC(2026, 6, 10, 17, 0));
+    try {
+      const resolved = [
+        "UTC",
+        "America/Sao_Paulo",
+        "Asia/Tokyo",
+        "Pacific/Niue",
+      ].map(processTimeZone => {
+        process.env.TZ = processTimeZone;
+        return date
+          .atWallClock(WallClockTime.of(14, 0), "America/Sao_Paulo")
+          .toISOString();
+      });
+
+      expect(new Set(resolved).size).toBe(1);
+      expect(resolved[0]).toBe("2026-07-10T17:00:00.000Z");
+    } finally {
+      process.env.TZ = originalTimeZone;
+    }
   });
 });
 

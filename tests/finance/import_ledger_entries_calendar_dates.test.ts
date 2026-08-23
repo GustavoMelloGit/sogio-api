@@ -58,8 +58,6 @@ describe("POST /import/ledger-entries — occurred_at is the start of the day in
   });
 
   it("keeps an imported movement on the day the owner typed", async () => {
-    expect(process.env.TZ).toBe("UTC");
-
     const { property, token } = await ownerIn(
       "import-ledger-dates-sp@sogio.dev",
       "America/Sao_Paulo"
@@ -107,6 +105,43 @@ describe("POST /import/ledger-entries — occurred_at is the start of the day in
     expect(entry?.created_at.toISOString()).toBe("2030-07-09T15:00:00.000Z");
     expect(renderedIn(entry!.created_at, "Asia/Tokyo")).toBe("10/07/2030");
   });
+
+  it.each(["UTC", "America/Sao_Paulo", "Asia/Tokyo"])(
+    "stores the same instant no matter which time zone the server runs in (%s)",
+    async processTimeZone => {
+      const originalTimeZone = process.env.TZ;
+      process.env.TZ = processTimeZone;
+
+      try {
+        const { property, token } = await ownerIn(
+          `import-ledger-server-${processTimeZone.replace(/\W/g, "-")}@sogio.dev`,
+          "America/Sao_Paulo"
+        );
+
+        await importCsv(token, [
+          [
+            property.id,
+            "expense",
+            "5000",
+            "MANUTENÇÃO",
+            "Faxina",
+            "2030-07-10",
+          ].join(","),
+        ]);
+
+        const [entry] = await db
+          .select()
+          .from(ledgerEntriesTable)
+          .where(eq(ledgerEntriesTable.property_id, property.id));
+
+        expect(entry?.created_at.toISOString()).toBe(
+          "2030-07-10T03:00:00.000Z"
+        );
+      } finally {
+        process.env.TZ = originalTimeZone;
+      }
+    }
+  );
 
   it("still rejects an unparseable date", async () => {
     const { property, token } = await ownerIn(

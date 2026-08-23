@@ -110,8 +110,6 @@ describe("POST /import/stays — pure dates become instants at the property's ch
   });
 
   it("anchors an imported date at the default check-in/check-out times in the owner's time zone", async () => {
-    expect(process.env.TZ).toBe("UTC");
-
     const { property, token } = await ownerInSaoPaulo(
       "import-dates-default@sogio.dev"
     );
@@ -302,6 +300,39 @@ describe("POST /import/stays — pure dates become instants at the property's ch
       .where(eq(staysTable.property_id, property.id));
     expect(stays).toHaveLength(0);
   });
+
+  it.each(["UTC", "America/Sao_Paulo", "Asia/Tokyo"])(
+    "stores the same instant no matter which time zone the server runs in (%s)",
+    async processTimeZone => {
+      const originalTimeZone = process.env.TZ;
+      process.env.TZ = processTimeZone;
+
+      try {
+        const { property, token } = await ownerInSaoPaulo(
+          `import-dates-server-${processTimeZone.replace(/\W/g, "-")}@sogio.dev`
+        );
+
+        await importCsv(token, [
+          stayRow({
+            propertyId: property.id,
+            checkIn: "2030-07-10",
+            checkOut: "2030-07-15",
+            phone: "5511911120011",
+          }),
+        ]);
+
+        const [stay] = await db
+          .select()
+          .from(staysTable)
+          .where(eq(staysTable.property_id, property.id));
+
+        expect(stay?.check_in.toISOString()).toBe("2030-07-10T17:00:00.000Z");
+        expect(stay?.check_out.toISOString()).toBe("2030-07-15T14:00:00.000Z");
+      } finally {
+        process.env.TZ = originalTimeZone;
+      }
+    }
+  );
 
   it("still rejects a check-out on the same calendar day as the check-in", async () => {
     const { property, token } = await ownerInSaoPaulo(
