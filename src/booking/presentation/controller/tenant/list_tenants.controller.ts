@@ -11,6 +11,9 @@ import {
   responseFromZod,
 } from "../../../../core/infra/http/swagger/schema_helpers";
 import type { User } from "../../../../auth/domain/entity/user";
+import { tenantSearchQuery } from "../../schema/list_tenants.schema";
+
+const inputSchema = z.object({ q: tenantSearchQuery });
 
 const outputSchema = z.array(
   z.object({
@@ -21,9 +24,13 @@ const outputSchema = z.array(
   })
 );
 
+type Input = z.infer<typeof inputSchema>;
+
 export class ListTenantsController implements Controller {
   path = "/tenants";
   method = HttpControllerMethod.GET;
+  parameterSource = "query" as const;
+  inputSchema = inputSchema;
 
   openApiSpec: OpenApiOperation = {
     summary: "List tenants",
@@ -48,10 +55,9 @@ export class ListTenantsController implements Controller {
   constructor(private readonly useCase: ListTenantsUseCase) {}
 
   async handle(request: ControllerRequest, user: User) {
-    const tenants = await this.useCase.execute(
-      { query: request.query.q },
-      user
-    );
+    const input = request.body as Input;
+
+    const tenants = await this.useCase.execute({ query: input.q }, user);
     return tenants;
   }
 }

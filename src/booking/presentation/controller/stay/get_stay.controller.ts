@@ -11,10 +11,9 @@ import {
   errorResponse,
   responseFromZod,
 } from "../../../../core/infra/http/swagger/schema_helpers";
+import { getStayInput } from "../../schema/get_stay.schema";
 
-const inputSchema = z.object({
-  stay_id: z.uuid(),
-});
+const inputSchema = z.object(getStayInput);
 
 const outputSchema = z.object({
   id: z.uuid(),

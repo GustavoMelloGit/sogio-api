@@ -47,48 +47,51 @@ function dateField(fieldLabel: string) {
     });
 }
 
-const stayImportRecordSchema = z
-  .object({
-    property_id: z.uuid("property_id must be a valid UUID"),
-    check_in: dateField("check_in"),
-    check_out: dateField("check_out"),
-    guests: z.coerce
-      .number()
-      .int("guests must be a positive integer")
-      .positive("guests must be a positive integer")
-      .max(
-        MAX_PROPERTY_CAPACITY,
-        `guests must be at most ${MAX_PROPERTY_CAPACITY}`
-      ),
-    price: z.coerce
-      .number()
-      .int("price must be an integer number of cents")
-      .nonnegative("price must be a non-negative integer")
-      .max(
-        MAX_STAY_PRICE_IN_CENTS,
-        `price must be at most ${MAX_STAY_PRICE_IN_CENTS} cents`
-      ),
-    source: z.string().min(1, "source is required").max(100),
-    tenant_name: z
-      .string()
-      .min(3, "tenant_name must be at least 3 characters")
-      .max(100, "tenant_name must be at most 100 characters"),
-    tenant_phone: z
-      .string()
-      .regex(/^[0-9]+$/, "tenant_phone must contain only numbers")
-      .min(10, "tenant_phone must be at least 10 digits")
-      .max(15, "tenant_phone must be at most 15 digits"),
-    tenant_sex: tenantSexSchema,
-    entrance_code: z
-      .string()
-      .max(10, "entrance_code must be at most 10 characters long")
-      .optional()
-      .transform(value => (value && value.length > 0 ? value : undefined)),
-  })
-  .refine(data => data.check_in.isBefore(data.check_out), {
+export const stayImportRecordSchema = z.object({
+  property_id: z.uuid("property_id must be a valid UUID"),
+  check_in: dateField("check_in"),
+  check_out: dateField("check_out"),
+  guests: z.coerce
+    .number()
+    .int("guests must be a positive integer")
+    .positive("guests must be a positive integer")
+    .max(
+      MAX_PROPERTY_CAPACITY,
+      `guests must be at most ${MAX_PROPERTY_CAPACITY}`
+    ),
+  price: z.coerce
+    .number()
+    .int("price must be an integer number of cents")
+    .nonnegative("price must be a non-negative integer")
+    .max(
+      MAX_STAY_PRICE_IN_CENTS,
+      `price must be at most ${MAX_STAY_PRICE_IN_CENTS} cents`
+    ),
+  source: z.string().min(1, "source is required").max(100),
+  tenant_name: z
+    .string()
+    .min(3, "tenant_name must be at least 3 characters")
+    .max(100, "tenant_name must be at most 100 characters"),
+  tenant_phone: z
+    .string()
+    .regex(/^[0-9]+$/, "tenant_phone must contain only numbers")
+    .min(10, "tenant_phone must be at least 10 digits")
+    .max(15, "tenant_phone must be at most 15 digits"),
+  tenant_sex: tenantSexSchema,
+  entrance_code: z
+    .string()
+    .max(10, "entrance_code must be at most 10 characters long")
+    .optional()
+    .transform(value => (value && value.length > 0 ? value : undefined)),
+});
+
+const validatedStayImportRecordSchema = stayImportRecordSchema.refine(
+  data => data.check_in.isBefore(data.check_out),
+  {
     message: "check_in must be before check_out",
     path: ["check_in"],
-  });
+  }
+);
 
 function toImportFailure(row: number, error: z.ZodError): ImportFailure {
   const issue = error.issues[0];
@@ -136,7 +139,7 @@ export class ImportBatchStaysUseCase
     propertyCache: Map<string, BookingProperty | null>,
     checkTimesCache: Map<string, PropertyCheckTimes>
   ): Promise<ImportFailure | null> {
-    const parsed = stayImportRecordSchema.safeParse(record.values);
+    const parsed = validatedStayImportRecordSchema.safeParse(record.values);
 
     if (!parsed.success) {
       return toImportFailure(record.row, parsed.error);

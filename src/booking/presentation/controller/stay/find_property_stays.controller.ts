@@ -9,22 +9,19 @@ import {
 import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
-  paginatedOutputSchema,
-  paginationFields,
-  toPaginationInput,
 } from "../../../../core/application/dto/pagination";
 import type { OpenApiOperation } from "../../../../core/presentation/open_api/open_api_types";
 import {
   errorResponse,
   responseFromZod,
 } from "../../../../core/infra/http/swagger/schema_helpers";
+import { findPropertyStaysInput } from "../../schema/find_property_stays.schema";
 
 const inputSchema = z
-  .object({
-    property_id: z.uuid(),
+  .object(findPropertyStaysInput)
+  .extend({
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
-    ...paginationFields,
   })
   .refine(data => !data.from || !data.to || data.from <= data.to, {
     message: "'from' must be less than or equal to 'to'",

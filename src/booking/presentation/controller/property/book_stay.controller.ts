@@ -13,37 +13,15 @@ import {
   responseFromZod,
   validationErrorResponse,
 } from "../../../../core/infra/http/swagger/schema_helpers";
+import { bookStayInput } from "../../schema/book_stay.schema";
 
-const inputSchema = z.object({
-  guests: z
-    .number()
-    .int()
-    .positive("Guests must be greater than 0")
-    .max(500, "Guests must be at most 500"),
-  property_id: z.uuid(),
+const inputSchema = z.object(bookStayInput).extend({
+  check_in: z.coerce.date(),
+  check_out: z.coerce.date(),
   entrance_code: z
     .string()
     .max(10, "Entrance code must be at most 10 characters long")
     .optional(),
-  check_in: z.coerce.date(),
-  check_out: z.coerce.date(),
-  price: z
-    .number()
-    .int()
-    .min(0, "Price must be a non-negative integer representing cents")
-    .max(
-      100_000_000,
-      "Price must be at most 100000000 cents (R$ 1,000,000.00)"
-    ),
-  tenant: z.object({
-    name: z
-      .string()
-      .min(2, "Name is required")
-      .max(100, "Name must be at most 100 characters"),
-    phone: z.string().length(13),
-    sex: z.enum(["MALE", "FEMALE", "OTHER"]),
-  }),
-  source: z.string().max(100),
 });
 
 const outputSchema = z.object({
