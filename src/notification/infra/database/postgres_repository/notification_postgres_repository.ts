@@ -129,6 +129,26 @@ export class NotificationPostgresRepository implements NotificationRepository {
       : null;
   }
 
+  async markInboxReadOfUser(userId: string): Promise<number> {
+    const now = new Date();
+
+    const marked = await currentExecutor()
+      .update(notificationsTable)
+      .set({ read_at: now, updated_at: now })
+      .where(
+        and(
+          eq(notificationsTable.user_id, userId),
+          eq(notificationsTable.status, "sent"),
+          inArray(notificationsTable.type, NOTIFICATION_TYPE_KEYS),
+          isNull(notificationsTable.read_at),
+          isNull(notificationsTable.deleted_at)
+        )
+      )
+      .returning({ id: notificationsTable.id });
+
+    return marked.length;
+  }
+
   async inboxOfUser(
     userId: string,
     pagination: PaginationInput

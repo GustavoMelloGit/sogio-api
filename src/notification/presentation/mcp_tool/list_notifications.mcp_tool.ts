@@ -1,29 +1,11 @@
-import { z } from "zod";
 import type { ListNotificationsUseCase } from "../../application/use_case/list_notifications";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 import {
-  DEFAULT_LIMIT,
-  DEFAULT_PAGE,
-  MAX_LIMIT,
-  MAX_PAGE,
+  paginationFields,
+  toPaginationInput,
 } from "../../../core/application/dto/pagination";
 
-export const inputSchema = {
-  page: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(MAX_PAGE)
-    .default(DEFAULT_PAGE)
-    .describe("Page number, starting at 1."),
-  limit: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(MAX_LIMIT)
-    .default(DEFAULT_LIMIT)
-    .describe(`Notifications per page, up to ${MAX_LIMIT}.`),
-};
+export const inputSchema = paginationFields;
 
 export function makeListNotificationsTool(
   useCase: ListNotificationsUseCase
@@ -37,9 +19,6 @@ export function makeListNotificationsTool(
       readOnlyHint: true,
     },
     handler: async (input, user) =>
-      useCase.execute(
-        { pagination: { page: input.page, limit: input.limit } },
-        user
-      ),
+      useCase.execute({ pagination: toPaginationInput(input) }, user),
   };
 }

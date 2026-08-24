@@ -9,8 +9,9 @@ import type { ListNotificationsUseCase } from "../../application/use_case/list_n
 import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
-  MAX_LIMIT,
-  MAX_PAGE,
+  paginatedOutputSchema,
+  paginationFields,
+  toPaginationInput,
 } from "../../../core/application/dto/pagination";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
 import {
@@ -18,35 +19,18 @@ import {
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
 
-const inputSchema = z.object({
-  page: z.coerce.number().int().positive().max(MAX_PAGE).default(DEFAULT_PAGE),
-  limit: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(MAX_LIMIT)
-    .default(DEFAULT_LIMIT),
+const inputSchema = z.object(paginationFields);
+
+const notificationOutputSchema = z.object({
+  id: z.string().uuid(),
+  type: z.string(),
+  title: z.string(),
+  body: z.string(),
+  created_at: z.string().datetime(),
+  read_at: z.string().datetime().nullable(),
 });
 
-const outputSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.string().uuid(),
-      type: z.string(),
-      title: z.string(),
-      body: z.string(),
-      created_at: z.string().datetime(),
-      read_at: z.string().datetime().nullable(),
-    })
-  ),
-  pagination: z.object({
-    page: z.number().int(),
-    limit: z.number().int(),
-    total: z.number().int(),
-    total_pages: z.number().int(),
-    has_next: z.boolean(),
-    has_previous: z.boolean(),
-  }),
+const outputSchema = paginatedOutputSchema(notificationOutputSchema).extend({
   unread_count: z.number().int(),
 });
 
@@ -107,9 +91,6 @@ export class ListNotificationsController implements Controller {
   async handle(request: ControllerRequest, user: User) {
     const input = request.body as Input;
 
-    return this.useCase.execute(
-      { pagination: { page: input.page, limit: input.limit } },
-      user
-    );
+    return this.useCase.execute({ pagination: toPaginationInput(input) }, user);
   }
 }

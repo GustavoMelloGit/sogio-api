@@ -168,6 +168,20 @@ async function markRead(
   return { status: res.status, body: (await res.json()) as MarkReadResponse };
 }
 
+async function markAllRead(
+  token: string
+): Promise<{ status: number; body: { marked_as_read: number } }> {
+  const res = await api("/notifications/read-all", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token },
+  });
+
+  return {
+    status: res.status,
+    body: (await res.json()) as { marked_as_read: number },
+  };
+}
+
 function formattedDate(locale: string, timeZone: string, value: Date): string {
   return new Intl.DateTimeFormat(locale, {
     timeZone,
@@ -496,5 +510,101 @@ describe("Notification inbox", () => {
 
   it("guards against a second channel silently duplicating the listing", () => {
     expect(NOTIFICATION_CHANNELS).toEqual(["email"]);
+  });
+});
+
+describe("POST /notifications/read-all", () => {
+  beforeEach(async () => {
+    await truncate(TABLES);
+  });
+
+  it("marks every unread delivered notification and reports how many", async () => {
+    const { user, token } = await authenticatedUser();
+    await deliverNotification(user.id);
+    await deliverNotification(user.id);
+    await deliverNotification(user.id);
+
+    const response = await markAllRead(token);
+
+    expect(response.status).toBe(200);
+    expect(response.body.marked_as_read).toBe(3);
+
+    const inbox = await listNotifications(token);
+    expect(inbox.body.unread_count).toBe(0);
+    expect(inbox.body.data.every(item => item.read_at !== null)).toBe(true);
+  });
+
+  it("reports zero on a second call and keeps the original timestamps", async () => {
+    const { user, token } = await authenticatedUser();
+    await deliverNotification(user.id);
+
+    await markAllRead(token);
+    const first = await listNotifications(token);
+
+    const second = await markAllRead(token);
+
+    expect(second.status).toBe(200);
+    expect(second.body.marked_as_read).toBe(0);
+
+    const after = await listNotifications(token);
+    expect(after.body.data[0]?.read_at).toBe(first.body.data[0]!.read_at);
+  });
+
+  it("never touches a notification that was not delivered", async () => {
+    const { user, token } = await authenticatedUser();
+    await makeService().notify({
+      user_id: user.id,
+      type: TYPE,
+      payload: { grace_period_ends_at: new Date("2040-06-10T12:00:00.000Z") },
+    });
+
+    const response = await markAllRead(token);
+
+    expect(response.body.marked_as_read).toBe(0);
+
+    const [row] = await db
+      .select({ read_at: notificationsTable.read_at })
+      .from(notificationsTable)
+      .where(eq(notificationsTable.user_id, user.id));
+
+    expect(row?.read_at).toBeNull();
+  });
+
+  it("never touches another user's inbox", async () => {
+    const { user: owner } = await createUserFixture({
+      name: "Bruno",
+      email: "bruno@example.com",
+      password: "Password123!",
+    });
+    const ownerNotificationId = await deliverNotification(owner.id);
+
+    const { token } = await authenticatedUser();
+    const response = await markAllRead(token);
+
+    expect(response.body.marked_as_read).toBe(0);
+
+    const [row] = await db
+      .select({ read_at: notificationsTable.read_at })
+      .from(notificationsTable)
+      .where(eq(notificationsTable.id, ownerNotificationId));
+
+    expect(row?.read_at).toBeNull();
+  });
+
+  it("requires authentication", async () => {
+    const res = await api("/notifications/read-all", { method: "POST" });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("exposes mark_all_notifications_read on the MCP surface as idempotent", () => {
+    const tool = new NotificationDi().makeMarkAllNotificationsReadTool();
+
+    expect(tool.name).toBe("mark_all_notifications_read");
+    expect(tool.annotations).toEqual({
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+    });
   });
 });

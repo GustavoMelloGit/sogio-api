@@ -129,6 +129,7 @@ export function makeMcpRequestHandler(
     dependencies.notificationDi.makeUpdateNotificationPreferencesTool(),
     dependencies.notificationDi.makeListNotificationsTool(),
     dependencies.notificationDi.makeMarkNotificationReadTool(),
+    dependencies.notificationDi.makeMarkAllNotificationsReadTool(),
     dependencies.propertyManagementDi.makeImportPropertiesTool(),
     dependencies.propertyDi.makeImportStaysTool(),
     dependencies.financeDi.makeImportLedgerEntriesTool(),

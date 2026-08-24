@@ -140,7 +140,7 @@ describe("POST /mcp", () => {
     expect(body.error).toBe("invalid_token");
   });
 
-  it("lists the 36 registered tools", async () => {
+  it("lists the 37 registered tools", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
       email: "joao.tools-list@sogio.dev",
@@ -193,6 +193,7 @@ describe("POST /mcp", () => {
         "list_property_settings",
         "list_stays",
         "list_tenants",
+        "mark_all_notifications_read",
         "mark_notification_read",
         "reconcile_external_bookings",
         "record_expense",

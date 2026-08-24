@@ -27,6 +27,9 @@ import { makeGetNotificationPreferencesTool } from "../../presentation/mcp_tool/
 import { makeUpdateNotificationPreferencesTool } from "../../presentation/mcp_tool/update_notification_preferences.mcp_tool";
 import { makeListNotificationsTool } from "../../presentation/mcp_tool/list_notifications.mcp_tool";
 import { makeMarkNotificationReadTool } from "../../presentation/mcp_tool/mark_notification_read.mcp_tool";
+import { makeMarkAllNotificationsReadTool } from "../../presentation/mcp_tool/mark_all_notifications_read.mcp_tool";
+import { MarkAllNotificationsReadUseCase } from "../../application/use_case/mark_all_notifications_read";
+import { MarkAllNotificationsReadController } from "../../presentation/controller/mark_all_notifications_read.controller";
 
 export class NotificationDi {
   #logger: Logger;
@@ -118,6 +121,22 @@ export class NotificationDi {
       this.#logger,
       this.#notificationRepository,
       this.#contentRenderer
+    );
+  }
+
+  makeMarkAllNotificationsReadUseCase(): MarkAllNotificationsReadUseCase {
+    return new MarkAllNotificationsReadUseCase(this.#notificationRepository);
+  }
+
+  makeMarkAllNotificationsReadController(): MarkAllNotificationsReadController {
+    return new MarkAllNotificationsReadController(
+      this.makeMarkAllNotificationsReadUseCase()
+    );
+  }
+
+  makeMarkAllNotificationsReadTool() {
+    return makeMarkAllNotificationsReadTool(
+      this.makeMarkAllNotificationsReadUseCase()
     );
   }
 
