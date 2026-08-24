@@ -16,7 +16,6 @@ import type {
 } from "../../../domain/repository/notification_repository";
 import {
   calculatePaginationMetadata,
-  type PaginatedResult,
   type PaginationInput,
 } from "../../../../core/application/dto/pagination";
 import {
@@ -128,44 +127,6 @@ export class NotificationPostgresRepository implements NotificationRepository {
     return row
       ? Notification.reconstitute(notificationSchema.parse(row))
       : null;
-  }
-
-  async allOfUser(
-    userId: string,
-    pagination: PaginationInput
-  ): Promise<PaginatedResult<Notification>> {
-    const whereClause = and(
-      eq(notificationsTable.user_id, userId),
-      isNull(notificationsTable.deleted_at)
-    );
-
-    const [rows, totalResult] = await Promise.all([
-      currentExecutor()
-        .select()
-        .from(notificationsTable)
-        .where(whereClause)
-        .orderBy(
-          desc(notificationsTable.created_at),
-          desc(notificationsTable.id)
-        )
-        .limit(pagination.limit)
-        .offset((pagination.page - 1) * pagination.limit),
-      currentExecutor()
-        .select({ value: count() })
-        .from(notificationsTable)
-        .where(whereClause),
-    ]);
-
-    return {
-      data: rows.map(row =>
-        Notification.reconstitute(notificationSchema.parse(row))
-      ),
-      pagination: calculatePaginationMetadata(
-        pagination.page,
-        pagination.limit,
-        totalResult[0]?.value ?? 0
-      ),
-    };
   }
 
   async inboxOfUser(

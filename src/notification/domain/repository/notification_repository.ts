@@ -19,10 +19,6 @@ export interface NotificationRepository {
   saveMany(notifications: Notification[]): Promise<void>;
   claimDue(limit: number, now: Date): Promise<ClaimedNotification[]>;
   notificationOfId(id: string): Promise<Notification | null>;
-  allOfUser(
-    userId: string,
-    pagination: PaginationInput
-  ): Promise<PaginatedResult<Notification>>;
   inboxOfUser(
     userId: string,
     pagination: PaginationInput
