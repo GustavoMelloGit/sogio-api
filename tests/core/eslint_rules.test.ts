@@ -127,6 +127,8 @@ describe("sogio/no-inline-input-schema", () => {
         "const inputSchema = z.object(bookStayInput).omit({ property_id: true });",
         "const inputSchema = createPropertyInputSchema;",
         "const inputSchema = { ...createPropertyInput };",
+        "const inputSchema = { q: tenantSearchQuery };",
+        "const recordSchema = z.object({ price: shape.price.describe('x') });",
         "const outputSchema = z.object({ id: z.string() });",
         "const addressSchema = z.object({ street: z.string() });",
       ],

@@ -43,9 +43,25 @@ function zodObjectArgument(node) {
   return null;
 }
 
+function startsFromZod(node) {
+  let current = node;
+  while (current) {
+    if (current.type === "CallExpression") {
+      current = current.callee;
+      continue;
+    }
+    if (current.type === "MemberExpression") {
+      current = current.object;
+      continue;
+    }
+    return current.type === "Identifier" && current.name === "z";
+  }
+  return false;
+}
+
 function hasOwnLiteralProperty(objectExpression) {
   return objectExpression.properties.some(
-    property => property.type === "Property"
+    property => property.type === "Property" && startsFromZod(property.value)
   );
 }
 
