@@ -139,6 +139,9 @@ export function makeMcpRequestHandler(
     dependencies.stayDi.makeUpdateStayTool(),
     dependencies.tenantDi.makeListTenantsTool(),
     dependencies.propertyDi.makeCreateExternalBookingSourceTool(),
+    dependencies.authDi.makeGetMeTool(),
+    dependencies.billingDi.makeGetSubscriptionHistoryTool(),
+    dependencies.propertyDi.makeReconcileExternalBookingsTool(),
   ];
 
   return async function handleMcpRequest(request: Request): Promise<Response> {

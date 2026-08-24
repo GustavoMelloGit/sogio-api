@@ -14,6 +14,7 @@ import { ImportStaysController } from "../../presentation/controller/import_stay
 import { makeBookStayTool } from "../../presentation/mcp_tool/book_stay.mcp_tool";
 import { makeImportStaysTool } from "../../presentation/mcp_tool/import_stays.mcp_tool";
 import { makeCreateExternalBookingSourceTool } from "../../presentation/mcp_tool/create_external_booking_source.mcp_tool";
+import { makeReconcileExternalBookingsTool } from "../../presentation/mcp_tool/reconcile_external_bookings.mcp_tool";
 import { ICalendarAdapter } from "../adapter/i_calendar_adapter";
 import { PostgresBookingPolicy } from "../database/postgres_policies/postgres_booking_policy";
 import { ExternalBookingSourcePostgresRepository } from "../database/postgres_repository/external_booking_source_postgres_repository";
@@ -135,5 +136,10 @@ export class PropertyDi {
   }
   makeImportStaysTool() {
     return makeImportStaysTool(this.makeImportBatchStaysUseCase());
+  }
+  makeReconcileExternalBookingsTool() {
+    return makeReconcileExternalBookingsTool(
+      this.makeReconcileExternalBookingUseCase()
+    );
   }
 }

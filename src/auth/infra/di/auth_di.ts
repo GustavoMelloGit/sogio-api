@@ -20,6 +20,7 @@ import { GetUserPreferencesController } from "../../presentation/controller/auth
 import { UpdateUserPreferencesController } from "../../presentation/controller/auth/update_user_preferences.controller";
 import { makeGetUserPreferencesTool } from "../../presentation/mcp_tool/get_user_preferences.mcp_tool";
 import { makeUpdateUserPreferencesTool } from "../../presentation/mcp_tool/update_user_preferences.mcp_tool";
+import { makeGetMeTool } from "../../presentation/mcp_tool/get_me.mcp_tool";
 import { GetUserController } from "../../presentation/controller/auth/get_user.controller";
 import { RegisterUserController } from "../../presentation/controller/auth/register_user.controller";
 import { SignInController } from "../../presentation/controller/auth/sign_in.controller";
@@ -168,6 +169,11 @@ export class AuthDi {
     return new UpdateUserPreferencesController(
       this.makeUpdateUserPreferencesUseCase()
     );
+  }
+
+  // MCP Tools
+  makeGetMeTool() {
+    return makeGetMeTool();
   }
 
   makeGetUserPreferencesTool() {
