@@ -21,6 +21,8 @@ import { DeleteLedgerEntryController } from "../../presentation/controller/delet
 import { makeRecordExpenseTool } from "../../presentation/mcp_tool/record_expense.mcp_tool";
 import { makeImportLedgerEntriesTool } from "../../presentation/mcp_tool/import_ledger_entries.mcp_tool";
 import { makeDeleteLedgerEntryTool } from "../../presentation/mcp_tool/delete_ledger_entry.mcp_tool";
+import { makeListFinancialMovementsTool } from "../../presentation/mcp_tool/list_financial_movements.mcp_tool";
+import { makeRecordRevenueTool } from "../../presentation/mcp_tool/record_revenue.mcp_tool";
 import { LedgerEntryPostgresRepository } from "../database/postgres_repository/ledger_entry_postgres_repository";
 import { RevertRevenueOnStayCancel } from "../../application/handler/revert_revenue_on_stay_cancel";
 import { StayCanceledEvent } from "../../../booking/domain/event/stay_canceled_event";
@@ -172,5 +174,15 @@ export class FinanceDi {
 
   makeDeleteLedgerEntryTool() {
     return makeDeleteLedgerEntryTool(this.makeDeleteLedgerEntryUseCase());
+  }
+
+  makeListFinancialMovementsTool() {
+    return makeListFinancialMovementsTool(
+      this.makeFindPropertyFinancialMovementsUseCase()
+    );
+  }
+
+  makeRecordRevenueTool() {
+    return makeRecordRevenueTool(this.makeRecordRevenueUseCase());
   }
 }

@@ -47,6 +47,7 @@ import { SubscriptionCanceledEvent } from "../../domain/event/subscription_cance
 import { SubscriptionRenewedEvent } from "../../domain/event/subscription_renewed_event";
 import { GetSubscriptionStatusController } from "../../presentation/controller/get_subscription_status.controller";
 import { makeGetSubscriptionStatusTool } from "../../presentation/mcp_tool/get_subscription_status.mcp_tool";
+import { makeListPlansTool } from "../../presentation/mcp_tool/list_plans.mcp_tool";
 import { ListPlansController } from "../../presentation/controller/list_plans.controller";
 import { GetSubscriptionHistoryController } from "../../presentation/controller/get_subscription_history.controller";
 import { CreateCheckoutSessionController } from "../../presentation/controller/create_checkout_session.controller";
@@ -292,6 +293,10 @@ export class BillingDi {
 
   makeListPlansController() {
     return new ListPlansController(this.makeListPlansUseCase());
+  }
+
+  makeListPlansTool() {
+    return makeListPlansTool(this.makeListPlansUseCase());
   }
 
   makeGetSubscriptionHistoryController() {

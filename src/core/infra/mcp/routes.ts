@@ -129,6 +129,10 @@ export function makeMcpRequestHandler(
     dependencies.propertyDi.makeImportStaysTool(),
     dependencies.financeDi.makeImportLedgerEntriesTool(),
     dependencies.financeDi.makeDeleteLedgerEntryTool(),
+    dependencies.financeDi.makeListFinancialMovementsTool(),
+    dependencies.financeDi.makeRecordRevenueTool(),
+    dependencies.stayDi.makeGetDashboardOverviewTool(),
+    dependencies.billingDi.makeListPlansTool(),
   ];
 
   return async function handleMcpRequest(request: Request): Promise<Response> {
