@@ -10,6 +10,7 @@ import {
   MAX_BUFFERED_BODY_BYTES,
   MAX_JSON_DEPTH,
 } from "../../src/core/infra/http/body/body_limits";
+import { makeConnectionSurvivalProbeStream } from "../helpers/paced_stream";
 
 type JsonRpcResponse = {
   jsonrpc: "2.0";
@@ -36,27 +37,6 @@ type ToolResultErrorBody = {
  * with `invalid_token`, indistinguishable from a garbage token.
  */
 const MCP_RESOURCE = `${apiBaseUrl}${MCP_RESOURCE_PATH}`;
-
-function makePacedByteStream(
-  totalBytes: number,
-  chunkBytes: number,
-  delayMs: number
-): ReadableStream<Uint8Array> {
-  let remaining = totalBytes;
-
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      if (remaining <= 0) {
-        controller.close();
-        return;
-      }
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-      const size = Math.min(chunkBytes, remaining);
-      remaining -= size;
-      controller.enqueue(new Uint8Array(size).fill(120));
-    },
-  });
-}
 
 async function callMcp(
   body: Record<string, unknown>,
@@ -321,7 +301,7 @@ describe("POST /mcp", () => {
       resource: MCP_RESOURCE,
     });
 
-    const pacedOversizedBody = makePacedByteStream(
+    const { readable: pacedOversizedBody } = makeConnectionSurvivalProbeStream(
       MAX_BUFFERED_BODY_BYTES + 3 * 1024 * 1024,
       64 * 1024,
       5

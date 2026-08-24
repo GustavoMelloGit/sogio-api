@@ -13,6 +13,7 @@ import {
 } from "../../src/core/infra/http/body/body_limits";
 import { resetSharedRateLimiter } from "../../src/core/infra/di/core_di";
 import { baseUrl as appBaseUrl } from "../setup";
+import { makeConnectionSurvivalProbeStream } from "../helpers/paced_stream";
 
 const unusedEntitlementService: EntitlementService = {
   entitlementOf: () => {
@@ -164,31 +165,6 @@ function makeChunkedByteStream(
   return { readable, chunksPulled: () => pulled };
 }
 
-function makePacedChunkedByteStream(
-  totalBytes: number,
-  chunkBytes: number,
-  delayMs: number
-): { readable: ReadableStream<Uint8Array>; chunksPulled: () => number } {
-  let pulled = 0;
-  let remaining = totalBytes;
-
-  const readable = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      if (remaining <= 0) {
-        controller.close();
-        return;
-      }
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-      const size = Math.min(chunkBytes, remaining);
-      remaining -= size;
-      pulled++;
-      controller.enqueue(new Uint8Array(size).fill(97));
-    },
-  });
-
-  return { readable, chunksPulled: () => pulled };
-}
-
 describe("request body byte cap — 413 without materializing the payload (IE-1)", () => {
   it("processes a normal body under the cap end to end", async () => {
     const before = handleCallCount;
@@ -257,7 +233,7 @@ describe("request body byte cap — 413 without materializing the payload (IE-1)
 
   it("keeps the keep-alive connection usable after rejecting an oversized body (D2-bis)", async () => {
     const oversizedButWithinReadBudget = 2 * MAX_BUFFERED_BODY_BYTES;
-    const { readable, chunksPulled } = makePacedChunkedByteStream(
+    const { readable, chunksPulled } = makeConnectionSurvivalProbeStream(
       oversizedButWithinReadBudget,
       64 * 1024,
       5

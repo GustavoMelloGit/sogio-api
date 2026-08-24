@@ -14,6 +14,7 @@ import {
   propertiesTable,
   subscriptionsTable,
 } from "../../src/core/infra/database/drizzle/schema";
+import { makeConnectionSurvivalProbeStream } from "../helpers/paced_stream";
 
 const TABLES = ["properties", "addresses", "users"];
 
@@ -48,27 +49,16 @@ function makePacedRejectedCsvStream(
   chunkBytes: number,
   delayMs: number
 ): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  let sentHeader = false;
-  let remaining = totalPaddingBytes;
-
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      if (!sentHeader) {
-        sentHeader = true;
-        controller.enqueue(encoder.encode(HEADER_MISSING_COUNTRY + "\n"));
-        return;
-      }
-      if (remaining <= 0) {
-        controller.close();
-        return;
-      }
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-      const size = Math.min(chunkBytes, remaining);
-      remaining -= size;
-      controller.enqueue(new Uint8Array(size).fill(120));
-    },
-  });
+  const { readable } = makeConnectionSurvivalProbeStream(
+    totalPaddingBytes,
+    chunkBytes,
+    delayMs,
+    {
+      preamble: new TextEncoder().encode(HEADER_MISSING_COUNTRY + "\n"),
+      fillByte: 120,
+    }
+  );
+  return readable;
 }
 
 async function upgradeToPro(userId: string): Promise<void> {
