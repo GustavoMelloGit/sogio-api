@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 import { z } from "zod";
 import {
   HttpControllerMethod,
@@ -11,6 +11,8 @@ import {
   MAX_JSON_DEPTH,
   MAX_REQUEST_BODY_BYTES,
 } from "../../src/core/infra/http/body/body_limits";
+import { resetSharedRateLimiter } from "../../src/core/infra/di/core_di";
+import { baseUrl as appBaseUrl } from "../setup";
 
 const unusedEntitlementService: EntitlementService = {
   entitlementOf: () => {
@@ -281,5 +283,53 @@ describe("request body depth cap — 422 before JSON.parse (IE-2)", () => {
 
     expect(res.status).toBe(422);
     expect(handleCallCount).toBe(before);
+  });
+});
+
+describe("rate limit 429 — drains the request body instead of abandoning it (IE-1)", () => {
+  const rateLimitedPath = "/import/properties";
+  const rateLimitedMaxAttempts = 5;
+
+  beforeEach(() => {
+    resetSharedRateLimiter();
+  });
+
+  it("drains an oversized body rejected by the rate limiter and keeps the connection usable for the next request", async () => {
+    for (let attempt = 0; attempt < rateLimitedMaxAttempts; attempt++) {
+      const burn = await fetch(`${appBaseUrl}${rateLimitedPath}`, {
+        method: "POST",
+      });
+      await burn.text();
+      expect(burn.status).not.toBe(429);
+    }
+
+    const { readable, chunksPulled } = makeChunkedByteStream(
+      2 * MAX_BUFFERED_BODY_BYTES,
+      64 * 1024
+    );
+
+    const rejectionStart = performance.now();
+    const rejected = await fetch(`${appBaseUrl}${rateLimitedPath}`, {
+      method: "POST",
+      body: readable,
+      duplex: "half",
+    } as RequestInit);
+    await rejected.text();
+    const rejectionElapsedMs = performance.now() - rejectionStart;
+
+    expect(rejected.status).toBe(429);
+    expect(chunksPulled()).toBeGreaterThan(0);
+    expect(rejectionElapsedMs).toBeLessThan(3000);
+
+    const CONNECTION_SURVIVAL_TIMEOUT_MS = 3000;
+    const followUpStart = performance.now();
+    const followUp = await fetch(`${appBaseUrl}/health`, {
+      signal: AbortSignal.timeout(CONNECTION_SURVIVAL_TIMEOUT_MS),
+    });
+    await followUp.text();
+    const followUpElapsedMs = performance.now() - followUpStart;
+
+    expect(followUp.status).toBe(200);
+    expect(followUpElapsedMs).toBeLessThan(CONNECTION_SURVIVAL_TIMEOUT_MS);
   });
 });

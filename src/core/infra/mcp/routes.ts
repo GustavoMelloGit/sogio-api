@@ -145,59 +145,6 @@ export function makeMcpRequestHandler(
     const authorizationHeader =
       request.headers.get("authorization") ?? undefined;
 
-    let requester: Requester;
-    try {
-      requester = await identityResolver.resolveRequester(authorizationHeader);
-    } catch (error) {
-      if (error instanceof UnauthorizedError) {
-        logger.warn("mcp", { endpoint: "mcp", result: "unauthorized" });
-        const hadCredential = authorizationHeader !== undefined;
-        return corsMiddleware.addCorsHeaders(
-          withNoStore(unauthorizedResponse(request, hadCredential)),
-          origin,
-          "public"
-        );
-      }
-
-      throw error;
-    }
-
-    logger.info("mcp", {
-      endpoint: "mcp",
-      result: "authenticated",
-      client_id: requester.appRegistrationId,
-    });
-
-    /**
-     * Platform-access gate (DA-9). `/mcp` has no account-recovery tool, so
-     * unlike the HTTP adapter there is no exception list — a blocked
-     * account is blocked outright. Admins still pass: staff can't be locked
-     * out of tooling by a billing problem.
-     */
-    let capabilities = CapabilitySet.empty();
-    if (requester.user.role !== "admin") {
-      const entitlement = await entitlementService.entitlementOf(
-        requester.user.id
-      );
-      if (!entitlement.has_platform_access) {
-        logger.warn("mcp", {
-          endpoint: "mcp",
-          result: "forbidden",
-          blocked_reason: entitlement.blocked_reason,
-        });
-        return corsMiddleware.addCorsHeaders(
-          withNoStore(
-            forbiddenResponse(
-              entitlement.blocked_reason ?? "no_platform_access"
-            )
-          ),
-          origin,
-          "public"
-        );
-      }
-      capabilities = entitlement.capabilities;
-    }
-
     let requestForTransport = request;
 
     if (request.body !== null) {
@@ -234,6 +181,53 @@ export function makeMcpRequestHandler(
         headers: request.headers,
         body: rawBody,
       });
+    }
+
+    let requester: Requester;
+    try {
+      requester = await identityResolver.resolveRequester(authorizationHeader);
+    } catch (error) {
+      if (error instanceof UnauthorizedError) {
+        logger.warn("mcp", { endpoint: "mcp", result: "unauthorized" });
+        const hadCredential = authorizationHeader !== undefined;
+        return corsMiddleware.addCorsHeaders(
+          withNoStore(unauthorizedResponse(request, hadCredential)),
+          origin,
+          "public"
+        );
+      }
+
+      throw error;
+    }
+
+    logger.info("mcp", {
+      endpoint: "mcp",
+      result: "authenticated",
+      client_id: requester.appRegistrationId,
+    });
+
+    let capabilities = CapabilitySet.empty();
+    if (requester.user.role !== "admin") {
+      const entitlement = await entitlementService.entitlementOf(
+        requester.user.id
+      );
+      if (!entitlement.has_platform_access) {
+        logger.warn("mcp", {
+          endpoint: "mcp",
+          result: "forbidden",
+          blocked_reason: entitlement.blocked_reason,
+        });
+        return corsMiddleware.addCorsHeaders(
+          withNoStore(
+            forbiddenResponse(
+              entitlement.blocked_reason ?? "no_platform_access"
+            )
+          ),
+          origin,
+          "public"
+        );
+      }
+      capabilities = entitlement.capabilities;
     }
 
     const server = createMcpServer({

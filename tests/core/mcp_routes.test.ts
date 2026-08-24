@@ -366,6 +366,64 @@ describe("POST /mcp", () => {
     expect(elapsedMs).toBeLessThan(CONNECTION_SURVIVAL_TIMEOUT_MS);
   });
 
+  it("serves a real MCP call quickly right after a 401 on a body within the buffer limit, on the same keep-alive connection", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao.401-then-retry@sogio.dev",
+      password: "password123",
+    });
+    const { accessToken: token } = await createMcpAccessTokenFixture({
+      userId: user.id,
+      resource: MCP_RESOURCE,
+    });
+
+    const paddingLength = MAX_BUFFERED_BODY_BYTES - 4096;
+    const bodyWithinBufferLimit = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+      params: { padding: "x".repeat(paddingLength) },
+    });
+
+    expect(bodyWithinBufferLimit.length).toBeGreaterThan(1_000_000);
+    expect(bodyWithinBufferLimit.length).toBeLessThan(MAX_BUFFERED_BODY_BYTES);
+
+    const unauthorized = await api("/mcp", {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        Authorization: "Bearer not-a-real-token",
+      },
+      body: bodyWithinBufferLimit,
+    });
+    const unauthorizedBody = (await unauthorized.json()) as OAuthErrorBody;
+
+    expect(unauthorized.status).toBe(401);
+    expect(unauthorizedBody.error).toBe("invalid_token");
+
+    const CONNECTION_SURVIVAL_TIMEOUT_MS = 3_000;
+    const start = performance.now();
+    const { status, body } = await callMcp(
+      {
+        jsonrpc: "2.0",
+        id: 44,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: { name: "sogio-test-client", version: "1.0.0" },
+        },
+      },
+      token,
+      AbortSignal.timeout(CONNECTION_SURVIVAL_TIMEOUT_MS)
+    );
+    const elapsedMs = performance.now() - start;
+
+    expect(status).toBe(200);
+    expect(body.id).toBe(44);
+    expect(elapsedMs).toBeLessThan(CONNECTION_SURVIVAL_TIMEOUT_MS);
+  });
+
   it("rejects a request nested past the maximum JSON depth with 422, before reaching the transport", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",

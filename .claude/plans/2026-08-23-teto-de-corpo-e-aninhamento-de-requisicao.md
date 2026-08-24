@@ -83,6 +83,16 @@ do gateway (`POST /billing/webhooks/stripe`, que lê `request.rawBody`): eventos
 do Stripe são da ordem de poucos KB e as listas embutidas no evento são
 truncadas pelo próprio Stripe, então 1 MB também é ~100x o caso típico ali.
 
+**1 MB de entrada não é 1 MB de memória, e é por isso que a retenção não sobe.**
+Medido: o parse aloca ~64 bytes por container, então um corpo de 1 MB inteiramente
+feito de containers custa dezenas de MB de heap depois do `JSON.parse` —
+amplificação de ~30x a 60x. Isso **não** é resolvido pela guarda de profundidade
+(IE-2 explica por que: a amplificação segue a contagem de containers, não o
+aninhamento), e é a razão de o teto de retenção ser 1 MB e não 8 MB: a conta que
+importa numa VPS pequena é retenção × amplificação × concorrência, e o único
+fator dos três que esta entrega controla é o primeiro. O terceiro é o risco
+residual R-G2 abaixo.
+
 **Constante em código, não variável de ambiente.** O precedente do projeto é
 claro: `MAX_IMPORT_BYTES`, `MAX_IMPORT_ROWS`, `MAX_REPORTED_ERRORS` e as
 `RateLimitPolicy` são todos constantes; `environments.ts` guarda o que varia por
@@ -246,6 +256,39 @@ aplicados em `handleMcpRequest`, antes de `transport.handleRequest`, e o
 transporte recebe um `Request` reconstruído a partir do texto já lido e já
 validado. `GET`/`DELETE /mcp` não têm corpo e passam intocados.
 
+**Ordem revisada após revisão de segurança: o corpo é lido antes do portão de
+identidade.** O argumento original desta seção — "o gate de identidade roda
+antes de o corpo ser tocado, então um POST gigante anônimo nunca é parseado" —
+era uma vantagem enquanto a trava era o teto de socket. Com a trava sendo a
+contagem no leitor (D1-bis), essa ordem só produz **corpo abandonado**: um
+cliente MCP com token recém-expirado manda um `tools/call` gordo, recebe `401`
+com `WWW-Authenticate`, renova o token, e a retentativa pendura — "o servidor
+MCP parou de responder", que é exatamente o sintoma que D2-bis classificou como
+pior que o problema original. Vale igual para o `403` do portão de platform
+access.
+
+Drenar nos caminhos de recusa seria a outra saída, e é **estritamente pior**:
+drenar _é_ ler, então o custo para o atacante anônimo é idêntico, e em troca a
+regra passa a morar em N saídas em vez de numa entrada — a próxima recusa
+precoce que alguém acrescentar em `/mcp` reintroduz o bug em silêncio. Então:
+leitura com teto e dreno **primeiro**, identidade depois, platform access
+depois, transporte por último. O chamador anônimo passa a poder fazer o servidor
+ler até 8 MB, que é exatamente o que **já** acontece em toda rota HTTP, onde
+`parse()` precede o `AuthMiddleware` — o caso especial do `/mcp` desaparece em
+vez de ser gerenciado.
+
+**O `429` do HTTP é a exceção, e por um motivo próprio.** Ali a ordem **não**
+inverte: um rate limiter existe para recusar antes de fazer trabalho, e movê-lo
+para depois da leitura destruiria a única coisa que ele faz. Ele fica onde está
+e **paga a própria limpeza**: drena no caminho de saída, com o mesmo orçamento.
+A diferença com o portão de identidade não é arbitrária — o portão de identidade
+faz trabalho (banco, cripto) de qualquer forma, então não ganha nada por
+preceder a leitura; o rate limiter ganha tudo. Consequência aceita: uma
+requisição barrada por rate limit ainda pode custar até 8 MB de leitura, o que
+enfraquece o limiter sob ataque. Não há conserto de aplicação para isso —
+"atacante manda bytes" se resolve em limite de conexão e timeout de corpo, e é
+o risco residual R-G2.
+
 **Consequência aceita e documentada:** o máximo _teórico_ de um lote de
 importação por tool MCP (`MAX_MCP_IMPORT_RECORDS = 100` registros × 50 imagens ×
 2048 caracteres ≈ 10 MB) passa a estourar 1 MB. O máximo _realista_ (100
@@ -283,9 +326,21 @@ tamanho — cabe em 20 KB. É um corpo que a API recusa a interpretar, que é
 exatamente o significado de `ValidationError` no projeto. A mensagem é fixa e
 não cita nada do corpo.
 
-Aplicada **só no ramo JSON** de `#parseBody`, depois do desvio de
-`x-www-form-urlencoded` (`parameterSource: "form"`, o `/token` do OAuth): corpo
-de formulário não vira árvore.
+Aplicada **só no ramo JSON** de `#parseBody`, imediatamente antes do
+`JSON.parse` e depois do desvio de `x-www-form-urlencoded`
+(`parameterSource: "form"`, o `/token` do OAuth): corpo de formulário não vira
+árvore.
+
+**Escopo exato, porque a redação anterior prometia mais do que o código
+entrega.** A guarda cobre todo corpo que **esta API** converte em árvore, não
+todo corpo que por acaso contenha JSON: um consumidor de `rawBody` que faça o
+próprio parse não passa por ela. Hoje existe exatamente um
+(`StripeWebhookController` → `stripe-node`, que verifica a assinatura antes de
+parsear, então um corpo hostil não chega ao parse), e por isso a resposta é
+corrigir a redação, não perseguir código de terceiro. Regra permanente que nasce
+daqui: **todo consumidor novo de `rawBody` que parseie o conteúdo passa a guarda
+explicitamente** — item de revisão, no mesmo molde da obrigação de teto das
+rotas `stream`.
 
 ### D6 — As rotas `bodyMode: "stream"` seguem intocadas **no teto de bytes**
 
@@ -406,11 +461,87 @@ Para `.claude/personas/arquiteto.md`, na família das existentes:
   perdida — cortesia é para quem errou, não para quem fluxa sem parar. O pico de
   memória segue sendo um chunk. `bodyMode: "stream"` é a única saída para quem
   precisa aceitar mais, e ela troca "corpo maior" por "leitura incremental",
-  nunca por "sem teto" nem por "sem dreno".
-- **IE-2 — Nenhum texto vira árvore sem teto de profundidade.** Todo corpo JSON
-  passa por uma varredura léxica antes do `JSON.parse`, nas duas superfícies.
-  Aninhamento profundo cabe em poucos KB, então IE-1 não cobre isto; e o estouro
-  de pilha derruba o processo inteiro, não a requisição.
+  nunca por "sem teto" nem por "sem dreno": **toda rota `stream` declara o
+  próprio teto de bytes e drena no caminho de recusa.** Nenhuma regra de lint e
+  nenhuma guarda de boot consegue provar que um controller conta bytes — a
+  guarda de boot só recusa `stream` + `inputSchema` —, então esta metade da
+  invariante é obrigação de revisão, e é o item a procurar em toda rota `stream`
+  nova.
+- **IE-2 — Nenhum texto que esta API converte em árvore JSON o faz sem teto de
+  profundidade.** A varredura léxica roda antes do `JSON.parse`, nas duas
+  superfícies. **O que ela não faz: impedir estouro de pilha, que não existe** —
+  o `JSON.parse` do JavaScriptCore é iterativo, e 1 milhão de níveis parseiam em
+  27 ms sem erro (medido). **E não é ela que limita memória** — a amplificação de
+  heap do parse (~64 bytes por container) depende de _quantos_ containers cabem
+  nos bytes, não de como estão aninhados: 350 mil `[]` irmãos a 2 níveis custam
+  a mesma ordem de heap que 500 mil aninhados; isso é assunto do teto de
+  retenção de IE-1, não deste. O que este teto faz é limitar **recursão
+  dependente de profundidade sobre dado vindo da requisição** — `JSON.stringify`,
+  `structuredClone`, qualquer caminhada como `serializeDatesRecursively` — que
+  sem ele estoura `RangeError` e vira `500` em vez de `422`, e fechar uma
+  dimensão que de outro modo fica sem limite nenhum, por 1,8 ms por MB. Nenhum
+  caminho de crash concreto foi demonstrado no código de hoje: esta é uma trava
+  barata e preventiva, não crítica, e quem for recalibrar `MAX_JSON_DEPTH`
+  precisa saber disso para não raciocinar contra uma ameaça que não existe.
+
+### D11 — O `413` que o Bun gera sozinho não tem CORS nem corpo, e fica assim
+
+Configurar `maxRequestBodySize: 8 MB` tornou alcançável um caminho que o default
+de 128 MB praticamente não era. A resposta que o Bun gera sem passar pelo nosso
+código, medida: `413`, header só `connection: close`, corpo vazio. Sem
+`Access-Control-Allow-Origin` e sem `{ "message": ... }`.
+
+**Mantém-se, e documenta-se.** Cortar 9 MB antes de acordar o handler é o único
+mecanismo em todo o desenho que recusa **sem ler nada** — numa VPS pequena isso
+tem valor real, e abrir mão dele para ganhar um corpo de resposta seria trocar a
+defesa pela estética da defesa. O que não pode ficar é a promessa quebrada: o
+`413` que o `OpenApiBuilder` injeta descreve um corpo JSON que neste caminho não
+existe, e um frontend que suba um CSV de 9 MB não vê `413` — vê erro de
+rede/CORS, porque o browser bloqueia a leitura de uma resposta sem
+`Access-Control-Allow-Origin`.
+
+A ressalva entra em dois lugares, ambos texto:
+
+1. na `description` do `413` compartilhado que o `OpenApiBuilder` injeta —
+   "acima de `MAX_REQUEST_BODY_BYTES` a requisição é cortada pelo runtime e a
+   resposta não tem corpo nem headers de CORS; um cliente de browser observa
+   isso como erro de rede";
+2. na `description` das três rotas de importação, que já anunciam "up to 1000
+   rows and 5 MB per request" e são as únicas em que um usuário legítimo chega
+   perto do teto — com a orientação prática: validar o tamanho do arquivo no
+   cliente antes de subir.
+
+Não é dívida escondida: é o comportamento correto com a documentação
+correspondente. O `/docs` é o lugar certo porque quem precisa da informação é
+quem escreve o cliente.
+
+## Riscos residuais registrados
+
+Levantados pela revisão de segurança, decididos aqui, **fora** do escopo desta
+entrega. Registrados para que a decisão exista por escrito em vez de virar
+descoberta futura.
+
+- **R-G2 — Não há limite de conexões concorrentes nem timeout de corpo.**
+  `idleTimeout` não é configurado (default 10 s do Bun), então um cliente que
+  goteja 1 byte a cada 9 s segura um worker através dos 8 MB inteiros. É o
+  fator que sustenta os custos aceitos em D2-bis e em D4 (dreno com orçamento,
+  `429` que drena), então não é detalhe: é **a** mitigação pendente, e o lugar
+  dela é o nginx à frente do processo (`limit_conn`, `client_body_timeout`,
+  `client_max_body_size`), não o código. Já valia antes desta PR para as três
+  rotas de importação. **Issue própria.** Aviso para quem pegar: baixar o
+  `idleTimeout` do Bun parece o atalho e não é — o `/mcp` serve SSE por conexão
+  longa, e um timeout curto derruba stream legítimo.
+- **R-G4 — Um `413` no webhook do gateway dessincroniza entitlement em
+  silêncio.** O teto de 1 MB é ~100x o evento típico e as listas embutidas são
+  truncadas pelo próprio Stripe, então o risco é baixo — mas se acontecer, o
+  Stripe retenta por 3 dias e desiste, e o estado local fica errado sem ninguém
+  saber. Há log, não há alerta. A rejeição deve logar em nível `error` com rota
+  e bytes, para ser greppável; **alerta é assunto de observabilidade e não se
+  inventa aqui.**
+- **R-G5 — Nada obriga a próxima rota `bodyMode: "stream"` a ter teto.** A
+  guarda de boot só recusa `stream` + `inputSchema`; nenhuma regra de lint
+  consegue provar que um controller conta bytes. Virou metade de IE-1 e item de
+  revisão, que é o mais forte que se consegue sem inventar mecanismo.
 
 ## Mapped Changes
 
@@ -437,13 +568,14 @@ Para `.claude/personas/arquiteto.md`, na família das existentes:
 **Mudam:**
 
 - **`src/core/infra/http/adapters/http_controller_adapter.ts`** —
-  `#readRawBody()` passa a usar o leitor com teto em vez de `request.text()`;
+  `#readRawBody()` passa a usar o leitor com teto em vez de `request.text()`; o
+  caminho de saída do `429` drena antes de responder (D4);
   `#parseBody()` chama a guarda de profundidade antes do `JSON.parse`, só no
   ramo JSON; `errorCodeMap` ganha `PayloadTooLargeError → 413`
 - **`src/core/infra/mcp/routes.ts`** — em `handleMcpRequest`, para requisição
-  com corpo: leitura com teto + guarda de profundidade antes de
-  `transport.handleRequest`, com `Request` reconstruído; resposta `413` no molde
-  de `forbiddenResponse`, com CORS público e `no-store` (D4)
+  com corpo: leitura com teto + guarda de profundidade **antes do portão de
+  identidade** (D4), com `Request` reconstruído; resposta `413` no molde de
+  `forbiddenResponse`, com CORS público e `no-store`
 - **`src/core/infra/http/csv/streaming_csv_reader.ts`** — no caminho de
   rejeição, drena e descarta até o fim do stream (orçamento
   `MAX_REQUEST_BODY_BYTES`) antes de propagar o `ImportRejectedError`, em vez de
@@ -456,7 +588,8 @@ Para `.claude/personas/arquiteto.md`, na família das existentes:
 - **`tests/setup.ts`** — idem, para que a suíte rode sob o mesmo teto de socket
   que produção
 - **`src/core/infra/http/swagger/open_api_builder.ts`** — injeta a resposta
-  `413` em toda operação que declara `requestBody`, num ponto só. As respostas
+  `413` em toda operação que declara `requestBody`, num ponto só, com a
+  ressalva de D11 na `description`. As respostas
   hoje são declaradas controller a controller; documentar rota a rota seriam 40+
   edições que divergem na primeira rota nova
 - **`tests/core/stream_body_adapter.test.ts`** — ganha a afirmação explícita de
@@ -521,9 +654,19 @@ Para `.claude/personas/arquiteto.md`, na família das existentes:
     depois a correção em `readCsvRecordStream` (D6-bis). Independente das
     demais: mexe em outro arquivo e em outro caminho
     - Dependencies: task 2 (reusa a decisão do orçamento, não o código)
-13. **Documentação** — IE-1 e IE-2 em `arquiteto.md`; parágrafo dos tetos em
-    `CLAUDE.md`, incluindo `chunked` escapando do `maxRequestBodySize`
-    - Dependencies: tasks 4, 5, 6, 12
+13. **Inverter a ordem no `/mcp` e drenar no `429`** — leitura com teto antes do
+    portão de identidade em `handleMcpRequest`; dreno no caminho de saída do
+    `429` no adaptador. Cada um com o teste de sobrevivência da conexão
+    (`401` gordo seguido de retentativa; `429` gordo seguido de requisição
+    normal)
+    - Dependencies: tasks 4, 6
+14. **Ressalva de D11 no `/docs`** — `description` do `413` injetado e das três
+    rotas de importação
+    - Dependencies: tasks 5, 7
+15. **Documentação** — IE-1 e IE-2 em `arquiteto.md`; parágrafo dos tetos em
+    `CLAUDE.md`, incluindo `chunked` escapando do `maxRequestBodySize`, a
+    correção da justificativa de profundidade e a ressalva de D11
+    - Dependencies: tasks 4, 5, 6, 12, 13, 14
 
 > Tasks 2 e 3 rodam em paralelo depois da 1. Depois delas, 4 e 6 rodam em
 > paralelo, e 5 e 7 já podiam ter rodado em paralelo com 2 e 3. Os testes (8, 9,

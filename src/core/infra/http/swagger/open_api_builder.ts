@@ -1,6 +1,9 @@
 import type { Controller } from "../../../presentation/controller/controller";
 import type { OpenApiResponse } from "../../../presentation/open_api/open_api_types";
-import { MAX_BUFFERED_BODY_BYTES } from "../body/body_limits";
+import {
+  MAX_BUFFERED_BODY_BYTES,
+  MAX_REQUEST_BODY_BYTES,
+} from "../body/body_limits";
 
 type RouteDefinition = {
   authenticated: boolean;
@@ -21,7 +24,7 @@ type OpenApiSpec = {
 };
 
 const PAYLOAD_TOO_LARGE_RESPONSE: OpenApiResponse = {
-  description: `Request body exceeds the ${MAX_BUFFERED_BODY_BYTES / (1024 * 1024)} MB limit buffered by the server. Routes that accept larger payloads (e.g. bulk import) read the body as a stream and document their own byte limit instead.`,
+  description: `Request body exceeds the ${MAX_BUFFERED_BODY_BYTES / (1024 * 1024)} MB limit buffered by the server. Routes that accept larger payloads (e.g. bulk import) read the body as a stream and document their own byte limit instead. Above ${MAX_REQUEST_BODY_BYTES / (1024 * 1024)} MB the request is cut by the runtime before this response is ever built: the connection is closed with no response body and no CORS headers, so a browser client observes that as a network error, not as this 413.`,
   content: {
     "application/json": {
       schema: {

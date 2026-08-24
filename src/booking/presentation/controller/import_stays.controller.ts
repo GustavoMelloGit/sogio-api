@@ -14,6 +14,7 @@ import {
 import { readCsvRecordStream } from "../../../core/infra/http/csv/streaming_csv_reader";
 import { importRejectedResponse } from "../../../core/presentation/controller/import_response";
 import { ValidationError } from "../../../core/application/error/validation_error";
+import { MAX_REQUEST_BODY_BYTES } from "../../../core/infra/http/body/body_limits";
 
 const REQUIRED_COLUMNS = [
   "property_id",
@@ -75,7 +76,8 @@ export class ImportStaysController implements Controller {
       "dates overlap another stay of the same property (already stored or earlier in the same file) surfaces as a line-level " +
       "failure in the 422 report, not a special case for historic data. The whole batch is accepted or rejected as one: on any failure nothing " +
       "is written, and the 422 body lists every row-level failure found while reading the rest of the file (best-effort for " +
-      "overlap/state failures once a row has already failed — see `truncated`).",
+      "overlap/state failures once a row has already failed — see `truncated`). " +
+      `Validate the file's size on the client before uploading: above ${MAX_REQUEST_BODY_BYTES / (1024 * 1024)} MB the request is cut by the runtime before this endpoint's own validation ever runs, and the response has no body — a browser client observes that as a network failure, not as a proper rejection.`,
     tags: ["Booking"],
     requestBody: csvBody(CSV_LAYOUT_DESCRIPTION, CSV_EXAMPLE),
     responses: {

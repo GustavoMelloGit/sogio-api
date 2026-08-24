@@ -14,6 +14,7 @@ import {
   csvBody,
   errorResponse,
 } from "../../../core/infra/http/swagger/schema_helpers";
+import { MAX_REQUEST_BODY_BYTES } from "../../../core/infra/http/body/body_limits";
 
 const REQUIRED_COLUMNS = ["property_id", "kind", "amount", "category"] as const;
 
@@ -45,7 +46,8 @@ export class ImportLedgerEntriesController implements Controller {
     summary: "Import ledger entries",
     description:
       "Imports financial movements (expenses and revenues) in bulk from a CSV file. The request body is the raw file content — Content-Type must be text/csv, not multipart/form-data. " +
-      "The batch is accepted or rejected as a whole: a rejected batch writes nothing. Up to 1000 rows and 5 MB per request. Reimporting an already-accepted batch is not deduplicated — every row is inserted again; use DELETE /finance/properties/:property_id/movements/:entry_id to remove duplicates.",
+      "The batch is accepted or rejected as a whole: a rejected batch writes nothing. Up to 1000 rows and 5 MB per request. Reimporting an already-accepted batch is not deduplicated — every row is inserted again; use DELETE /finance/properties/:property_id/movements/:entry_id to remove duplicates. " +
+      `Validate the file's size on the client before uploading: above ${MAX_REQUEST_BODY_BYTES / (1024 * 1024)} MB the request is cut by the runtime before this endpoint's own validation ever runs, and the response has no body — a browser client observes that as a network failure, not as a proper rejection.`,
     tags: ["Finance"],
     requestBody: csvBody(CSV_LAYOUT_DESCRIPTION, CSV_EXAMPLE),
     responses: {

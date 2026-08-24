@@ -18,6 +18,7 @@ import { readCsvRecordStream } from "../../../core/infra/http/csv/streaming_csv_
 import { ValidationError } from "../../../core/application/error/validation_error";
 import { importRejectedResponse } from "../../../core/presentation/controller/import_response";
 import { MAX_IMPORT_ROWS } from "../../../core/application/import/import_failure";
+import { MAX_REQUEST_BODY_BYTES } from "../../../core/infra/http/body/body_limits";
 
 const REQUIRED_COLUMNS = [
   "name",
@@ -69,7 +70,8 @@ const CSV_LAYOUT_DESCRIPTION =
 
 const DESCRIPTION =
   "Imports properties in bulk from a CSV file. The request body must be the raw CSV content, sent with `Content-Type: text/csv` — not wrapped in JSON or multipart/form-data. " +
-  "Up to 1000 rows per file. The batch is accepted or rejected as a whole: the first invalid row rolls back the entire import, and the response reports every row-level failure found (up to 100) so the file can be fixed and resubmitted. If the batch would push the account over its property quota, the entire batch is rejected with 403 — never partially imported.";
+  "Up to 1000 rows per file. The batch is accepted or rejected as a whole: the first invalid row rolls back the entire import, and the response reports every row-level failure found (up to 100) so the file can be fixed and resubmitted. If the batch would push the account over its property quota, the entire batch is rejected with 403 — never partially imported. " +
+  `Validate the file's size on the client before uploading: above ${MAX_REQUEST_BODY_BYTES / (1024 * 1024)} MB the request is cut by the runtime before this endpoint's own validation ever runs, and the response has no body — a browser client observes that as a network failure, not as a proper rejection.`;
 
 export class ImportPropertiesController implements Controller {
   path = "/import/properties";

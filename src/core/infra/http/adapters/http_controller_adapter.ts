@@ -276,6 +276,16 @@ function buildRateLimitKey(controller: Controller, callerIp: string): string {
   return `${controller.method}:${controller.path}:${callerIp}`;
 }
 
+async function drainRateLimitedRequestBody(request: Request): Promise<void> {
+  try {
+    await readBoundedBody(request.body, 0, MAX_REQUEST_BODY_BYTES);
+  } catch (error) {
+    if (!(error instanceof PayloadTooLargeError)) {
+      throw error;
+    }
+  }
+}
+
 function buildRateLimitedResponse(retryAfterSeconds: number): Response {
   return buildExplicitResponse(
     new ControllerHttpResponse({
@@ -375,6 +385,7 @@ export function BunHttpControllerAdapter(
           controller.rateLimitPolicy
         );
         if (!decision.allowed) {
+          await drainRateLimitedRequestBody(request);
           return corsMiddleware.addCorsHeaders(
             buildRateLimitedResponse(decision.retryAfterSeconds),
             request.headers.get("Origin"),
