@@ -1,12 +1,8 @@
-import { z } from "zod";
 import type { MarkNotificationReadUseCase } from "../../application/use_case/mark_notification_read";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
+import { markNotificationReadInput } from "../schema/mark_notification_read.schema";
 
-export const inputSchema = {
-  notification_id: z
-    .uuidv4("Notification ID must be a valid UUID")
-    .describe("The notification's id, as returned by list_notifications."),
-};
+export const inputSchema = markNotificationReadInput;
 
 export function makeMarkNotificationReadTool(
   useCase: MarkNotificationReadUseCase

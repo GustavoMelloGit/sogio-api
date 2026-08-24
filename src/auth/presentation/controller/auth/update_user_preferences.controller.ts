@@ -13,16 +13,11 @@ import {
   responseFromZod,
   validationErrorResponse,
 } from "../../../../core/infra/http/swagger/schema_helpers";
-import {
-  localeSchema,
-  timeZoneSchema,
-} from "../../../../core/domain/locale/locale";
+import { localeSchema } from "../../../../core/domain/locale/locale";
+import { updateUserPreferencesInput } from "../../schema/update_user_preferences.schema";
 
 const inputSchema = z
-  .object({
-    locale: localeSchema.optional(),
-    time_zone: timeZoneSchema.optional(),
-  })
+  .object(updateUserPreferencesInput)
   .refine(
     input => input.locale !== undefined || input.time_zone !== undefined,
     "At least one preference must be provided"
