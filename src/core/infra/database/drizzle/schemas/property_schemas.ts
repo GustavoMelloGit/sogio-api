@@ -1,5 +1,4 @@
 import {
-  pgEnum,
   pgTable,
   varchar,
   uuid,
@@ -64,18 +63,13 @@ export const propertiesRelations = relations(
   }),
 );
 
-export const calendarSyncPlatformsEnum = pgEnum("calendar_sync_platforms", [
-  "AIRBNB",
-  "BOOKING",
-]);
-
 export const externalBookingSources = pgTable("external_booking_sources", {
   ...baseSchema,
   property_id: uuid()
     .references(() => propertiesTable.id)
     .notNull(),
-  platform_name: calendarSyncPlatformsEnum().notNull(),
-  sync_url: varchar({ length: 512 }).notNull(),
+  platform_name: varchar({ length: 50 }).notNull(),
+  sync_url: varchar({ length: 2048 }).notNull(),
 });
 
 export const externalBookingSourcesRelations = relations(

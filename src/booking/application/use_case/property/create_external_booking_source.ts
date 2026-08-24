@@ -6,7 +6,7 @@ import type { BookingPropertyRepository } from "../../../domain/repository/booki
 
 type Input = {
   property_id: string;
-  platform_name: "AIRBNB" | "BOOKING";
+  platform_name: string;
   sync_url: string;
   user_id: string;
 };
@@ -14,7 +14,7 @@ type Input = {
 type Output = {
   id: string;
   property_id: string;
-  platform_name: "AIRBNB" | "BOOKING";
+  platform_name: string;
   sync_url: string;
 };
 

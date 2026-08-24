@@ -95,10 +95,70 @@ describe("create_external_booking_source tool", () => {
     expect(rows[0]?.sync_url).toBe(SYNC_URL);
   });
 
-  it("rejects a platform outside the closed vocabulary before the use case is invoked", () => {
+  it("registers a calendar for a platform outside the known list, like VRBO", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao@sogio.dev",
+      password: "password123",
+    });
+    const property = await createPropertyFixture({ userId: user.id });
+
+    const registeredTool = registerCreateExternalBookingSourceTool(user);
+    const result = await callTool(
+      registeredTool,
+      {
+        property_id: property.id,
+        platform_name: "VRBO",
+        sync_url: SYNC_URL,
+      },
+      makeExtra()
+    );
+
+    expect(result.isError).toBeUndefined();
+
+    const rows = await db
+      .select()
+      .from(externalBookingSources)
+      .where(eq(externalBookingSources.property_id, property.id));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.platform_name).toBe("VRBO");
+  });
+
+  it("normalizes a lowercase platform name to uppercase in the database", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao@sogio.dev",
+      password: "password123",
+    });
+    const property = await createPropertyFixture({ userId: user.id });
+
+    const registeredTool = registerCreateExternalBookingSourceTool(user);
+    const result = await callTool(
+      registeredTool,
+      {
+        property_id: property.id,
+        platform_name: "vrbo",
+        sync_url: SYNC_URL,
+      },
+      makeExtra()
+    );
+
+    expect(result.isError).toBeUndefined();
+
+    const rows = await db
+      .select()
+      .from(externalBookingSources)
+      .where(eq(externalBookingSources.property_id, property.id));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.platform_name).toBe("VRBO");
+  });
+
+  it("rejects a platform name with an illegal character before the use case runs", () => {
     const parsed = z.object(inputSchema).safeParse({
       property_id: crypto.randomUUID(),
-      platform_name: "VRBO",
+      platform_name: "VRBO!",
       sync_url: SYNC_URL,
     });
 

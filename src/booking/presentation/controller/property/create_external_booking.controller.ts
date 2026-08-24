@@ -13,9 +13,27 @@ import {
   responseFromZod,
   validationErrorResponse,
 } from "../../../../core/infra/http/swagger/schema_helpers";
+import { KNOWN_EXTERNAL_BOOKING_PLATFORMS } from "../../../domain/entity/external_booking_source";
+
+const PLATFORM_NAME_DESCRIPTION =
+  "Name of the external platform the calendar comes from. Any provider that " +
+  "publishes an iCal feed works, not just a fixed list. Known examples: " +
+  KNOWN_EXTERNAL_BOOKING_PLATFORMS.join(", ") +
+  ". Stored as an uppercase slug: the value is normalized (trimmed, " +
+  "uppercased, spaces/hyphens collapsed to underscores) before being saved.";
+
+const platformNameSchema = z
+  .string()
+  .max(50)
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9 _-]{1,49}$/,
+    "Platform name must be 2-50 characters, starting with a letter or " +
+      "digit, using only letters, digits, spaces, underscores or hyphens"
+  )
+  .describe(PLATFORM_NAME_DESCRIPTION);
 
 const inputSchema = z.object({
-  platform_name: z.enum(["AIRBNB", "BOOKING"]),
+  platform_name: platformNameSchema,
   sync_url: z.url().max(2048, "Sync URL must be at most 2048 characters"),
   property_id: z.uuid("Property ID must be a valid UUID"),
 });
@@ -23,7 +41,7 @@ const inputSchema = z.object({
 const outputSchema = z.object({
   id: z.uuid(),
   property_id: z.uuid(),
-  platform_name: z.enum(["AIRBNB", "BOOKING"]),
+  platform_name: z.string(),
   sync_url: z.url(),
 });
 
@@ -37,7 +55,8 @@ export class CreateExternalBookingSourceController implements Controller {
   openApiSpec: OpenApiOperation = {
     summary: "Create external booking source",
     description:
-      "Registers a calendar sync URL from an external platform (Airbnb, Booking) for a property.",
+      "Registers a calendar sync URL from an external platform for a " +
+      "property. Any provider that publishes an iCal feed works.",
     tags: ["Booking"],
     parameters: [
       {
