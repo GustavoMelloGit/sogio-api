@@ -146,3 +146,30 @@ Schemas de **saída**. O `outputSchema` do controller existe só para o `/docs`;
 - **R-1 — Tamanho da PR sobre uma stack de quatro.** São ~60 arquivos tocados em cima de `external-calendar-providers`. Qualquer rebase da stack abaixo é caro. Mitigação: as tasks 3–6 são por BC e podem virar commits separados, revisáveis um a um; se ficar grande demais, a task 6 (Grupo G, quase mecânica) sai para uma PR seguinte.
 - **R-2 — `.transform()` no shape compartilhado degrada o `/docs`.** `bodyFromZod` chama `z.toJSONSchema(..., { unrepresentable: "any" })`; campos com `.transform()` podem sair como `any` no OpenAPI. Já acontece hoje em alguns controllers, mas o alcance aumenta. Verificar o `/docs` gerado ao final da task 9.
 - **R-3 — Duas mudanças estreitam contrato HTTP.** `tenant.name` (2 → 3 caracteres) e `list_tenants.query` (sem teto → 100). A primeira só troca um 500 por um 422; a segunda fecha uma entrada sem limite. **Aceito pelo usuário em 2026-08-24** — as duas entram.
+
+---
+
+## Resultado da execução (2026-08-24)
+
+Entregue nesta branch, `share-io-schemas`, sobre `external-calendar-providers`. Verificação final: `bun run typecheck`, `bun run lint:check` e `bun run format:check` limpos; `bun run test` com **823 passando, 0 falhando**.
+
+### O que mudou em relação ao plano
+
+**A regra de lint precisou ser estreitada.** Ligada como escrita, ela acusava 21 pontos, e boa parte era defeito dela: um literal cujos valores são **todos importados** — `{ q: tenantSearchQuery }`, ou um schema de registro que só encadeia `.describe()` nos campos do próprio caso de uso — não declara contrato nenhum, é justamente o mecanismo aprovado de D-5. Hoje ela só reporta literal que declara uma cadeia Zod própria.
+
+**A lista de superfícies de transporte único ficou explícita**, em `SINGLE_TRANSPORT_SURFACES` (`eslint.config.js`), em vez de silenciada arquivo a arquivo — o projeto proíbe comentário no código, então `eslint-disable` inline não era opção, e o resultado é melhor: a lista espelha as exceções de MCP que o `CLAUDE.md` já documenta, e uma rota nova sem tool passa a ter que se justificar ali. Ela cobre o BC `backoffice` inteiro, as rotas de credencial e de OAuth, as sessões de pagamento hospedadas, o link público de estadia, e as três tools de importação — cujo `records` é envelope de transporte, sem campo correspondente no HTTP, porque a rota CSV recebe stream.
+
+**Duas divergências que o mapeamento não tinha visto:**
+
+- **`import_properties.images` não pode ser compartilhado.** No caso de uso o campo é uma string separada por `|`, porque um registro de CSV é todo string; reusá-lo na tool publicaria `images` à IA como texto em vez de lista. O campo continua declarado por canal; os outros nove do registro são o mesmo objeto Zod.
+- **`import_ledger_entries.property_id` usava `z.uuidv4()` no caso de uso contra `z.uuid()` na tool** — resolvido para `z.uuid()`, consistente com o Grupo C.
+
+**As mensagens de validação foram preservadas, e isso virou regra.** A extração pegou a versão da tool MCP de cada campo, que nunca carregou as mensagens Zod customizadas que os controllers publicavam (`"Amount must be greater than 0"`). Perdê-las degrada o corpo do 422 em silêncio; e uma IA lê mensagem de erro tão bem quanto uma pessoa. Elas ficam no shape compartilhado, restatadas contra a constante de `domain` quando o limite mudou.
+
+**A regra "pelo menos uma preferência" de `update_user_preferences` não entrou no shape.** Ela restringe o objeto inteiro, não um campo, então não cabe num `z.ZodRawShape` — cada consumidor a aplica do próprio jeito, sem duplicar campo nenhum.
+
+**`get_me` é a única tool sem caso de uso atrás**: ela responde a partir do próprio `User` autenticado. Está listada no teste de contrato, não inferida, para que uma segunda não apareça despercebida.
+
+### O que o teste de contrato prova, e o que não prova
+
+`tests/core/presentation_input_contract.test.ts` prova o que a lint não consegue: que os dois transportes de um caso de uso importam **o mesmo módulo**, e que todo campo compartilhado tem `.describe()`. Ele **não** compara valores campo a campo — não precisa: uma vez que os dois lados leem a mesma declaração, a igualdade de valores é verdadeira por construção, e é essa construção que o teste tranca. Verificado como não-vacuoso: desfazer o import de um controller faz o teste falhar nomeando o par.
