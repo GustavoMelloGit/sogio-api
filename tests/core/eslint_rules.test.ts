@@ -5,6 +5,7 @@ import { zodIntBounds } from "../../eslint-rules/zod_int_bounds.js";
 import { zodStringMax } from "../../eslint-rules/zod_string_max.js";
 import { handlerOnlyEventHandlers } from "../../eslint-rules/handler_only_event_handlers.js";
 import { serviceOnlyServiceObjects } from "../../eslint-rules/service_only_service_objects.js";
+import { noInlineInputSchema } from "../../eslint-rules/no_inline_input_schema.js";
 import tsParser from "@typescript-eslint/parser";
 
 const ruleTester = new RuleTester({
@@ -111,6 +112,40 @@ describe("sogio/zod-string-max", () => {
         {
           code: "const inputSchema = z.object({ name: z.string().trim() });",
           errors: [{ messageId: "missingMax" }],
+        },
+      ],
+    });
+  });
+});
+
+describe("sogio/no-inline-input-schema", () => {
+  it("requires input schemas to be imported from presentation/schema/", () => {
+    ruleTester.run("no-inline-input-schema", noInlineInputSchema as never, {
+      valid: [
+        "const inputSchema = z.object(createPropertyInput);",
+        "const inputSchema = z.object(bookStayInput).extend({ check_in: z.coerce.date() });",
+        "const inputSchema = z.object(bookStayInput).omit({ property_id: true });",
+        "const inputSchema = createPropertyInputSchema;",
+        "const inputSchema = { ...createPropertyInput };",
+        "const outputSchema = z.object({ id: z.string() });",
+        "const addressSchema = z.object({ street: z.string() });",
+      ],
+      invalid: [
+        {
+          code: "const inputSchema = z.object({ name: z.string() });",
+          errors: [{ messageId: "inlineInputSchema" }],
+        },
+        {
+          code: "const inputSchema = { name: z.string() };",
+          errors: [{ messageId: "inlineInputSchema" }],
+        },
+        {
+          code: "export const inputSchema = { name: z.string().max(10) };",
+          errors: [{ messageId: "inlineInputSchema" }],
+        },
+        {
+          code: "const recordSchema = z.object({ price: z.number() });",
+          errors: [{ messageId: "inlineInputSchema" }],
         },
       ],
     });
