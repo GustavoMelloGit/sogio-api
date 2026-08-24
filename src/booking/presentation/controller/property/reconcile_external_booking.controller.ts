@@ -14,11 +14,11 @@ import {
 
 const outputSchema = z.array(
   z.object({
-    start: z.string().datetime(),
-    end: z.string().datetime(),
+    start: z.iso.datetime(),
+    end: z.iso.datetime(),
     sourcePlatform: z.enum(["AIRBNB", "BOOKING"]),
     property: z.object({
-      id: z.string().uuid(),
+      id: z.uuid(),
       name: z.string(),
     }),
   })

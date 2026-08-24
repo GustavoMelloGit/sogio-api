@@ -14,12 +14,12 @@ import type { ListConnectedAppsUseCase } from "../../../application/use_case/lis
 
 const outputSchema = z.array(
   z.object({
-    consent_id: z.string().uuid(),
+    consent_id: z.uuid(),
     app_display_name: z.string(),
     app_display_name_verified: z.literal(false),
     redirect_hosts: z.array(z.string()),
-    granted_at: z.string().datetime(),
-    last_used_at: z.string().datetime(),
+    granted_at: z.iso.datetime(),
+    last_used_at: z.iso.datetime(),
   })
 );
 

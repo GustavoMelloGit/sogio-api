@@ -17,7 +17,7 @@ const inputSchema = z.object({
 });
 
 const outputSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   name: z.string(),
   capacity: z.number().int(),
   images: z.array(z.string()),
@@ -31,9 +31,9 @@ const outputSchema = z.object({
     country: z.string(),
     complement: z.string(),
   }),
-  user_id: z.string().uuid(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  user_id: z.uuid(),
+  created_at: z.iso.datetime(),
+  updated_at: z.iso.datetime(),
 });
 
 type Input = z.infer<typeof inputSchema>;

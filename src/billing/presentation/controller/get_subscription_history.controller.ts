@@ -22,7 +22,7 @@ import {
 const inputSchema = z.object(paginationFields);
 
 const subscriptionHistoryEntryOutputSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   type: z.enum([
     "started",
     "plan_changed",
@@ -31,11 +31,11 @@ const subscriptionHistoryEntryOutputSchema = z.object({
     "renewed",
   ]),
   resulting_status: z.enum(["trialing", "active", "past_due", "canceled"]),
-  plan_id: z.string().uuid(),
+  plan_id: z.uuid(),
   plan_code: z.string(),
   plan_name: z.string(),
-  occurred_at: z.string().datetime(),
-  access_until: z.string().datetime().nullable(),
+  occurred_at: z.iso.datetime(),
+  access_until: z.iso.datetime().nullable(),
   reason: z.string().nullable(),
 });
 

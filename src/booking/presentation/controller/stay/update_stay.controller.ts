@@ -31,13 +31,13 @@ const inputSchema = z.object({
 });
 
 const outputSchema = z.object({
-  id: z.string().uuid(),
-  check_in: z.string().datetime(),
-  check_out: z.string().datetime(),
+  id: z.uuid(),
+  check_in: z.iso.datetime(),
+  check_out: z.iso.datetime(),
   guests: z.number().int(),
   entrance_code: z.string(),
   price: z.number().int().describe("Price in cents"),
-  updated_at: z.string().datetime(),
+  updated_at: z.iso.datetime(),
 });
 
 type Input = z.infer<typeof inputSchema>;

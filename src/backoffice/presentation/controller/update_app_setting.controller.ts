@@ -24,13 +24,13 @@ const inputSchema = z
   .strict();
 
 const outputSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   key: z.string(),
   value: z.unknown(),
   type: z.enum(["string", "number", "boolean", "json"]),
   description: z.string().nullable(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  created_at: z.iso.datetime(),
+  updated_at: z.iso.datetime(),
 });
 
 type Input = z.infer<typeof inputSchema>;

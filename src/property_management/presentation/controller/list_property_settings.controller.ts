@@ -28,14 +28,14 @@ const inputSchema = z
   .strict();
 
 const propertySettingOutputSchema = z.object({
-  id: z.string().uuid(),
-  property_id: z.string().uuid(),
+  id: z.uuid(),
+  property_id: z.uuid(),
   key: z.string(),
   value: z.unknown(),
   type: settingTypeSchema,
   description: z.string().nullable(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  created_at: z.iso.datetime(),
+  updated_at: z.iso.datetime(),
 });
 
 const outputSchema = paginatedOutputSchema(propertySettingOutputSchema);

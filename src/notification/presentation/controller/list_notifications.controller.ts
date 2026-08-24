@@ -22,12 +22,12 @@ import {
 const inputSchema = z.object(paginationFields);
 
 const notificationOutputSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   type: z.string(),
   title: z.string(),
   body: z.string(),
-  created_at: z.string().datetime(),
-  read_at: z.string().datetime().nullable(),
+  created_at: z.iso.datetime(),
+  read_at: z.iso.datetime().nullable(),
 });
 
 const outputSchema = paginatedOutputSchema(notificationOutputSchema).extend({

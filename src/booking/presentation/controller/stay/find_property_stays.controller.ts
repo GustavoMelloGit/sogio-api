@@ -32,22 +32,22 @@ const inputSchema = z
   });
 
 const stayItemOutputSchema = z.object({
-  id: z.string().uuid(),
-  check_in: z.string().datetime(),
-  check_out: z.string().datetime(),
+  id: z.uuid(),
+  check_in: z.iso.datetime(),
+  check_out: z.iso.datetime(),
   entrance_code: z.string(),
   guests: z.number().int(),
   price: z.number().int().describe("Price in cents"),
   source: z.string(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  created_at: z.iso.datetime(),
+  updated_at: z.iso.datetime(),
   tenant: z.object({
-    id: z.string().uuid(),
+    id: z.uuid(),
     name: z.string(),
     phone: z.string(),
     sex: z.enum(["MALE", "FEMALE", "OTHER"]),
-    created_at: z.string().datetime(),
-    updated_at: z.string().datetime(),
+    created_at: z.iso.datetime(),
+    updated_at: z.iso.datetime(),
   }),
 });
 

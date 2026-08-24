@@ -13,8 +13,7 @@ import {
 } from "../../../../core/infra/http/swagger/schema_helpers";
 
 const inputSchema = z.object({
-  date: z
-    .string()
+  date: z.iso
     .date()
     .transform(s => new Date(`${s}T00:00:00.000Z`))
     .optional(),
@@ -28,10 +27,10 @@ const outputSchema = z.object({
   }),
   upcoming_stays: z.array(
     z.object({
-      id: z.string().uuid(),
-      property_id: z.string().uuid(),
+      id: z.uuid(),
+      property_id: z.uuid(),
       property_name: z.string(),
-      check_in: z.string().datetime(),
+      check_in: z.iso.datetime(),
       tenant: z.object({
         name: z.string(),
       }),

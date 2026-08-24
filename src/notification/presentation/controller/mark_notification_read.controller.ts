@@ -19,8 +19,8 @@ const inputSchema = z
   .strict();
 
 const outputSchema = z.object({
-  id: z.string().uuid(),
-  read_at: z.string().datetime(),
+  id: z.uuid(),
+  read_at: z.iso.datetime(),
 });
 
 type Input = z.infer<typeof inputSchema>;

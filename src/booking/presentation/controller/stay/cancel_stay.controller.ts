@@ -17,8 +17,8 @@ const inputSchema = z.object({
 });
 
 const outputSchema = z.object({
-  id: z.string().uuid(),
-  cancelled_at: z.string().datetime(),
+  id: z.uuid(),
+  cancelled_at: z.iso.datetime(),
 });
 
 type Input = z.infer<typeof inputSchema>;

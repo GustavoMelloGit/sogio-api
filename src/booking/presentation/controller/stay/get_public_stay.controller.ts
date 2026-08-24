@@ -16,8 +16,8 @@ const inputSchema = z.object({
 });
 
 const outputSchema = z.object({
-  check_in: z.string().datetime(),
-  check_out: z.string().datetime(),
+  check_in: z.iso.datetime(),
+  check_out: z.iso.datetime(),
   entrance_code: z.string(),
   tenant: z.object({
     name: z.string(),

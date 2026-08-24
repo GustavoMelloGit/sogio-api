@@ -12,13 +12,13 @@ import {
 } from "../../../../core/infra/http/swagger/schema_helpers";
 
 const outputSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   name: z.string(),
-  email: z.string().email(),
+  email: z.email(),
   locale: z.string(),
   time_zone: z.string(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  created_at: z.iso.datetime(),
+  updated_at: z.iso.datetime(),
 });
 
 export class GetUserController implements Controller {

@@ -14,7 +14,7 @@ import type { User } from "../../../../auth/domain/entity/user";
 
 const outputSchema = z.array(
   z.object({
-    id: z.string().uuid(),
+    id: z.uuid(),
     name: z.string(),
     phone: z.string(),
     sex: z.enum(["MALE", "FEMALE", "OTHER"]),

@@ -27,13 +27,13 @@ const inputSchema = z.object({
 });
 
 const financialMovementOutputSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   amount: z.number().int().describe("Amount in cents (negative = expense)"),
   description: z.string().nullable(),
   category: z.string(),
-  property_id: z.string().uuid(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  property_id: z.uuid(),
+  created_at: z.iso.datetime(),
+  updated_at: z.iso.datetime(),
 });
 
 const outputSchema = paginatedOutputSchema(financialMovementOutputSchema);

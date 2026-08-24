@@ -17,14 +17,14 @@ import {
 const inputSchema = z.object({
   platform_name: z.enum(["AIRBNB", "BOOKING"]),
   sync_url: z.url().max(2048, "Sync URL must be at most 2048 characters"),
-  property_id: z.string().uuid("Property ID must be a valid UUID"),
+  property_id: z.uuid("Property ID must be a valid UUID"),
 });
 
 const outputSchema = z.object({
-  id: z.string().uuid(),
-  property_id: z.string().uuid(),
+  id: z.uuid(),
+  property_id: z.uuid(),
   platform_name: z.enum(["AIRBNB", "BOOKING"]),
-  sync_url: z.string().url(),
+  sync_url: z.url(),
 });
 
 type Input = z.infer<typeof inputSchema>;
