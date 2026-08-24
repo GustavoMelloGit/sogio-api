@@ -10,6 +10,10 @@ export type ClaimedNotification = {
   recipient: NotificationRecipient;
 };
 
+export type NotificationInbox = PaginatedResult<Notification> & {
+  unread_count: number;
+};
+
 export interface NotificationRepository {
   save(notification: Notification): Promise<void>;
   saveMany(notifications: Notification[]): Promise<void>;
@@ -19,4 +23,8 @@ export interface NotificationRepository {
     userId: string,
     pagination: PaginationInput
   ): Promise<PaginatedResult<Notification>>;
+  inboxOfUser(
+    userId: string,
+    pagination: PaginationInput
+  ): Promise<NotificationInbox>;
 }

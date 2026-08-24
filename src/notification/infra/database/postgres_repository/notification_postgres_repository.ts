@@ -11,6 +11,7 @@ import {
 } from "../../../domain/entity/notification";
 import type {
   ClaimedNotification,
+  NotificationInbox,
   NotificationRepository,
 } from "../../../domain/repository/notification_repository";
 import {
@@ -24,6 +25,7 @@ import {
   isSupportedLocale,
   isSupportedTimeZone,
 } from "../../../../core/domain/locale/locale";
+import { NOTIFICATION_TYPE_KEYS } from "../../../domain/notification_type/notification_type_registry";
 
 const CLAIM_LEASE_MS = 5 * 60 * 1000;
 
@@ -142,7 +144,10 @@ export class NotificationPostgresRepository implements NotificationRepository {
         .select()
         .from(notificationsTable)
         .where(whereClause)
-        .orderBy(desc(notificationsTable.created_at))
+        .orderBy(
+          desc(notificationsTable.created_at),
+          desc(notificationsTable.id)
+        )
         .limit(pagination.limit)
         .offset((pagination.page - 1) * pagination.limit),
       currentExecutor()
@@ -160,6 +165,51 @@ export class NotificationPostgresRepository implements NotificationRepository {
         pagination.limit,
         totalResult[0]?.value ?? 0
       ),
+    };
+  }
+
+  async inboxOfUser(
+    userId: string,
+    pagination: PaginationInput
+  ): Promise<NotificationInbox> {
+    const predicate = and(
+      eq(notificationsTable.user_id, userId),
+      eq(notificationsTable.status, "sent"),
+      inArray(notificationsTable.type, NOTIFICATION_TYPE_KEYS),
+      isNull(notificationsTable.deleted_at)
+    );
+
+    const [rows, totalResult, unreadResult] = await Promise.all([
+      currentExecutor()
+        .select()
+        .from(notificationsTable)
+        .where(predicate)
+        .orderBy(
+          desc(notificationsTable.created_at),
+          desc(notificationsTable.id)
+        )
+        .limit(pagination.limit)
+        .offset((pagination.page - 1) * pagination.limit),
+      currentExecutor()
+        .select({ value: count() })
+        .from(notificationsTable)
+        .where(predicate),
+      currentExecutor()
+        .select({ value: count() })
+        .from(notificationsTable)
+        .where(and(predicate, isNull(notificationsTable.read_at))),
+    ]);
+
+    return {
+      data: rows.map(row =>
+        Notification.reconstitute(notificationSchema.parse(row))
+      ),
+      pagination: calculatePaginationMetadata(
+        pagination.page,
+        pagination.limit,
+        totalResult[0]?.value ?? 0
+      ),
+      unread_count: unreadResult[0]?.value ?? 0,
     };
   }
 }

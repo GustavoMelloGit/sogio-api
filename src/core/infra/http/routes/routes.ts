@@ -365,6 +365,14 @@ const notificationControllers: Route[] = [
     authenticated: true,
     controller: notificationDi.makeUpdateNotificationPreferencesController(),
   },
+  {
+    authenticated: true,
+    controller: notificationDi.makeListNotificationsController(),
+  },
+  {
+    authenticated: true,
+    controller: notificationDi.makeMarkNotificationReadController(),
+  },
 ];
 
 const controllers = [
