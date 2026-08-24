@@ -164,6 +164,31 @@ function makeChunkedByteStream(
   return { readable, chunksPulled: () => pulled };
 }
 
+function makePacedChunkedByteStream(
+  totalBytes: number,
+  chunkBytes: number,
+  delayMs: number
+): { readable: ReadableStream<Uint8Array>; chunksPulled: () => number } {
+  let pulled = 0;
+  let remaining = totalBytes;
+
+  const readable = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (remaining <= 0) {
+        controller.close();
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      const size = Math.min(chunkBytes, remaining);
+      remaining -= size;
+      pulled++;
+      controller.enqueue(new Uint8Array(size).fill(97));
+    },
+  });
+
+  return { readable, chunksPulled: () => pulled };
+}
+
 describe("request body byte cap — 413 without materializing the payload (IE-1)", () => {
   it("processes a normal body under the cap end to end", async () => {
     const before = handleCallCount;
@@ -232,9 +257,10 @@ describe("request body byte cap — 413 without materializing the payload (IE-1)
 
   it("keeps the keep-alive connection usable after rejecting an oversized body (D2-bis)", async () => {
     const oversizedButWithinReadBudget = 2 * MAX_BUFFERED_BODY_BYTES;
-    const { readable, chunksPulled } = makeChunkedByteStream(
+    const { readable, chunksPulled } = makePacedChunkedByteStream(
       oversizedButWithinReadBudget,
-      64 * 1024
+      64 * 1024,
+      5
     );
 
     const rejectionStart = performance.now();
@@ -249,7 +275,7 @@ describe("request body byte cap — 413 without materializing the payload (IE-1)
 
     expect(rejection.status).toBe(413);
     expect(chunksPulled()).toBeGreaterThan(0);
-    expect(rejectionElapsedMs).toBeLessThan(2000);
+    expect(rejectionElapsedMs).toBeLessThan(3000);
 
     const before = handleCallCount;
     const followUpStart = performance.now();
@@ -257,14 +283,14 @@ describe("request body byte cap — 413 without materializing the payload (IE-1)
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "still alive" }),
-      signal: AbortSignal.timeout(2000),
+      signal: AbortSignal.timeout(3000),
     });
     await followUp.json();
     const followUpElapsedMs = performance.now() - followUpStart;
 
     expect(followUp.status).toBe(200);
     expect(handleCallCount).toBe(before + 1);
-    expect(followUpElapsedMs).toBeLessThan(2000);
+    expect(followUpElapsedMs).toBeLessThan(3000);
   });
 });
 

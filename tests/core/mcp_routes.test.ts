@@ -366,40 +366,38 @@ describe("POST /mcp", () => {
     expect(elapsedMs).toBeLessThan(CONNECTION_SURVIVAL_TIMEOUT_MS);
   });
 
-  it("serves a real MCP call quickly right after a 401 on a body within the buffer limit, on the same keep-alive connection", async () => {
+  it("rejects an oversized body with 413 before an invalid token ever gets checked, then serves the next MCP call quickly on the same connection", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
-      email: "joao.401-then-retry@sogio.dev",
+      email: "joao.413-before-401@sogio.dev",
       password: "password123",
     });
     const { accessToken: token } = await createMcpAccessTokenFixture({
       userId: user.id,
       resource: MCP_RESOURCE,
     });
+    const oversizedPadding = "x".repeat(MAX_BUFFERED_BODY_BYTES + 10_000);
 
-    const paddingLength = MAX_BUFFERED_BODY_BYTES - 4096;
-    const bodyWithinBufferLimit = JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/list",
-      params: { padding: "x".repeat(paddingLength) },
-    });
-
-    expect(bodyWithinBufferLimit.length).toBeGreaterThan(1_000_000);
-    expect(bodyWithinBufferLimit.length).toBeLessThan(MAX_BUFFERED_BODY_BYTES);
-
-    const unauthorized = await api("/mcp", {
+    const rejected = await api("/mcp", {
       method: "POST",
       headers: {
         Accept: "application/json, text/event-stream",
         Authorization: "Bearer not-a-real-token",
       },
-      body: bodyWithinBufferLimit,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: { padding: oversizedPadding },
+      }),
     });
-    const unauthorizedBody = (await unauthorized.json()) as OAuthErrorBody;
+    const rejectedBody = (await rejected.json()) as ToolResultErrorBody;
 
-    expect(unauthorized.status).toBe(401);
-    expect(unauthorizedBody.error).toBe("invalid_token");
+    expect(rejected.status).toBe(413);
+    expect(rejected.status).not.toBe(401);
+    expect(rejectedBody.content[0]?.text).toContain(
+      `Request body exceeds the maximum size of ${MAX_BUFFERED_BODY_BYTES} bytes`
+    );
 
     const CONNECTION_SURVIVAL_TIMEOUT_MS = 3_000;
     const start = performance.now();
