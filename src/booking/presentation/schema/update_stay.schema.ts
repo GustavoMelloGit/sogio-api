@@ -25,14 +25,20 @@ export const updateStayInput = {
   guests: z
     .number()
     .int()
-    .positive()
-    .max(MAX_PROPERTY_CAPACITY)
+    .positive("Guests must be greater than 0")
+    .max(
+      MAX_PROPERTY_CAPACITY,
+      `Guests must be at most ${MAX_PROPERTY_CAPACITY}`
+    )
     .optional()
     .describe("New number of guests. Omit to keep the current one."),
   price: z
     .int()
-    .positive()
-    .max(MAX_STAY_PRICE_IN_CENTS)
+    .positive("Price must be greater than 0")
+    .max(
+      MAX_STAY_PRICE_IN_CENTS,
+      `Price must be at most ${MAX_STAY_PRICE_IN_CENTS} cents`
+    )
     .optional()
     .describe(
       "New total stay price in cents, e.g. 100000 for R$ 1.000,00. Omit to keep the current one."

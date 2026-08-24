@@ -12,8 +12,11 @@ export const bookStayInput = {
   guests: z
     .number()
     .int()
-    .positive()
-    .max(MAX_PROPERTY_CAPACITY)
+    .positive("Guests must be greater than 0")
+    .max(
+      MAX_PROPERTY_CAPACITY,
+      `Guests must be at most ${MAX_PROPERTY_CAPACITY}`
+    )
     .describe("Number of guests staying."),
   check_in: z.iso
     .datetime({ offset: true })
@@ -29,8 +32,11 @@ export const bookStayInput = {
     ),
   price: z
     .int()
-    .nonnegative()
-    .max(MAX_STAY_PRICE_IN_CENTS)
+    .nonnegative("Price must be a non-negative integer representing cents")
+    .max(
+      MAX_STAY_PRICE_IN_CENTS,
+      `Price must be at most ${MAX_STAY_PRICE_IN_CENTS} cents`
+    )
     .describe(
       "Total stay price in cents, e.g. 100000 for R$ 1.000,00. Must be a non-negative integer."
     ),
@@ -44,8 +50,8 @@ export const bookStayInput = {
     .object({
       name: z
         .string()
-        .min(3)
-        .max(100)
+        .min(3, "Name must be at least 3 characters")
+        .max(100, "Name must be at most 100 characters")
         .describe("Full name of the guest staying at the property."),
       phone: z
         .string()

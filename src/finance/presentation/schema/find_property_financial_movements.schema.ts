@@ -3,7 +3,7 @@ import { paginationFields } from "../../../core/application/dto/pagination";
 
 export const findPropertyFinancialMovementsInput = {
   property_id: z
-    .uuid()
+    .uuid("Property ID must be a valid UUID")
     .describe(
       "ID of the property whose financial movements should be listed. Must be a property administered by the authenticated user."
     ),
