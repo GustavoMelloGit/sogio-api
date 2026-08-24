@@ -439,6 +439,7 @@ const handleMcpRequest = makeMcpRequestHandler({
   billingDi,
   propertyManagementDi,
   notificationDi,
+  tenantDi,
 });
 
 routeMap.set("/mcp", {

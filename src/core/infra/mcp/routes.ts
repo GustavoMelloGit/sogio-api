@@ -10,6 +10,7 @@ import type { PropertyManagementDi } from "../../../property_management/infra/di
 import type { BillingDi } from "../../../billing/infra/di/billing_di";
 import type { AuthDi } from "../../../auth/infra/di/auth_di";
 import type { NotificationDi } from "../../../notification/infra/di/notification_di";
+import type { TenantDi } from "../../../booking/infra/di/tenant_di";
 import { CapabilitySet } from "../../../billing/domain/capability/capability_set";
 import { ForbiddenError } from "../../application/error/forbidden_error";
 import { UnauthorizedError } from "../../application/error/unauthorized_error";
@@ -43,6 +44,7 @@ export type McpRouteDependencies = {
   propertyManagementDi: PropertyManagementDi;
   billingDi: BillingDi;
   notificationDi: NotificationDi;
+  tenantDi: TenantDi;
 };
 
 /**
@@ -133,6 +135,10 @@ export function makeMcpRequestHandler(
     dependencies.financeDi.makeRecordRevenueTool(),
     dependencies.stayDi.makeGetDashboardOverviewTool(),
     dependencies.billingDi.makeListPlansTool(),
+    dependencies.stayDi.makeGetStayTool(),
+    dependencies.stayDi.makeUpdateStayTool(),
+    dependencies.tenantDi.makeListTenantsTool(),
+    dependencies.propertyDi.makeCreateExternalBookingSourceTool(),
   ];
 
   return async function handleMcpRequest(request: Request): Promise<Response> {

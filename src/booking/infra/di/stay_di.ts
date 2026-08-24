@@ -17,6 +17,8 @@ import { GetDashboardOverviewController } from "../../presentation/controller/da
 import { makeCancelStayTool } from "../../presentation/mcp_tool/cancel_stay.mcp_tool";
 import { makeListStaysTool } from "../../presentation/mcp_tool/list_stays.mcp_tool";
 import { makeGetDashboardOverviewTool } from "../../presentation/mcp_tool/get_dashboard_overview.mcp_tool";
+import { makeGetStayTool } from "../../presentation/mcp_tool/get_stay.mcp_tool";
+import { makeUpdateStayTool } from "../../presentation/mcp_tool/update_stay.mcp_tool";
 import { StayPostgresRepository } from "../database/postgres_repository/stay_postgres_repository";
 import type { TenantRepository } from "../../domain/repository/tenant_repository";
 import { TenantPostgresRepository } from "../database/postgres_repository/tenant_postgres_repository";
@@ -160,5 +162,11 @@ export class StayDi {
   }
   makeGetDashboardOverviewTool() {
     return makeGetDashboardOverviewTool(this.makeGetDashboardOverviewUseCase());
+  }
+  makeGetStayTool() {
+    return makeGetStayTool(this.makeGetStayUseCase());
+  }
+  makeUpdateStayTool() {
+    return makeUpdateStayTool(this.makeUpdateStayUseCase());
   }
 }
