@@ -24,50 +24,49 @@ import type { ImportFailure } from "../../../core/application/import/import_fail
 import { CalendarDate } from "../../../core/domain/calendar/calendar_date";
 import { WallClockTime } from "../../../core/domain/calendar/wall_clock_time";
 
-const ledgerEntryImportRecordSchema = z
-  .object({
-    property_id: z.uuidv4("property_id must be a valid UUID"),
-    kind: z.enum(
-      ["expense", "revenue"],
-      "kind must be one of: expense, revenue"
+export const ledgerEntryImportRecordShape = {
+  property_id: z.uuid("property_id must be a valid UUID"),
+  kind: z.enum(["expense", "revenue"], "kind must be one of: expense, revenue"),
+  amount: z.coerce
+    .number()
+    .int("Amount must be an integer")
+    .positive("Amount must be a positive integer of cents")
+    .max(
+      MAX_LEDGER_AMOUNT_IN_CENTS,
+      `Amount must be at most ${MAX_LEDGER_AMOUNT_IN_CENTS} cents`
     ),
-    amount: z.coerce
-      .number()
-      .int("Amount must be an integer")
-      .positive("Amount must be a positive integer of cents")
-      .max(
-        MAX_LEDGER_AMOUNT_IN_CENTS,
-        `Amount must be at most ${MAX_LEDGER_AMOUNT_IN_CENTS} cents`
-      ),
-    category: z
-      .string()
-      .min(1, "Category is required")
-      .max(100, "Category must be at most 100 characters"),
-    description: z
-      .string()
-      .max(500, "Description must be at most 500 characters")
-      .optional()
-      .transform(value => (value && value.length > 0 ? value : null)),
-    occurred_at: z
-      .string()
-      .max(10, "occurred_at must be at most 10 characters")
-      .optional()
-      .transform((value, ctx) => {
-        if (!value || value.trim().length === 0) return undefined;
+  category: z
+    .string()
+    .min(1, "Category is required")
+    .max(100, "Category must be at most 100 characters"),
+  description: z
+    .string()
+    .max(500, "Description must be at most 500 characters")
+    .optional()
+    .transform(value => (value && value.length > 0 ? value : null)),
+  occurred_at: z
+    .string()
+    .max(10, "occurred_at must be at most 10 characters")
+    .optional()
+    .transform((value, ctx) => {
+      if (!value || value.trim().length === 0) return undefined;
 
-        const parsed = CalendarDate.parse(value);
-        if (!parsed) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message:
-              "occurred_at must be a valid date (YYYY-MM-DD or DD/MM/YYYY)",
-          });
-          return z.NEVER;
-        }
+      const parsed = CalendarDate.parse(value);
+      if (!parsed) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "occurred_at must be a valid date (YYYY-MM-DD or DD/MM/YYYY)",
+        });
+        return z.NEVER;
+      }
 
-        return parsed;
-      }),
-  })
+      return parsed;
+    }),
+} satisfies z.ZodRawShape;
+
+const ledgerEntryImportRecordSchema = z
+  .object(ledgerEntryImportRecordShape)
   .superRefine((data, ctx) => {
     if (data.kind !== "expense") return;
 

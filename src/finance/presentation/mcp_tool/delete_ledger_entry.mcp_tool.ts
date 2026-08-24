@@ -1,19 +1,8 @@
-import { z } from "zod";
 import type { DeleteLedgerEntryUseCase } from "../../application/use_case/delete_ledger_entry";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
+import { deleteLedgerEntryInput } from "../schema/delete_ledger_entry.schema";
 
-const inputSchema = {
-  property_id: z
-    .uuid()
-    .describe(
-      "ID of the property the ledger entry belongs to. Must be a property administered by the authenticated user."
-    ),
-  entry_id: z
-    .uuid()
-    .describe(
-      "ID of the ledger entry (financial movement) to delete. Can be obtained from the property's financial movements listing."
-    ),
-};
+const inputSchema = deleteLedgerEntryInput;
 
 export function makeDeleteLedgerEntryTool(
   useCase: DeleteLedgerEntryUseCase
