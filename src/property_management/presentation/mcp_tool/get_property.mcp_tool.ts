@@ -1,23 +1,15 @@
-import { z } from "zod";
 import type { FindPropertyUseCase } from "../../application/use_case/find_property";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
-
-const inputSchema = {
-  property_id: z
-    .uuid()
-    .describe(
-      "ID of the property to fetch. Must be a property administered by the authenticated user. Can be obtained via list_properties."
-    ),
-};
+import { findPropertyInput } from "../schema/find_property.schema";
 
 export function makeGetPropertyTool(
   useCase: FindPropertyUseCase
-): McpToolDefinition<typeof inputSchema> {
+): McpToolDefinition<typeof findPropertyInput> {
   return {
     name: "get_property",
     description:
       "Fetches a single property administered by the authenticated user, including its full address, capacity and images.",
-    inputSchema,
+    inputSchema: findPropertyInput,
     annotations: {
       readOnlyHint: true,
     },

@@ -12,6 +12,7 @@ import {
   errorResponse,
   noContentResponse,
 } from "../../../core/infra/http/swagger/schema_helpers";
+import { deletePropertySettingInput } from "../schema/delete_property_setting.schema";
 
 /** Per-IP limit on this write route, mirroring the auth delegated-access
  * controllers' pattern (see `RegisterAppController`). */
@@ -21,12 +22,7 @@ const RATE_LIMIT_POLICY: RateLimitPolicy = {
   maxAttempts: 30,
 };
 
-const inputSchema = z
-  .object({
-    property_id: z.uuidv4("Property ID must be a valid UUID"),
-    id: z.uuidv4("ID must be a valid UUID"),
-  })
-  .strict();
+const inputSchema = z.object(deletePropertySettingInput).strict();
 
 type Input = z.infer<typeof inputSchema>;
 

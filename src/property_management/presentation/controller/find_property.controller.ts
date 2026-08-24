@@ -11,10 +11,9 @@ import {
   errorResponse,
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
+import { findPropertyInput } from "../schema/find_property.schema";
 
-const inputSchema = z.object({
-  property_id: z.uuid(),
-});
+const inputSchema = z.object(findPropertyInput);
 
 const outputSchema = z.object({
   id: z.uuid(),

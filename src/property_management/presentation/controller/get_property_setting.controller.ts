@@ -12,13 +12,9 @@ import {
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
 import { settingTypeSchema } from "../../../core/domain/value_object/setting_value";
+import { getPropertySettingInput } from "../schema/get_property_setting.schema";
 
-const inputSchema = z
-  .object({
-    property_id: z.uuidv4("Property ID must be a valid UUID"),
-    id: z.uuidv4("ID must be a valid UUID"),
-  })
-  .strict();
+const inputSchema = z.object(getPropertySettingInput).strict();
 
 const outputSchema = z.object({
   id: z.uuid(),
