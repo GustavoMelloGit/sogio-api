@@ -9,8 +9,9 @@ import {
 import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
-  MAX_LIMIT,
-  MAX_PAGE,
+  paginatedOutputSchema,
+  paginationFields,
+  toPaginationInput,
 } from "../../../../core/application/dto/pagination";
 import type { OpenApiOperation } from "../../../../core/presentation/open_api/open_api_types";
 import {
@@ -23,18 +24,7 @@ const inputSchema = z
     property_id: z.uuid(),
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
-    page: z.coerce
-      .number()
-      .int()
-      .positive()
-      .max(MAX_PAGE)
-      .default(DEFAULT_PAGE),
-    limit: z.coerce
-      .number()
-      .int()
-      .positive()
-      .max(MAX_LIMIT)
-      .default(DEFAULT_LIMIT),
+    ...paginationFields,
   })
   .refine(data => !data.from || !data.to || data.from <= data.to, {
     message: "'from' must be less than or equal to 'to'",
@@ -61,17 +51,7 @@ const stayItemOutputSchema = z.object({
   }),
 });
 
-const outputSchema = z.object({
-  data: z.array(stayItemOutputSchema),
-  pagination: z.object({
-    page: z.number().int(),
-    limit: z.number().int(),
-    total: z.number().int(),
-    total_pages: z.number().int(),
-    has_next: z.boolean(),
-    has_previous: z.boolean(),
-  }),
-});
+const outputSchema = paginatedOutputSchema(stayItemOutputSchema);
 
 type Input = z.infer<typeof inputSchema>;
 
@@ -131,7 +111,7 @@ export class FindPropertyStaysController implements Controller {
     const output = await this.useCase.execute(
       {
         property_id: input.property_id,
-        pagination: { page: input.page, limit: input.limit },
+        pagination: toPaginationInput(input),
         filters: { from: input.from, to: input.to },
       },
       user

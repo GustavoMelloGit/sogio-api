@@ -9,8 +9,9 @@ import type { FindPropertyFinancialMovementsUseCase } from "../../application/us
 import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
-  MAX_LIMIT,
-  MAX_PAGE,
+  paginatedOutputSchema,
+  paginationFields,
+  toPaginationInput,
 } from "../../../core/application/dto/pagination";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
 import {
@@ -20,38 +21,22 @@ import {
 
 const inputSchema = z.object({
   property_id: z.uuidv4("Property ID must be a valid UUID"),
-  page: z.coerce.number().int().positive().max(MAX_PAGE).default(DEFAULT_PAGE),
-  limit: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(MAX_LIMIT)
-    .default(DEFAULT_LIMIT),
   start_date: z.coerce.date().optional(),
   end_date: z.coerce.date().optional(),
+  ...paginationFields,
 });
 
-const outputSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.string().uuid(),
-      amount: z.number().int().describe("Amount in cents (negative = expense)"),
-      description: z.string().nullable(),
-      category: z.string(),
-      property_id: z.string().uuid(),
-      created_at: z.string().datetime(),
-      updated_at: z.string().datetime(),
-    })
-  ),
-  pagination: z.object({
-    page: z.number().int(),
-    limit: z.number().int(),
-    total: z.number().int(),
-    total_pages: z.number().int(),
-    has_next: z.boolean(),
-    has_previous: z.boolean(),
-  }),
+const financialMovementOutputSchema = z.object({
+  id: z.string().uuid(),
+  amount: z.number().int().describe("Amount in cents (negative = expense)"),
+  description: z.string().nullable(),
+  category: z.string(),
+  property_id: z.string().uuid(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
 });
+
+const outputSchema = paginatedOutputSchema(financialMovementOutputSchema);
 
 type Input = z.infer<typeof inputSchema>;
 
@@ -116,7 +101,7 @@ export class FindPropertyFinancialMovementsController implements Controller {
     return this.useCase.execute(
       {
         propertyId: input.property_id,
-        pagination: { page: input.page, limit: input.limit },
+        pagination: toPaginationInput(input),
         dateFilter: {
           start_date: input.start_date,
           end_date: input.end_date,

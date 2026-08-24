@@ -13,48 +13,24 @@ import {
 import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
-  MAX_LIMIT,
-  MAX_PAGE,
+  paginatedOutputSchema,
+  paginationFields,
+  toPaginationInput,
 } from "../../../core/application/dto/pagination";
 
-const inputSchema = z
-  .object({
-    page: z.coerce
-      .number()
-      .int()
-      .positive()
-      .max(MAX_PAGE)
-      .default(DEFAULT_PAGE),
-    limit: z.coerce
-      .number()
-      .int()
-      .positive()
-      .max(MAX_LIMIT)
-      .default(DEFAULT_LIMIT),
-  })
-  .strict();
+const inputSchema = z.object(paginationFields).strict();
 
-const outputSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.string().uuid(),
-      key: z.string(),
-      value: z.unknown(),
-      type: z.enum(["string", "number", "boolean", "json"]),
-      description: z.string().nullable(),
-      created_at: z.string().datetime(),
-      updated_at: z.string().datetime(),
-    })
-  ),
-  pagination: z.object({
-    page: z.number().int(),
-    limit: z.number().int(),
-    total: z.number().int(),
-    total_pages: z.number().int(),
-    has_next: z.boolean(),
-    has_previous: z.boolean(),
-  }),
+const appSettingOutputSchema = z.object({
+  id: z.string().uuid(),
+  key: z.string(),
+  value: z.unknown(),
+  type: z.enum(["string", "number", "boolean", "json"]),
+  description: z.string().nullable(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
 });
+
+const outputSchema = paginatedOutputSchema(appSettingOutputSchema);
 
 type Input = z.infer<typeof inputSchema>;
 
@@ -114,7 +90,7 @@ export class ListAppSettingsController implements Controller {
     const input = request.body as Input;
 
     return this.useCase.execute({
-      pagination: { page: input.page, limit: input.limit },
+      pagination: toPaginationInput(input),
     });
   }
 }

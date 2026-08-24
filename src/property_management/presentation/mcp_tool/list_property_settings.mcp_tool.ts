@@ -1,9 +1,7 @@
 import { z } from "zod";
 import {
-  DEFAULT_LIMIT,
-  DEFAULT_PAGE,
-  MAX_LIMIT,
-  MAX_PAGE,
+  paginationFields,
+  toPaginationInput,
 } from "../../../core/application/dto/pagination";
 import type { ListPropertySettingsUseCase } from "../../application/use_case/list_property_settings";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
@@ -14,20 +12,7 @@ const inputSchema = {
     .describe(
       "ID of the property whose settings should be listed. Must be a property administered by the authenticated user."
     ),
-  page: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(MAX_PAGE)
-    .default(DEFAULT_PAGE)
-    .describe("Page number to retrieve, starting at 1."),
-  limit: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(MAX_LIMIT)
-    .default(DEFAULT_LIMIT)
-    .describe(`Number of settings per page, up to ${MAX_LIMIT}.`),
+  ...paginationFields,
 };
 
 /**
@@ -57,7 +42,7 @@ export function makeListPropertySettingsTool(
       return useCase.execute(
         {
           property_id: input.property_id,
-          pagination: { page: input.page, limit: input.limit },
+          pagination: toPaginationInput(input),
         },
         user
       );

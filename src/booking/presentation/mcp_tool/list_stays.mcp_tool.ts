@@ -1,9 +1,7 @@
 import { z } from "zod";
 import {
-  DEFAULT_LIMIT,
-  DEFAULT_PAGE,
-  MAX_LIMIT,
-  MAX_PAGE,
+  paginationFields,
+  toPaginationInput,
 } from "../../../core/application/dto/pagination";
 import type { FindPropertyStaysUseCase } from "../../application/use_case/stay/find_property_stays";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
@@ -28,20 +26,7 @@ const inputSchema = {
     .describe(
       "Only include stays whose check-in is on or before this instant. ISO-8601 date-time with an explicit UTC offset, e.g. 2026-08-10T12:00:00Z or 2026-08-10T12:00:00-03:00."
     ),
-  page: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(MAX_PAGE)
-    .default(DEFAULT_PAGE)
-    .describe("Page number to retrieve, starting at 1."),
-  limit: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(MAX_LIMIT)
-    .default(DEFAULT_LIMIT)
-    .describe(`Number of stays per page, up to ${MAX_LIMIT}.`),
+  ...paginationFields,
 };
 
 /**
@@ -70,7 +55,7 @@ export function makeListStaysTool(
       const { data, pagination } = await useCase.execute(
         {
           property_id: input.property_id,
-          pagination: { page: input.page, limit: input.limit },
+          pagination: toPaginationInput(input),
           filters: { from: input.from, to: input.to },
         },
         user
