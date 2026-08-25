@@ -9,6 +9,8 @@ import {
 import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
+  paginatedOutputSchema,
+  toPaginationInput,
 } from "../../../../core/application/dto/pagination";
 import type { OpenApiOperation } from "../../../../core/presentation/open_api/open_api_types";
 import {

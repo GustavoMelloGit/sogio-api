@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { paginationFields } from "../../../core/application/dto/pagination";
 
 export const findPropertyStaysInput = {

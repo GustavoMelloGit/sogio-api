@@ -3,8 +3,6 @@ import type { ListPropertySettingsUseCase } from "../../application/use_case/lis
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 import { listPropertySettingsInput } from "../schema/list_property_settings.schema";
 
-const inputSchema = listPropertySettingsInput;
-
 /**
  * Wires the existing `ListPropertySettingsUseCase` (already used by the
  * `GET /property/:property_id/settings` HTTP route) as a read-only MCP tool.

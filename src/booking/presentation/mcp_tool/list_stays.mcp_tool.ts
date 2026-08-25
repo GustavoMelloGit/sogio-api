@@ -1,3 +1,4 @@
+import { toPaginationInput } from "../../../core/application/dto/pagination";
 import type { FindPropertyStaysUseCase } from "../../application/use_case/stay/find_property_stays";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 import { findPropertyStaysInput } from "../schema/find_property_stays.schema";
