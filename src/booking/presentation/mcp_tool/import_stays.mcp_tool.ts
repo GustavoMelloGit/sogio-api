@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  stayImportRecordSchema,
+  stayImportRecordFieldsSchema,
   type ImportBatchStaysUseCase,
 } from "../../application/use_case/import_batch_stays";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
@@ -12,10 +12,10 @@ import {
   MAX_MCP_IMPORT_RECORDS,
 } from "../../../core/application/import/import_failure";
 
-const recordInputSchema = stayImportRecordSchema
+const recordInputSchema = stayImportRecordFieldsSchema
   .omit({ entrance_code: true })
   .extend({
-    property_id: stayImportRecordSchema.shape.property_id.describe(
+    property_id: stayImportRecordFieldsSchema.shape.property_id.describe(
       "ID of the property the stay belongs to. Must be a property administered by the authenticated user."
     ),
     check_in: z
@@ -42,17 +42,17 @@ const recordInputSchema = stayImportRecordSchema
       .nonnegative()
       .max(MAX_STAY_PRICE_IN_CENTS)
       .describe("Total stay price in cents."),
-    source: stayImportRecordSchema.shape.source.describe(
+    source: stayImportRecordFieldsSchema.shape.source.describe(
       "Booking source/channel, e.g. DIRECT, AIRBNB, BOOKING, or any other label used to import historic data."
     ),
-    tenant_name: stayImportRecordSchema.shape.tenant_name.describe(
+    tenant_name: stayImportRecordFieldsSchema.shape.tenant_name.describe(
       "Full name of the guest staying at the property."
     ),
-    tenant_phone: stayImportRecordSchema.shape.tenant_phone.describe(
+    tenant_phone: stayImportRecordFieldsSchema.shape.tenant_phone.describe(
       "Guest phone number, digits only, including country and area code, e.g. 5511999990000. Identifies the tenant: a phone that already exists is reused, otherwise a new tenant is created."
     ),
     tenant_sex:
-      stayImportRecordSchema.shape.tenant_sex.describe("Guest's sex."),
+      stayImportRecordFieldsSchema.shape.tenant_sex.describe("Guest's sex."),
   });
 
 const inputSchema = {

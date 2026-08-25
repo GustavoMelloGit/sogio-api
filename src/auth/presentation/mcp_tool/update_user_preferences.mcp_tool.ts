@@ -1,7 +1,10 @@
 import type { UpdateUserPreferencesUseCase } from "../../application/use_case/update_user_preferences";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
-import { ValidationError } from "../../../core/application/error/validation_error";
-import { updateUserPreferencesInput } from "../schema/update_user_preferences.schema";
+import {
+  atLeastOnePreferenceRule,
+  updateUserPreferencesInput,
+} from "../schema/update_user_preferences.schema";
+import { assertRules } from "../../../core/presentation/schema/input_rule";
 
 export const inputSchema = updateUserPreferencesInput;
 
@@ -18,9 +21,7 @@ export function makeUpdateUserPreferencesTool(
       destructiveHint: false,
     },
     handler: async (input, user) => {
-      if (input.locale === undefined && input.time_zone === undefined) {
-        throw new ValidationError("At least one preference must be provided");
-      }
+      assertRules(input, atLeastOnePreferenceRule);
 
       return useCase.execute(input, user);
     },

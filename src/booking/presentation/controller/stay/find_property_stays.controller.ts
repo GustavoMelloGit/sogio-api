@@ -17,18 +17,19 @@ import {
   errorResponse,
   responseFromZod,
 } from "../../../../core/infra/http/swagger/schema_helpers";
-import { findPropertyStaysInput } from "../../schema/find_property_stays.schema";
+import {
+  chronologicalRangeRule,
+  findPropertyStaysInput,
+} from "../../schema/find_property_stays.schema";
+import { withRules } from "../../../../core/presentation/schema/input_rule";
 
-const inputSchema = z
-  .object(findPropertyStaysInput)
-  .extend({
+const inputSchema = withRules(
+  z.object(findPropertyStaysInput).extend({
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
-  })
-  .refine(data => !data.from || !data.to || data.from <= data.to, {
-    message: "'from' must be less than or equal to 'to'",
-    path: ["from"],
-  });
+  }),
+  chronologicalRangeRule
+);
 
 const stayItemOutputSchema = z.object({
   id: z.uuid(),

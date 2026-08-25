@@ -14,14 +14,16 @@ import {
   validationErrorResponse,
 } from "../../../../core/infra/http/swagger/schema_helpers";
 import { localeSchema } from "../../../../core/domain/locale/locale";
-import { updateUserPreferencesInput } from "../../schema/update_user_preferences.schema";
+import {
+  atLeastOnePreferenceRule,
+  updateUserPreferencesInput,
+} from "../../schema/update_user_preferences.schema";
+import { withRules } from "../../../../core/presentation/schema/input_rule";
 
-const inputSchema = z
-  .object(updateUserPreferencesInput)
-  .refine(
-    input => input.locale !== undefined || input.time_zone !== undefined,
-    "At least one preference must be provided"
-  );
+const inputSchema = withRules(
+  z.object(updateUserPreferencesInput),
+  atLeastOnePreferenceRule
+);
 
 type Input = z.infer<typeof inputSchema>;
 

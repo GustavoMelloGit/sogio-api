@@ -136,4 +136,29 @@ describe("list_stays tool", () => {
 
     expect(result.isError).toBe(true);
   });
+
+  it("rejects an inverted date range instead of answering with an empty list", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "list-stays-inverted-range@sogio.dev",
+      password: "password123",
+    });
+    const property = await createPropertyFixture({ userId: user.id });
+
+    const registeredTool = registerListStaysTool(user);
+    const result = await callTool(
+      registeredTool,
+      {
+        property_id: property.id,
+        from: "2035-06-20T12:00:00Z",
+        to: "2035-06-10T12:00:00Z",
+      },
+      makeExtra()
+    );
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result)).toContain(
+      "'from' must be less than or equal to 'to'"
+    );
+  });
 });

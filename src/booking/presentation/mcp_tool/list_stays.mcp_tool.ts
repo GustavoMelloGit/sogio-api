@@ -1,7 +1,11 @@
 import { toPaginationInput } from "../../../core/application/dto/pagination";
 import type { FindPropertyStaysUseCase } from "../../application/use_case/stay/find_property_stays";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
-import { findPropertyStaysInput } from "../schema/find_property_stays.schema";
+import {
+  chronologicalRangeRule,
+  findPropertyStaysInput,
+} from "../schema/find_property_stays.schema";
+import { assertRules } from "../../../core/presentation/schema/input_rule";
 
 const inputSchema = findPropertyStaysInput;
 
@@ -16,6 +20,8 @@ export function makeListStaysTool(
       readOnlyHint: true,
     },
     handler: async (input, user) => {
+      assertRules(input, chronologicalRangeRule);
+
       const { data, pagination } = await useCase.execute(
         {
           property_id: input.property_id,

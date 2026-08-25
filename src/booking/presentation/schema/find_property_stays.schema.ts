@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paginationFields } from "../../../core/application/dto/pagination";
+import type { InputRule } from "../../../core/presentation/schema/input_rule";
 
 export const findPropertyStaysInput = {
   property_id: z
@@ -23,3 +24,9 @@ export const findPropertyStaysInput = {
     ),
   ...paginationFields,
 } satisfies z.ZodRawShape;
+
+export const chronologicalRangeRule: InputRule<{ from?: Date; to?: Date }> = {
+  message: "'from' must be less than or equal to 'to'",
+  path: ["from"],
+  isSatisfiedBy: input => !input.from || !input.to || input.from <= input.to,
+};

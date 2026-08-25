@@ -102,6 +102,45 @@ describe("Input contract shared between HTTP and MCP", () => {
     expect(split).toEqual([]);
   });
 
+  it("applies every shared rule on both transports", async () => {
+    const unapplied: string[] = [];
+
+    for (const pair of pairs) {
+      for (const module of sharedSchemaImports(pair.tool)) {
+        const exported = (await import(module)) as Record<string, unknown>;
+
+        for (const name of Object.keys(exported)) {
+          if (!name.endsWith("Rule")) continue;
+
+          const surfaces: [string, Surface][] = [
+            ["controller", pair.controller],
+            ["tool", pair.tool],
+          ];
+
+          const missing = surfaces
+            .filter(([, surface]) => !surface.source.includes(name))
+            .map(([label]) => label);
+
+          if (missing.length > 0) {
+            unapplied.push(
+              `${name} (${pair.useCase}) missing on: ${missing.join(", ")}`
+            );
+          }
+        }
+      }
+    }
+
+    expect(unapplied).toEqual([]);
+  });
+
+  it("declares no cross-field rule inside a controller or a tool", () => {
+    const inline = [...controllers, ...tools]
+      .filter(surface => /\.(super)?[Rr]efine\(/.test(surface.source))
+      .map(surface => repoPath(surface.file));
+
+    expect(inline).toEqual([]);
+  });
+
   it("describes every field of every shared shape", async () => {
     const undescribed: string[] = [];
 
@@ -112,6 +151,8 @@ describe("Input contract shared between HTTP and MCP", () => {
       const module = (await import(file)) as Record<string, unknown>;
 
       for (const [exportName, exported] of Object.entries(module)) {
+        if (exportName.endsWith("Rule")) continue;
+
         if (isZodSchema(exported)) {
           if (!exported.description) {
             undescribed.push(`${repoPath(file)} → ${exportName}`);

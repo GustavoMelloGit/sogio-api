@@ -47,7 +47,7 @@ function dateField(fieldLabel: string) {
     });
 }
 
-export const stayImportRecordSchema = z.object({
+export const stayImportRecordFieldsSchema = z.object({
   property_id: z.uuid("property_id must be a valid UUID"),
   check_in: dateField("check_in"),
   check_out: dateField("check_out"),
@@ -85,7 +85,7 @@ export const stayImportRecordSchema = z.object({
     .transform(value => (value && value.length > 0 ? value : undefined)),
 });
 
-const validatedStayImportRecordSchema = stayImportRecordSchema.refine(
+const stayImportRecordSchema = stayImportRecordFieldsSchema.refine(
   data => data.check_in.isBefore(data.check_out),
   {
     message: "check_in must be before check_out",
@@ -139,7 +139,7 @@ export class ImportBatchStaysUseCase
     propertyCache: Map<string, BookingProperty | null>,
     checkTimesCache: Map<string, PropertyCheckTimes>
   ): Promise<ImportFailure | null> {
-    const parsed = validatedStayImportRecordSchema.safeParse(record.values);
+    const parsed = stayImportRecordSchema.safeParse(record.values);
 
     if (!parsed.success) {
       return toImportFailure(record.row, parsed.error);
