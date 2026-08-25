@@ -14,8 +14,10 @@ import type { TenantDi } from "../../../booking/infra/di/tenant_di";
 import { CapabilitySet } from "../../../billing/domain/capability/capability_set";
 import { ForbiddenError } from "../../application/error/forbidden_error";
 import { PayloadTooLargeError } from "../../application/error/payload_too_large_error";
+import { TooManyRequestsError } from "../../application/error/too_many_requests_error";
 import { UnauthorizedError } from "../../application/error/unauthorized_error";
 import { ValidationError } from "../../application/error/validation_error";
+import type { RateLimitPolicy } from "../../application/rate_limit/rate_limit_policy";
 import { mapErrorToToolResult } from "./mcp_error_mapper";
 import type { Logger } from "../../application/logger/logger";
 import { CoreDi } from "../di/core_di";
@@ -44,6 +46,12 @@ const MCP_SERVER_VERSION = "1.0.0";
  */
 const OAUTH_PROTECTED_RESOURCE_METADATA_PATH =
   "/.well-known/oauth-protected-resource";
+
+const MCP_TRANSPORT_RATE_LIMIT_POLICY: RateLimitPolicy = {
+  keyDimension: "user",
+  windowMs: 60 * 1000,
+  maxAttempts: 300,
+};
 
 export type McpRouteDependencies = {
   authDi: AuthDi;
@@ -113,6 +121,7 @@ export function makeMcpRequestHandler(
     middlewareDi.makeCredentialVerifier()
   );
   const logger: Logger = new CoreDi().makeLogger();
+  const rateLimiter = new CoreDi().makeRateLimiter();
   const corsMiddleware = new CorsMiddleware();
   const entitlementService = dependencies.billingDi.makeEntitlementService();
 
@@ -222,6 +231,21 @@ export function makeMcpRequestHandler(
       client_id: requester.appRegistrationId,
     });
 
+    const rateLimitDecision = rateLimiter.consume(
+      `mcp:${requester.user.id}`,
+      MCP_TRANSPORT_RATE_LIMIT_POLICY
+    );
+    if (!rateLimitDecision.allowed) {
+      logger.warn("mcp", { endpoint: "mcp", result: "rate_limited" });
+      return corsMiddleware.addCorsHeaders(
+        withNoStore(
+          tooManyRequestsResponse(rateLimitDecision.retryAfterSeconds)
+        ),
+        origin,
+        "public"
+      );
+    }
+
     let capabilities = CapabilitySet.empty();
     if (requester.user.role !== "admin") {
       const entitlement = await entitlementService.entitlementOf(
@@ -251,6 +275,7 @@ export function makeMcpRequestHandler(
       version: MCP_SERVER_VERSION,
       user: requester.user,
       capabilities,
+      rateLimiter,
       tools,
     });
     const transport = new WebStandardStreamableHTTPServerTransport({
@@ -352,6 +377,16 @@ function unauthorizedResponse(
 function forbiddenResponse(reason: string): Response {
   const result = mapErrorToToolResult(new ForbiddenError(reason));
   return Response.json(result, { status: 403 });
+}
+
+function tooManyRequestsResponse(retryAfterSeconds: number): Response {
+  const result = mapErrorToToolResult(
+    new TooManyRequestsError(retryAfterSeconds)
+  );
+  return Response.json(result, {
+    status: 429,
+    headers: { "Retry-After": String(retryAfterSeconds) },
+  });
 }
 
 function payloadTooLargeResponse(error: PayloadTooLargeError): Response {

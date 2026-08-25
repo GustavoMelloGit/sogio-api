@@ -9,9 +9,16 @@ import type { CapabilityKey } from "../../../billing/domain/capability/capabilit
 import { capabilityRegistryEntryOf } from "../../../billing/domain/capability/capability_registry";
 import type { CapabilitySet } from "../../../billing/domain/capability/capability_set";
 import { ForbiddenError } from "../../application/error/forbidden_error";
+import { TooManyRequestsError } from "../../application/error/too_many_requests_error";
+import type { RateLimiter } from "../../application/rate_limit/rate_limiter";
 import type { McpToolDefinition } from "../../presentation/mcp_tool/mcp_tool";
+import { InMemoryRateLimiter } from "../rate_limit/in_memory_rate_limiter";
 import { serializeDatesRecursively } from "../http/utils/date_serializer";
 import { mapErrorToToolResult } from "./mcp_error_mapper";
+
+function buildToolRateLimitKey(toolName: string, userId: string): string {
+  return `tool:${toolName}:${userId}`;
+}
 
 /**
  * Registers a tool bound to the `user` already resolved by the transport
@@ -23,7 +30,8 @@ export function registerMcpTool(
   server: McpServer,
   user: User,
   capabilities: CapabilitySet,
-  definition: McpToolDefinition<z.ZodRawShape>
+  definition: McpToolDefinition<z.ZodRawShape>,
+  rateLimiter: RateLimiter = new InMemoryRateLimiter()
 ): RegisteredTool {
   return server.registerTool(
     definition.name,
@@ -34,6 +42,16 @@ export function registerMcpTool(
     },
     async (input): Promise<CallToolResult> => {
       try {
+        if (definition.rateLimitPolicy) {
+          const decision = rateLimiter.consume(
+            buildToolRateLimitKey(definition.name, user.id),
+            definition.rateLimitPolicy
+          );
+          if (!decision.allowed) {
+            throw new TooManyRequestsError(decision.retryAfterSeconds);
+          }
+        }
+
         if (
           definition.requiredCapability &&
           user.role !== "admin" &&

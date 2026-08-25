@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { z } from "zod";
 import type { User } from "../../../auth/domain/entity/user";
 import type { CapabilitySet } from "../../../billing/domain/capability/capability_set";
+import type { RateLimiter } from "../../application/rate_limit/rate_limiter";
 import { registerMcpTool } from "./mcp_tool_adapter";
 import type { McpToolDefinition } from "../../presentation/mcp_tool/mcp_tool";
 
@@ -10,6 +11,7 @@ export type CreateMcpServerOptions = {
   version: string;
   user: User;
   capabilities: CapabilitySet;
+  rateLimiter: RateLimiter;
   tools?: McpToolDefinition<z.ZodRawShape>[];
 };
 
@@ -35,7 +37,13 @@ export function createMcpServer(options: CreateMcpServerOptions): McpServer {
   );
 
   for (const tool of options.tools ?? []) {
-    registerMcpTool(server, options.user, options.capabilities, tool);
+    registerMcpTool(
+      server,
+      options.user,
+      options.capabilities,
+      tool,
+      options.rateLimiter
+    );
   }
 
   return server;
