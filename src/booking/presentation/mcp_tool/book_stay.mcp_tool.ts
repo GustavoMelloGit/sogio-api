@@ -4,6 +4,13 @@ import { tenantSexSchema } from "../../domain/entity/tenant";
 import { MAX_STAY_PRICE_IN_CENTS } from "../../domain/entity/stay";
 import { MAX_PROPERTY_CAPACITY } from "../../../property_management/domain/entity/property";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
+import type { RateLimitPolicy } from "../../../core/application/rate_limit/rate_limit_policy";
+
+const RATE_LIMIT_POLICY: RateLimitPolicy = {
+  keyDimension: "user",
+  windowMs: 60 * 60 * 1000,
+  maxAttempts: 120,
+};
 
 export const inputSchema = {
   property_id: z
@@ -84,6 +91,7 @@ export function makeBookStayTool(
     description:
       "Books a stay for a property. Triggers the physical door lock (a temporary entrance code is generated automatically) and records revenue — this is a destructive, non-idempotent action.",
     inputSchema,
+    rateLimitPolicy: RATE_LIMIT_POLICY,
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,

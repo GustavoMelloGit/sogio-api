@@ -9,6 +9,13 @@ import {
   ImportRejectedError,
   MAX_MCP_IMPORT_RECORDS,
 } from "../../../core/application/import/import_failure";
+import type { RateLimitPolicy } from "../../../core/application/rate_limit/rate_limit_policy";
+
+const RATE_LIMIT_POLICY: RateLimitPolicy = {
+  keyDimension: "user",
+  windowMs: 60 * 60 * 1000,
+  maxAttempts: 30,
+};
 
 const recordInputSchema = z.object({
   property_id: z
@@ -122,6 +129,7 @@ export function makeImportStaysTool(
   return {
     name: "import_stays",
     requiredCapability: "bulk_import",
+    rateLimitPolicy: RATE_LIMIT_POLICY,
     description:
       "Imports stays in bulk, one call per batch of up to " +
       `${MAX_MCP_IMPORT_RECORDS} records. The whole batch is accepted or ` +
