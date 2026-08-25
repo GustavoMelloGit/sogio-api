@@ -8,6 +8,7 @@ import type { User } from "../../../auth/domain/entity/user";
 import type { DeleteLedgerEntryUseCase } from "../../application/use_case/delete_ledger_entry";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
 import type { RateLimitPolicy } from "../../../core/application/rate_limit/rate_limit_policy";
+import { deleteLedgerEntryInput } from "../schema/delete_ledger_entry.schema";
 import {
   errorResponse,
   noContentResponse,
@@ -19,12 +20,7 @@ const RATE_LIMIT_POLICY: RateLimitPolicy = {
   maxAttempts: 30,
 };
 
-const inputSchema = z
-  .object({
-    property_id: z.uuidv4("Property ID must be a valid UUID"),
-    entry_id: z.uuidv4("Entry ID must be a valid UUID"),
-  })
-  .strict();
+const inputSchema = z.object(deleteLedgerEntryInput).strict();
 
 type Input = z.infer<typeof inputSchema>;
 

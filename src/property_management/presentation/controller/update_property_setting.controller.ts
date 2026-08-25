@@ -14,10 +14,8 @@ import {
   responseFromZod,
   validationErrorResponse,
 } from "../../../core/infra/http/swagger/schema_helpers";
-import {
-  boundedJsonValue,
-  settingTypeSchema,
-} from "../../../core/domain/value_object/setting_value";
+import { settingTypeSchema } from "../../../core/domain/value_object/setting_value";
+import { updatePropertySettingInput } from "../schema/update_property_setting.schema";
 
 /** Per-IP limit on this write route, mirroring the auth delegated-access
  * controllers' pattern (see `RegisterAppController`). */
@@ -27,15 +25,7 @@ const RATE_LIMIT_POLICY: RateLimitPolicy = {
   maxAttempts: 30,
 };
 
-const inputSchema = z
-  .object({
-    property_id: z.uuidv4("Property ID must be a valid UUID"),
-    id: z.uuidv4("ID must be a valid UUID"),
-    value: boundedJsonValue.optional(),
-    type: settingTypeSchema.optional(),
-    description: z.string().max(500).nullable().optional(),
-  })
-  .strict();
+const inputSchema = z.object(updatePropertySettingInput).strict();
 
 const outputSchema = z.object({
   id: z.uuid(),

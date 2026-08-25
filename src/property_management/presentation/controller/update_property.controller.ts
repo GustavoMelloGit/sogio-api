@@ -1,6 +1,5 @@
 import z from "zod";
 import type { UpdatePropertyUseCase } from "../../application/use_case/update_property";
-import { MAX_PROPERTY_IMAGES } from "../../domain/entity/property";
 import type { User } from "../../../auth/domain/entity/user";
 import {
   HttpControllerMethod,
@@ -14,6 +13,9 @@ import {
   responseFromZod,
   validationErrorResponse,
 } from "../../../core/infra/http/swagger/schema_helpers";
+import { updatePropertyInput } from "../schema/update_property.schema";
+
+const inputSchema = z.object(updatePropertyInput);
 
 const addressSchema = z.object({
   street: z.string().min(1).max(100, "Street must be at most 100 characters"),
@@ -30,34 +32,6 @@ const addressSchema = z.object({
     .string()
     .max(100, "Complement must be at most 100 characters")
     .default(""),
-});
-
-const addressPatchSchema = addressSchema
-  .extend({
-    complement: z
-      .string()
-      .max(100, "Complement must be at most 100 characters"),
-  })
-  .partial();
-
-const inputSchema = z.object({
-  property_id: z.uuid(),
-  name: z
-    .string()
-    .min(1, "Name is required")
-    .max(100, "Name must be at most 100 characters")
-    .optional(),
-  address: addressPatchSchema.optional(),
-  images: z
-    .array(z.string().max(2048, "Image URL must be at most 2048 characters"))
-    .max(MAX_PROPERTY_IMAGES, `At most ${MAX_PROPERTY_IMAGES} images`)
-    .optional(),
-  capacity: z
-    .number()
-    .int()
-    .positive("Capacity must be greater than 0")
-    .max(500, "Capacity must be at most 500")
-    .optional(),
 });
 
 const outputSchema = z.object({

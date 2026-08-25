@@ -1,14 +1,6 @@
-import { z } from "zod";
 import type { DeletePropertyUseCase } from "../../application/use_case/delete_property";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
-
-const inputSchema = {
-  property_id: z
-    .uuid()
-    .describe(
-      "ID of the property to delete. Must be a property administered by the authenticated user."
-    ),
-};
+import { deletePropertyInput } from "../schema/delete_property.schema";
 
 /**
  * Wires the existing `DeletePropertyUseCase` (already used by the
@@ -21,12 +13,12 @@ const inputSchema = {
  */
 export function makeDeletePropertyTool(
   useCase: DeletePropertyUseCase
-): McpToolDefinition<typeof inputSchema> {
+): McpToolDefinition<typeof deletePropertyInput> {
   return {
     name: "delete_property",
     description:
       "Deletes a property and cancels every one of its future stays in cascade, reversing their revenue in the property's ledger. Refused if a guest is checked in right now — wait for that stay to end, then retry. This is permanent from the product's point of view: there is no restore, trash, or way to bring the property or its canceled stays back through the API. Returns how many stays were canceled.",
-    inputSchema,
+    inputSchema: deletePropertyInput,
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,

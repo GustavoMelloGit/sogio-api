@@ -15,17 +15,12 @@ import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
   paginatedOutputSchema,
-  paginationFields,
   toPaginationInput,
 } from "../../../core/application/dto/pagination";
 import { settingTypeSchema } from "../../../core/domain/value_object/setting_value";
+import { listPropertySettingsInput } from "../schema/list_property_settings.schema";
 
-const inputSchema = z
-  .object({
-    property_id: z.uuidv4("Property ID must be a valid UUID"),
-    ...paginationFields,
-  })
-  .strict();
+const inputSchema = z.object(listPropertySettingsInput).strict();
 
 const propertySettingOutputSchema = z.object({
   id: z.uuid(),

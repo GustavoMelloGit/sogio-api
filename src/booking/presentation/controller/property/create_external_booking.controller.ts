@@ -13,30 +13,9 @@ import {
   responseFromZod,
   validationErrorResponse,
 } from "../../../../core/infra/http/swagger/schema_helpers";
-import { KNOWN_EXTERNAL_BOOKING_PLATFORMS } from "../../../domain/entity/external_booking_source";
+import { createExternalBookingSourceInput } from "../../schema/create_external_booking_source.schema";
 
-const PLATFORM_NAME_DESCRIPTION =
-  "Name of the external platform the calendar comes from. Any provider that " +
-  "publishes an iCal feed works, not just a fixed list. Known examples: " +
-  KNOWN_EXTERNAL_BOOKING_PLATFORMS.join(", ") +
-  ". Stored as an uppercase slug: the value is normalized (trimmed, " +
-  "uppercased, spaces/hyphens collapsed to underscores) before being saved.";
-
-const platformNameSchema = z
-  .string()
-  .max(50)
-  .regex(
-    /^[A-Za-z0-9][A-Za-z0-9 _-]{1,49}$/,
-    "Platform name must be 2-50 characters, starting with a letter or " +
-      "digit, using only letters, digits, spaces, underscores or hyphens"
-  )
-  .describe(PLATFORM_NAME_DESCRIPTION);
-
-const inputSchema = z.object({
-  platform_name: platformNameSchema,
-  sync_url: z.url().max(2048, "Sync URL must be at most 2048 characters"),
-  property_id: z.uuid("Property ID must be a valid UUID"),
-});
+const inputSchema = z.object(createExternalBookingSourceInput);
 
 const outputSchema = z.object({
   id: z.uuid(),

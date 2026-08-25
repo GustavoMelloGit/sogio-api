@@ -13,21 +13,11 @@ import {
   responseFromZod,
   validationErrorResponse,
 } from "../../../../core/infra/http/swagger/schema_helpers";
+import { updateStayInput } from "../../schema/update_stay.schema";
 
-const inputSchema = z.object({
-  stay_id: z.uuid(),
+const inputSchema = z.object(updateStayInput).extend({
   check_in: z.coerce.date().optional(),
   check_out: z.coerce.date().optional(),
-  guests: z
-    .int()
-    .positive("Guests must be greater than 0")
-    .max(500, "Guests must be at most 500")
-    .optional(),
-  price: z
-    .int()
-    .positive("Price must be greater than 0")
-    .max(100_000_000, "Price must be at most 100000000 cents (R$ 1,000,000.00)")
-    .optional(),
 });
 
 const outputSchema = z.object({

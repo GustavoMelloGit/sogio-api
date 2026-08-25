@@ -1,16 +1,8 @@
-import { z } from "zod";
 import type { ListTenantsUseCase } from "../../application/use_case/tenant/list_tenents";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
+import { tenantSearchQuery } from "../schema/list_tenants.schema";
 
-export const inputSchema = {
-  query: z
-    .string()
-    .max(100)
-    .optional()
-    .describe(
-      "Optional filter on the guest name, case-insensitive and matching any part of it. Omit to list every guest."
-    ),
-};
+export const inputSchema = { query: tenantSearchQuery };
 
 export function makeListTenantsTool(
   useCase: ListTenantsUseCase

@@ -10,20 +10,18 @@ import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
   paginatedOutputSchema,
-  paginationFields,
   toPaginationInput,
 } from "../../../core/application/dto/pagination";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
+import { findPropertyFinancialMovementsInput } from "../schema/find_property_financial_movements.schema";
 import {
   errorResponse,
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
 
-const inputSchema = z.object({
-  property_id: z.uuidv4("Property ID must be a valid UUID"),
+const inputSchema = z.object(findPropertyFinancialMovementsInput).extend({
   start_date: z.coerce.date().optional(),
   end_date: z.coerce.date().optional(),
-  ...paginationFields,
 });
 
 const financialMovementOutputSchema = z.object({

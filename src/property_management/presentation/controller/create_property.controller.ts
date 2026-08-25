@@ -1,6 +1,5 @@
 import z from "zod";
 import type { CreatePropertyUseCase } from "../../application/use_case/create_property";
-import { MAX_PROPERTY_IMAGES } from "../../domain/entity/property";
 import type { User } from "../../../auth/domain/entity/user";
 import {
   HttpControllerMethod,
@@ -14,6 +13,9 @@ import {
   responseFromZod,
   validationErrorResponse,
 } from "../../../core/infra/http/swagger/schema_helpers";
+import { createPropertyInput } from "../schema/create_property.schema";
+
+const inputSchema = z.object(createPropertyInput);
 
 const addressSchema = z.object({
   street: z
@@ -48,22 +50,6 @@ const addressSchema = z.object({
     .string()
     .max(100, "Complement must be at most 100 characters")
     .default(""),
-});
-
-const inputSchema = z.object({
-  name: z
-    .string()
-    .min(1, "Name is required")
-    .max(100, "Name must be at most 100 characters"),
-  address: addressSchema,
-  images: z
-    .array(z.string().max(2048, "Image URL must be at most 2048 characters"))
-    .max(MAX_PROPERTY_IMAGES, `At most ${MAX_PROPERTY_IMAGES} images`),
-  capacity: z
-    .number()
-    .int()
-    .positive("Capacity must be greater than 0")
-    .max(500, "Capacity must be at most 500"),
 });
 
 const outputSchema = z.object({
@@ -121,7 +107,7 @@ export class CreatePropertyController implements Controller {
       name: input.name,
       user_id: user.id,
       address: input.address,
-      images: input.images,
+      images: input.images ?? [],
       capacity: input.capacity,
     });
 

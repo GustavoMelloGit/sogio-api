@@ -1,14 +1,8 @@
-import { z } from "zod";
 import type { GetStayUseCase } from "../../application/use_case/stay/get_stay";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
+import { getStayInput } from "../schema/get_stay.schema";
 
-export const inputSchema = {
-  stay_id: z
-    .uuid()
-    .describe(
-      "ID of the stay to read. Must belong to a property administered by the authenticated user."
-    ),
-};
+export const inputSchema = getStayInput;
 
 export function makeGetStayTool(
   useCase: GetStayUseCase

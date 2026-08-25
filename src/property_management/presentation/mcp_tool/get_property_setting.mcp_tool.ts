@@ -1,19 +1,6 @@
-import { z } from "zod";
 import type { GetPropertySettingUseCase } from "../../application/use_case/get_property_setting";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
-
-const inputSchema = {
-  property_id: z
-    .uuid()
-    .describe(
-      "ID of the property the setting belongs to. Must be a property administered by the authenticated user."
-    ),
-  id: z
-    .uuid()
-    .describe(
-      "ID of the property setting to fetch. Must belong to the given property. Can be obtained via list_property_settings."
-    ),
-};
+import { getPropertySettingInput } from "../schema/get_property_setting.schema";
 
 /**
  * Wires the existing `GetPropertySettingUseCase` (already used by the
@@ -23,12 +10,12 @@ const inputSchema = {
  */
 export function makeGetPropertySettingTool(
   useCase: GetPropertySettingUseCase
-): McpToolDefinition<typeof inputSchema> {
+): McpToolDefinition<typeof getPropertySettingInput> {
   return {
     name: "get_property_setting",
     description:
       "Fetches a single configuration entry scoped to a property by its ID.",
-    inputSchema,
+    inputSchema: getPropertySettingInput,
     annotations: {
       readOnlyHint: true,
     },

@@ -11,12 +11,9 @@ import {
   errorResponse,
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
+import { markNotificationReadInput } from "../schema/mark_notification_read.schema";
 
-const inputSchema = z
-  .object({
-    notification_id: z.uuidv4("Notification ID must be a valid UUID"),
-  })
-  .strict();
+const inputSchema = z.object(markNotificationReadInput).strict();
 
 const outputSchema = z.object({
   id: z.uuid(),

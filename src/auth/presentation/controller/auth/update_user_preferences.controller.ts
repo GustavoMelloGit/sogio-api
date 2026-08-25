@@ -13,20 +13,17 @@ import {
   responseFromZod,
   validationErrorResponse,
 } from "../../../../core/infra/http/swagger/schema_helpers";
+import { localeSchema } from "../../../../core/domain/locale/locale";
 import {
-  localeSchema,
-  timeZoneSchema,
-} from "../../../../core/domain/locale/locale";
+  atLeastOnePreferenceRule,
+  updateUserPreferencesInput,
+} from "../../schema/update_user_preferences.schema";
+import { withRules } from "../../../../core/presentation/schema/input_rule";
 
-const inputSchema = z
-  .object({
-    locale: localeSchema.optional(),
-    time_zone: timeZoneSchema.optional(),
-  })
-  .refine(
-    input => input.locale !== undefined || input.time_zone !== undefined,
-    "At least one preference must be provided"
-  );
+const inputSchema = withRules(
+  z.object(updateUserPreferencesInput),
+  atLeastOnePreferenceRule
+);
 
 type Input = z.infer<typeof inputSchema>;
 

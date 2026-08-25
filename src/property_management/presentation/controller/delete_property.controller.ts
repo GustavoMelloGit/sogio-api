@@ -12,6 +12,7 @@ import {
   errorResponse,
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
+import { deletePropertyInput } from "../schema/delete_property.schema";
 
 /** Mirrors DeletePropertySettingController's rate limit — same destructive,
  * per-IP-limited write shape. */
@@ -21,11 +22,7 @@ const RATE_LIMIT_POLICY: RateLimitPolicy = {
   maxAttempts: 30,
 };
 
-const inputSchema = z
-  .object({
-    property_id: z.uuidv4("Property ID must be a valid UUID"),
-  })
-  .strict();
+const inputSchema = z.object(deletePropertyInput).strict();
 
 const outputSchema = z.object({
   canceled_stays: z.number().int().nonnegative(),

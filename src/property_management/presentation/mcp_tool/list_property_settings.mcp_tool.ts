@@ -1,19 +1,7 @@
-import { z } from "zod";
-import {
-  paginationFields,
-  toPaginationInput,
-} from "../../../core/application/dto/pagination";
+import { toPaginationInput } from "../../../core/application/dto/pagination";
 import type { ListPropertySettingsUseCase } from "../../application/use_case/list_property_settings";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
-
-const inputSchema = {
-  property_id: z
-    .uuid()
-    .describe(
-      "ID of the property whose settings should be listed. Must be a property administered by the authenticated user."
-    ),
-  ...paginationFields,
-};
+import { listPropertySettingsInput } from "../schema/list_property_settings.schema";
 
 /**
  * Wires the existing `ListPropertySettingsUseCase` (already used by the
@@ -29,12 +17,12 @@ const inputSchema = {
  */
 export function makeListPropertySettingsTool(
   useCase: ListPropertySettingsUseCase
-): McpToolDefinition<typeof inputSchema> {
+): McpToolDefinition<typeof listPropertySettingsInput> {
   return {
     name: "list_property_settings",
     description:
       "Lists the configuration entries scoped to a property, paginated. To check whether a given key exists, page through all results (using page/limit and pagination.has_next) before concluding it does not — a single page may not contain every setting.",
-    inputSchema,
+    inputSchema: listPropertySettingsInput,
     annotations: {
       readOnlyHint: true,
     },

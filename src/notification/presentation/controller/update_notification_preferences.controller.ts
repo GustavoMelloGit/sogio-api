@@ -8,6 +8,7 @@ import type { User } from "../../../auth/domain/entity/user";
 import type { UpdateNotificationPreferencesUseCase } from "../../application/use_case/update_notification_preferences";
 import type { OpenApiOperation } from "../../../core/presentation/open_api/open_api_types";
 import {
+  bodyFromZod,
   errorResponse,
   responseFromZod,
 } from "../../../core/infra/http/swagger/schema_helpers";
@@ -16,12 +17,9 @@ import {
   NOTIFICATION_TYPE_KEYS,
 } from "../../domain/notification_type/notification_type_registry";
 import { ValidationError } from "../../../core/application/error/validation_error";
+import { updateNotificationPreferencesInput } from "../schema/update_notification_preferences.schema";
 
-const inputSchema = z.object({
-  type: z.enum(NOTIFICATION_TYPE_KEYS),
-  channel: z.enum(NOTIFICATION_CHANNELS),
-  enabled: z.boolean(),
-});
+const inputSchema = z.object(updateNotificationPreferencesInput);
 
 const outputSchema = z.object({
   type: z.enum(NOTIFICATION_TYPE_KEYS),
@@ -39,30 +37,13 @@ export class UpdateNotificationPreferencesController implements Controller {
     description:
       "Turns a notification type on or off for a given channel. Rejected with 422 for an unknown type or channel, and for a type the platform always delivers.",
     tags: ["Notifications"],
-    requestBody: {
-      required: true,
-      content: {
-        "application/json": {
-          schema: {
-            type: "object",
-            required: ["type", "channel", "enabled"],
-            properties: {
-              type: {
-                type: "string",
-                enum: [...NOTIFICATION_TYPE_KEYS],
-                example: "subscription_trial_ending",
-              },
-              channel: {
-                type: "string",
-                enum: [...NOTIFICATION_CHANNELS],
-                example: "email",
-              },
-              enabled: { type: "boolean", example: false },
-            },
-          },
-        },
+    requestBody: bodyFromZod(inputSchema, {
+      example: {
+        type: "subscription_trial_ending",
+        channel: "email",
+        enabled: false,
       },
-    },
+    }),
     responses: {
       "200": responseFromZod("Preference updated", outputSchema, {
         type: "subscription_trial_ending",

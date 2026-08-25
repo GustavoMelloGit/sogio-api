@@ -1,46 +1,40 @@
 import { z } from "zod";
-import type { ImportBatchLedgerEntriesUseCase } from "../../application/use_case/import_batch_ledger_entries";
+import {
+  ledgerEntryImportRecordShape,
+  type ImportBatchLedgerEntriesUseCase,
+} from "../../application/use_case/import_batch_ledger_entries";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
+import { MAX_LEDGER_AMOUNT_IN_CENTS } from "../../domain/entity/ledger_entry";
 import type { ImportRecordStream } from "../../../core/application/import/source_record";
 import {
   ImportRejectedError,
   MAX_MCP_IMPORT_RECORDS,
 } from "../../../core/application/import/import_failure";
-import { MAX_LEDGER_AMOUNT_IN_CENTS } from "../../domain/entity/ledger_entry";
 
 const recordSchema = z.object({
-  property_id: z
-    .uuid()
-    .describe("ID of the property this movement belongs to."),
-  kind: z
-    .enum(["expense", "revenue"])
-    .describe("Whether this movement is an expense or a revenue."),
+  property_id: ledgerEntryImportRecordShape.property_id.describe(
+    "ID of the property this movement belongs to."
+  ),
+  kind: ledgerEntryImportRecordShape.kind.describe(
+    "Whether this movement is an expense or a revenue."
+  ),
   amount: z
+    .number()
     .int()
     .positive()
     .max(MAX_LEDGER_AMOUNT_IN_CENTS)
     .describe(
       "Amount in cents, always positive — the sign is derived from kind."
     ),
-  category: z
-    .string()
-    .min(1)
-    .max(100)
-    .describe(
-      "For kind=expense, must be one of: MANUTENÇÃO, ESTADIA, AQUISIÇÕES, FINANCIAMENTO, GASTOS_FIXOS, OUTROS. For kind=revenue, free text up to 100 characters."
-    ),
-  description: z
-    .string()
-    .max(500)
-    .optional()
-    .describe("Optional free-text description of the movement."),
-  occurred_at: z
-    .string()
-    .max(10)
-    .optional()
-    .describe(
-      "Optional date the movement happened, as YYYY-MM-DD or DD/MM/YYYY. Anchored at the start of that day in the owner's time zone. Defaults to now."
-    ),
+  category: ledgerEntryImportRecordShape.category.describe(
+    "For kind=expense, must be one of: MANUTENÇÃO, ESTADIA, AQUISIÇÕES, FINANCIAMENTO, GASTOS_FIXOS, OUTROS. For kind=revenue, free text up to 100 characters."
+  ),
+  description: ledgerEntryImportRecordShape.description.describe(
+    "Optional free-text description of the movement."
+  ),
+  occurred_at: ledgerEntryImportRecordShape.occurred_at.describe(
+    "Optional date the movement happened, as YYYY-MM-DD or DD/MM/YYYY. Anchored at the start of that day in the owner's time zone. Defaults to now."
+  ),
 });
 
 type RecordInput = z.infer<typeof recordSchema>;
@@ -67,7 +61,7 @@ async function* toImportRecordStream(
         amount: String(record.amount),
         category: record.category,
         description: record.description ?? "",
-        occurred_at: record.occurred_at ?? "",
+        occurred_at: record.occurred_at?.toString() ?? "",
       },
     };
   }

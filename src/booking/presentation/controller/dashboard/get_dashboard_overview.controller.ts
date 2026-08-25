@@ -11,13 +11,9 @@ import {
   errorResponse,
   responseFromZod,
 } from "../../../../core/infra/http/swagger/schema_helpers";
+import { getDashboardOverviewInput } from "../../schema/get_dashboard_overview.schema";
 
-const inputSchema = z.object({
-  date: z.iso
-    .date()
-    .transform(s => new Date(`${s}T00:00:00.000Z`))
-    .optional(),
-});
+const inputSchema = z.object(getDashboardOverviewInput);
 
 const outputSchema = z.object({
   kpis: z.object({
