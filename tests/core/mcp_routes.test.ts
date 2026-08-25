@@ -6,6 +6,11 @@ import { createPropertyFixture } from "../helpers/fixtures/property";
 import { createMcpAccessTokenFixture } from "../helpers/fixtures/delegated_access";
 import { MCP_RESOURCE_PATH } from "../../src/auth/presentation/controller/delegated_access/oauth_protected_resource_metadata.controller";
 import { apiBaseUrl } from "../../src/core/infra/config/environments";
+import {
+  MAX_BUFFERED_BODY_BYTES,
+  MAX_JSON_DEPTH,
+} from "../../src/core/infra/http/body/body_limits";
+import { makeConnectionSurvivalProbeStream } from "../helpers/paced_stream";
 
 type JsonRpcResponse = {
   jsonrpc: "2.0";
@@ -19,6 +24,11 @@ type OAuthErrorBody = {
   error_description: string;
 };
 
+type ToolResultErrorBody = {
+  isError: boolean;
+  content: Array<{ type: string; text: string }>;
+};
+
 /**
  * `/mcp` verifies the access token against this server's canonical resource
  * URL (`apiBaseUrl` + `MCP_RESOURCE_PATH`, task 13) regardless of which port
@@ -30,7 +40,8 @@ const MCP_RESOURCE = `${apiBaseUrl}${MCP_RESOURCE_PATH}`;
 
 async function callMcp(
   body: Record<string, unknown>,
-  token?: string
+  token?: string,
+  signal?: AbortSignal
 ): Promise<{ status: number; body: JsonRpcResponse }> {
   const response = await api("/mcp", {
     method: "POST",
@@ -39,6 +50,7 @@ async function callMcp(
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
+    signal,
   });
 
   const raw = await response.text();
@@ -253,5 +265,229 @@ describe("POST /mcp", () => {
     expect(output.properties).toEqual([
       { id: ownedProperty.id, name: "Casa da Praia" },
     ]);
+  });
+
+  it("rejects a request whose body exceeds the buffered body limit with 413, before reaching the transport", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao.oversized-body@sogio.dev",
+      password: "password123",
+    });
+    const { accessToken: token } = await createMcpAccessTokenFixture({
+      userId: user.id,
+      resource: MCP_RESOURCE,
+    });
+    const oversizedPadding = "x".repeat(MAX_BUFFERED_BODY_BYTES + 10_000);
+
+    const response = await api("/mcp", {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: { padding: oversizedPadding },
+      }),
+    });
+    const body = (await response.json()) as ToolResultErrorBody;
+
+    expect(response.status).toBe(413);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(body.isError).toBe(true);
+    expect(body.content[0]?.text).toContain(
+      `Request body exceeds the maximum size of ${MAX_BUFFERED_BODY_BYTES} bytes`
+    );
+  });
+
+  it("serves a real MCP call quickly right after a 413 on the same keep-alive connection", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao.connection-survives-413@sogio.dev",
+      password: "password123",
+    });
+    const { accessToken: token } = await createMcpAccessTokenFixture({
+      userId: user.id,
+      resource: MCP_RESOURCE,
+    });
+
+    const { readable: pacedOversizedBody } = makeConnectionSurvivalProbeStream(
+      MAX_BUFFERED_BODY_BYTES + 3 * 1024 * 1024,
+      64 * 1024,
+      5
+    );
+
+    const rejected = await api("/mcp", {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        Authorization: `Bearer ${token}`,
+      },
+      body: pacedOversizedBody,
+      duplex: "half",
+    } as RequestInit);
+    const rejectedBody = (await rejected.json()) as ToolResultErrorBody;
+
+    expect(rejected.status).toBe(413);
+    expect(rejectedBody.content[0]?.text).toContain(
+      `Request body exceeds the maximum size of ${MAX_BUFFERED_BODY_BYTES} bytes`
+    );
+
+    const CONNECTION_SURVIVAL_TIMEOUT_MS = 3_000;
+    const start = performance.now();
+    const { status, body } = await callMcp(
+      {
+        jsonrpc: "2.0",
+        id: 43,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: { name: "sogio-test-client", version: "1.0.0" },
+        },
+      },
+      token,
+      AbortSignal.timeout(CONNECTION_SURVIVAL_TIMEOUT_MS)
+    );
+    const elapsedMs = performance.now() - start;
+
+    expect(status).toBe(200);
+    expect(body.id).toBe(43);
+    expect(elapsedMs).toBeLessThan(CONNECTION_SURVIVAL_TIMEOUT_MS);
+  });
+
+  it("rejects an oversized body with 413 before an invalid token ever gets checked, then serves the next MCP call quickly on the same connection", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao.413-before-401@sogio.dev",
+      password: "password123",
+    });
+    const { accessToken: token } = await createMcpAccessTokenFixture({
+      userId: user.id,
+      resource: MCP_RESOURCE,
+    });
+    const oversizedPadding = "x".repeat(MAX_BUFFERED_BODY_BYTES + 10_000);
+
+    const rejected = await api("/mcp", {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        Authorization: "Bearer not-a-real-token",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: { padding: oversizedPadding },
+      }),
+    });
+    const rejectedBody = (await rejected.json()) as ToolResultErrorBody;
+
+    expect(rejected.status).toBe(413);
+    expect(rejected.status).not.toBe(401);
+    expect(rejectedBody.content[0]?.text).toContain(
+      `Request body exceeds the maximum size of ${MAX_BUFFERED_BODY_BYTES} bytes`
+    );
+
+    const CONNECTION_SURVIVAL_TIMEOUT_MS = 3_000;
+    const start = performance.now();
+    const { status, body } = await callMcp(
+      {
+        jsonrpc: "2.0",
+        id: 44,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: { name: "sogio-test-client", version: "1.0.0" },
+        },
+      },
+      token,
+      AbortSignal.timeout(CONNECTION_SURVIVAL_TIMEOUT_MS)
+    );
+    const elapsedMs = performance.now() - start;
+
+    expect(status).toBe(200);
+    expect(body.id).toBe(44);
+    expect(elapsedMs).toBeLessThan(CONNECTION_SURVIVAL_TIMEOUT_MS);
+  });
+
+  it("rejects a request nested past the maximum JSON depth with 422, before reaching the transport", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao.excessive-nesting@sogio.dev",
+      password: "password123",
+    });
+    const { accessToken: token } = await createMcpAccessTokenFixture({
+      userId: user.id,
+      resource: MCP_RESOURCE,
+    });
+    const nestedDepth = MAX_JSON_DEPTH + 10;
+    const deeplyNestedArray = "[".repeat(nestedDepth) + "]".repeat(nestedDepth);
+    const rawBody = `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"nested":${deeplyNestedArray}}}`;
+
+    const response = await api("/mcp", {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        Authorization: `Bearer ${token}`,
+      },
+      body: rawBody,
+    });
+    const body = (await response.json()) as ToolResultErrorBody;
+    const rawResponseText = JSON.stringify(body);
+
+    expect(response.status).toBe(422);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("content-type")).not.toContain(
+      "text/event-stream"
+    );
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(body.isError).toBe(true);
+    expect(body.content[0]?.text).toContain(
+      `Request body exceeds the maximum nesting depth of ${MAX_JSON_DEPTH}`
+    );
+    expect(rawResponseText).not.toContain('"jsonrpc"');
+  });
+
+  it("processes a real initialize handshake, proving the reconstructed request preserves method, headers and body", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "joao.initialize@sogio.dev",
+      password: "password123",
+    });
+    const { accessToken: token } = await createMcpAccessTokenFixture({
+      userId: user.id,
+      resource: MCP_RESOURCE,
+    });
+
+    const { status, body } = await callMcp(
+      {
+        jsonrpc: "2.0",
+        id: 42,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: { name: "sogio-test-client", version: "1.0.0" },
+        },
+      },
+      token
+    );
+
+    const result = body.result as {
+      protocolVersion: string;
+      serverInfo: { name: string; version: string };
+    };
+
+    expect(status).toBe(200);
+    expect(body.id).toBe(42);
+    expect(result.serverInfo).toEqual({ name: "sogio", version: "1.0.0" });
+    expect(result.protocolVersion).toBe("2025-11-25");
   });
 });

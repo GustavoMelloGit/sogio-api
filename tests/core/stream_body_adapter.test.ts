@@ -7,6 +7,7 @@ import {
 } from "../../src/core/presentation/controller/controller";
 import { BunHttpControllerAdapter } from "../../src/core/infra/http/adapters/http_controller_adapter";
 import type { EntitlementService } from "../../src/billing/application/service/entitlement_service";
+import { MAX_BUFFERED_BODY_BYTES } from "../../src/core/infra/http/body/body_limits";
 
 /**
  * Every route registered below is `authenticated: false`, so the DA-9 gate
@@ -103,6 +104,19 @@ describe("bodyMode: 'stream' — never buffers the body (IM-1)", () => {
     expect(body.text).toBe(payload);
     expect(body.rawBody).toBeNull();
     expect(body.bodyKeyCount).toBe(0);
+  });
+
+  it("returns 200 for a payload larger than MAX_BUFFERED_BODY_BYTES, proving the byte cap never reaches stream routes (D6)", async () => {
+    const payload = "z".repeat(MAX_BUFFERED_BODY_BYTES + 1024);
+
+    const res = await fetch(`${baseUrl}${streamController.path}`, {
+      method: "POST",
+      body: payload,
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { totalBytes: number };
+    expect(body.totalBytes).toBeGreaterThan(MAX_BUFFERED_BODY_BYTES);
   });
 
   it("still hands the controller an unconsumed stream for an empty body", async () => {

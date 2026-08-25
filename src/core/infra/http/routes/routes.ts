@@ -18,6 +18,7 @@ import type { AccessCapabilityKey } from "../../../../billing/domain/capability/
 import { OpenApiBuilder } from "../swagger/open_api_builder";
 import { scalarUiHtml } from "../swagger/scalar_ui";
 import { makeMcpRequestHandler } from "../../mcp/routes";
+import { MAX_REQUEST_BODY_BYTES } from "../body/body_limits";
 
 const tenantDi = new TenantDi();
 const propertyDi = new PropertyDi();
@@ -485,3 +486,8 @@ routeMap.set("/docs", {
 });
 
 export const bunRoutes = Object.fromEntries(routeMap.entries());
+
+export const bunServeOptions = {
+  routes: bunRoutes,
+  maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
+};

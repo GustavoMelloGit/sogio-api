@@ -3,6 +3,7 @@ import type { Server } from "bun";
 import { ConflictError } from "../../../application/error/conflict_error";
 import { ForbiddenError } from "../../../application/error/forbidden_error";
 import { IllegalStateError } from "../../../application/error/illegal_state_error";
+import { PayloadTooLargeError } from "../../../application/error/payload_too_large_error";
 import { ResourceNotFoundError } from "../../../application/error/resource_not_found_error";
 import { UnauthorizedError } from "../../../application/error/unauthorized_error";
 import { ValidationError } from "../../../application/error/validation_error";
@@ -22,6 +23,13 @@ import { serializeDatesRecursively } from "../utils/date_serializer";
 import { CoreDi } from "../../di/core_di";
 import { resolveCallerIp } from "../../rate_limit/caller_ip_resolver";
 import { env } from "../../config/environments";
+import { readBoundedBody } from "../body/bounded_body_reader";
+import { exceedsMaxJsonDepth } from "../body/json_depth_guard";
+import {
+  MAX_BUFFERED_BODY_BYTES,
+  MAX_JSON_DEPTH,
+  MAX_REQUEST_BODY_BYTES,
+} from "../body/body_limits";
 
 const middlewareDi = new MiddlewareDi();
 const corsMiddleware = new CorsMiddleware();
@@ -96,11 +104,11 @@ class ControllerRequestParser {
   }
 
   async #readRawBody(): Promise<string | null> {
-    if (this.request.body === null) {
-      return null;
-    }
-
-    return this.request.text();
+    return readBoundedBody(
+      this.request.body,
+      MAX_BUFFERED_BODY_BYTES,
+      MAX_REQUEST_BODY_BYTES
+    );
   }
 
   #parseParams(): Record<string, string> {
@@ -161,6 +169,12 @@ class ControllerRequestParser {
       return Object.fromEntries(new URLSearchParams(this.#rawBody).entries());
     }
 
+    if (exceedsMaxJsonDepth(this.#rawBody, MAX_JSON_DEPTH)) {
+      throw new ValidationError(
+        `Request body exceeds the maximum nesting depth of ${MAX_JSON_DEPTH}`
+      );
+    }
+
     let body: unknown;
     try {
       body = JSON.parse(this.#rawBody);
@@ -216,6 +230,7 @@ const errorCodeMap: Record<string, number> = {
   [ResourceNotFoundError.name]: 404,
   [UnauthorizedError.name]: 401,
   [IllegalStateError.name]: 500,
+  [PayloadTooLargeError.name]: 413,
 };
 
 /**
@@ -259,6 +274,16 @@ function buildErrorLogContext(
 
 function buildRateLimitKey(controller: Controller, callerIp: string): string {
   return `${controller.method}:${controller.path}:${callerIp}`;
+}
+
+async function drainRateLimitedRequestBody(request: Request): Promise<void> {
+  try {
+    await readBoundedBody(request.body, 0, MAX_REQUEST_BODY_BYTES);
+  } catch (error) {
+    if (!(error instanceof PayloadTooLargeError)) {
+      throw error;
+    }
+  }
 }
 
 function buildRateLimitedResponse(retryAfterSeconds: number): Response {
@@ -360,6 +385,7 @@ export function BunHttpControllerAdapter(
           controller.rateLimitPolicy
         );
         if (!decision.allowed) {
+          await drainRateLimitedRequestBody(request);
           return corsMiddleware.addCorsHeaders(
             buildRateLimitedResponse(decision.retryAfterSeconds),
             request.headers.get("Origin"),

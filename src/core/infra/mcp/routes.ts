@@ -13,11 +13,20 @@ import type { NotificationDi } from "../../../notification/infra/di/notification
 import type { TenantDi } from "../../../booking/infra/di/tenant_di";
 import { CapabilitySet } from "../../../billing/domain/capability/capability_set";
 import { ForbiddenError } from "../../application/error/forbidden_error";
+import { PayloadTooLargeError } from "../../application/error/payload_too_large_error";
 import { UnauthorizedError } from "../../application/error/unauthorized_error";
+import { ValidationError } from "../../application/error/validation_error";
 import { mapErrorToToolResult } from "./mcp_error_mapper";
 import type { Logger } from "../../application/logger/logger";
 import { CoreDi } from "../di/core_di";
 import { CorsMiddleware } from "../../presentation/middleware/cors.middleware";
+import { readBoundedBody } from "../http/body/bounded_body_reader";
+import { exceedsMaxJsonDepth } from "../http/body/json_depth_guard";
+import {
+  MAX_BUFFERED_BODY_BYTES,
+  MAX_JSON_DEPTH,
+  MAX_REQUEST_BODY_BYTES,
+} from "../http/body/body_limits";
 import { McpIdentityResolver } from "./identity_resolver";
 import { createMcpServer } from "./mcp_server";
 import type { McpToolDefinition } from "../../presentation/mcp_tool/mcp_tool";
@@ -152,6 +161,44 @@ export function makeMcpRequestHandler(
     const authorizationHeader =
       request.headers.get("authorization") ?? undefined;
 
+    let requestForTransport = request;
+
+    if (request.body !== null) {
+      let rawBody: string | null;
+      try {
+        rawBody = await readBoundedBody(
+          request.body,
+          MAX_BUFFERED_BODY_BYTES,
+          MAX_REQUEST_BODY_BYTES
+        );
+      } catch (error) {
+        if (error instanceof PayloadTooLargeError) {
+          logger.warn("mcp", { endpoint: "mcp", result: "payload_too_large" });
+          return corsMiddleware.addCorsHeaders(
+            withNoStore(payloadTooLargeResponse(error)),
+            origin,
+            "public"
+          );
+        }
+        throw error;
+      }
+
+      if (rawBody !== null && exceedsMaxJsonDepth(rawBody, MAX_JSON_DEPTH)) {
+        logger.warn("mcp", { endpoint: "mcp", result: "excessive_nesting" });
+        return corsMiddleware.addCorsHeaders(
+          withNoStore(excessiveNestingResponse()),
+          origin,
+          "public"
+        );
+      }
+
+      requestForTransport = new Request(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: rawBody,
+      });
+    }
+
     let requester: Requester;
     try {
       requester = await identityResolver.resolveRequester(authorizationHeader);
@@ -175,12 +222,6 @@ export function makeMcpRequestHandler(
       client_id: requester.appRegistrationId,
     });
 
-    /**
-     * Platform-access gate (DA-9). `/mcp` has no account-recovery tool, so
-     * unlike the HTTP adapter there is no exception list — a blocked
-     * account is blocked outright. Admins still pass: staff can't be locked
-     * out of tooling by a billing problem.
-     */
     let capabilities = CapabilitySet.empty();
     if (requester.user.role !== "admin") {
       const entitlement = await entitlementService.entitlementOf(
@@ -218,7 +259,7 @@ export function makeMcpRequestHandler(
 
     try {
       await server.connect(transport);
-      const response = await transport.handleRequest(request);
+      const response = await transport.handleRequest(requestForTransport);
 
       return corsMiddleware.addCorsHeaders(
         withNoStore(closeServerWhenResponseEnds(response, server)),
@@ -311,6 +352,30 @@ function unauthorizedResponse(
 function forbiddenResponse(reason: string): Response {
   const result = mapErrorToToolResult(new ForbiddenError(reason));
   return Response.json(result, { status: 403 });
+}
+
+function payloadTooLargeResponse(error: PayloadTooLargeError): Response {
+  return Response.json(
+    {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: `${error.message}. Use the CSV import routes for bulk data.`,
+        },
+      ],
+    },
+    { status: 413 }
+  );
+}
+
+function excessiveNestingResponse(): Response {
+  const result = mapErrorToToolResult(
+    new ValidationError(
+      `Request body exceeds the maximum nesting depth of ${MAX_JSON_DEPTH}`
+    )
+  );
+  return Response.json(result, { status: 422 });
 }
 
 /**
