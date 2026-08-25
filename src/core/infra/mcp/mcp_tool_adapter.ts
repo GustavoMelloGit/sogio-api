@@ -12,9 +12,9 @@ import { ForbiddenError } from "../../application/error/forbidden_error";
 import { TooManyRequestsError } from "../../application/error/too_many_requests_error";
 import type { RateLimiter } from "../../application/rate_limit/rate_limiter";
 import type { McpToolDefinition } from "../../presentation/mcp_tool/mcp_tool";
-import { InMemoryRateLimiter } from "../rate_limit/in_memory_rate_limiter";
 import { serializeDatesRecursively } from "../http/utils/date_serializer";
 import { mapErrorToToolResult } from "./mcp_error_mapper";
+import { CoreDi } from "../di/core_di";
 
 function buildToolRateLimitKey(toolName: string, userId: string): string {
   return `tool:${toolName}:${userId}`;
@@ -31,7 +31,7 @@ export function registerMcpTool(
   user: User,
   capabilities: CapabilitySet,
   definition: McpToolDefinition<z.ZodRawShape>,
-  rateLimiter: RateLimiter = new InMemoryRateLimiter()
+  rateLimiter: RateLimiter = new CoreDi().makeRateLimiter()
 ): RegisteredTool {
   return server.registerTool(
     definition.name,

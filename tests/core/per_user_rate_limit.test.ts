@@ -21,6 +21,7 @@ import { BunHttpControllerAdapter } from "../../src/core/infra/http/adapters/htt
 import { CoreDi } from "../../src/core/infra/di/core_di";
 import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
 import { InMemoryRateLimiter } from "../../src/core/infra/rate_limit/in_memory_rate_limiter";
+import { resetSharedRateLimiter } from "../../src/core/infra/di/core_di";
 import type { RateLimitPolicy } from "../../src/core/application/rate_limit/rate_limit_policy";
 import {
   HttpControllerMethod,
@@ -310,6 +311,41 @@ describe("registerMcpTool — rateLimitPolicy", () => {
     expect(second.isError).toBe(true);
     const text = (second.content as Array<{ text: string }>)[0]?.text;
     expect(text).not.toBe("Internal server error");
+  });
+
+  it("counts against the shared limiter when no limiter is handed in", async () => {
+    resetSharedRateLimiter();
+
+    const definition = {
+      name: "defaulted_rate_limited_tool",
+      description: "A tool with a tight per-user rate limit",
+      inputSchema: {},
+      rateLimitPolicy: {
+        keyDimension: "user" as const,
+        windowMs: 60_000,
+        maxAttempts: 1,
+      },
+      handler: async () => ({ ok: true }),
+    };
+
+    const firstServer = new McpServer({ name: "a", version: "1.0.0" });
+    const secondServer = new McpServer({ name: "b", version: "1.0.0" });
+
+    const first = await callTool(
+      registerMcpTool(firstServer, fakeUser, CapabilitySet.of({}), definition),
+      {},
+      makeExtra()
+    );
+    const second = await callTool(
+      registerMcpTool(secondServer, fakeUser, CapabilitySet.of({}), definition),
+      {},
+      makeExtra()
+    );
+
+    expect(first.isError).toBeUndefined();
+    expect(second.isError).toBe(true);
+
+    resetSharedRateLimiter();
   });
 
   it("does not share the quota between two different users calling the same tool", async () => {
