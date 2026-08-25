@@ -24,6 +24,12 @@ const RATE_LIMIT_POLICY: RateLimitPolicy = {
   maxAttempts: 10,
 };
 
+const USER_RATE_LIMIT_POLICY: RateLimitPolicy = {
+  keyDimension: "user",
+  windowMs: 60 * 60 * 1000,
+  maxAttempts: 10,
+};
+
 const CSV_EXAMPLE = [
   "property_id,kind,amount,category,description,occurred_at",
   "3fa85f64-5717-4562-b3fc-2c963f66afa6,expense,15000,MANUTENÇÃO,Reparo no encanamento,15/01/2026",
@@ -41,6 +47,7 @@ export class ImportLedgerEntriesController implements Controller {
   method = HttpControllerMethod.POST;
   bodyMode = "stream" as const;
   rateLimitPolicy = RATE_LIMIT_POLICY;
+  userRateLimitPolicy = USER_RATE_LIMIT_POLICY;
 
   openApiSpec: OpenApiOperation = {
     summary: "Import ledger entries",
