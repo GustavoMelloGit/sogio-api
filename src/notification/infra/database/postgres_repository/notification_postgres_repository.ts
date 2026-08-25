@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, inArray, isNull, lte } from "drizzle-orm";
 import { db } from "../../../../core/infra/database/drizzle/database";
 import { currentExecutor } from "../../../../core/infra/database/drizzle/transaction_context";
+import { NotificationInboxPolicy } from "../../../domain/policy/notification_inbox_policy";
 import {
   notificationsTable,
   usersTable,
@@ -11,11 +12,11 @@ import {
 } from "../../../domain/entity/notification";
 import type {
   ClaimedNotification,
+  NotificationInbox,
   NotificationRepository,
 } from "../../../domain/repository/notification_repository";
 import {
   calculatePaginationMetadata,
-  type PaginatedResult,
   type PaginationInput,
 } from "../../../../core/application/dto/pagination";
 import {
@@ -58,6 +59,18 @@ export class NotificationPostgresRepository implements NotificationRepository {
       .values(notifications.map(notification => notification.data));
   }
 
+  #inboxScope(userId: string) {
+    return and(
+      eq(notificationsTable.user_id, userId),
+      eq(notificationsTable.status, NotificationInboxPolicy.DELIVERED_STATUS),
+      inArray(
+        notificationsTable.type,
+        NotificationInboxPolicy.RENDERABLE_TYPES
+      ),
+      isNull(notificationsTable.deleted_at)
+    );
+  }
+
   async claimDue(limit: number, now: Date): Promise<ClaimedNotification[]> {
     return db.transaction(async tx => {
       const due = await tx
@@ -65,7 +78,10 @@ export class NotificationPostgresRepository implements NotificationRepository {
         .from(notificationsTable)
         .where(
           and(
-            eq(notificationsTable.status, "pending"),
+            eq(
+              notificationsTable.status,
+              NotificationInboxPolicy.PENDING_DELIVERY_STATUS
+            ),
             lte(notificationsTable.next_attempt_at, now),
             isNull(notificationsTable.deleted_at)
           )
@@ -128,27 +144,43 @@ export class NotificationPostgresRepository implements NotificationRepository {
       : null;
   }
 
-  async allOfUser(
+  async markInboxReadOfUser(userId: string): Promise<number> {
+    const now = new Date();
+
+    const marked = await currentExecutor()
+      .update(notificationsTable)
+      .set({ read_at: now, updated_at: now })
+      .where(and(this.#inboxScope(userId), isNull(notificationsTable.read_at)))
+      .returning({ id: notificationsTable.id });
+
+    return marked.length;
+  }
+
+  async inboxOfUser(
     userId: string,
     pagination: PaginationInput
-  ): Promise<PaginatedResult<Notification>> {
-    const whereClause = and(
-      eq(notificationsTable.user_id, userId),
-      isNull(notificationsTable.deleted_at)
-    );
+  ): Promise<NotificationInbox> {
+    const predicate = this.#inboxScope(userId);
 
-    const [rows, totalResult] = await Promise.all([
+    const [rows, totalResult, unreadResult] = await Promise.all([
       currentExecutor()
         .select()
         .from(notificationsTable)
-        .where(whereClause)
-        .orderBy(desc(notificationsTable.created_at))
+        .where(predicate)
+        .orderBy(
+          desc(notificationsTable.created_at),
+          desc(notificationsTable.id)
+        )
         .limit(pagination.limit)
         .offset((pagination.page - 1) * pagination.limit),
       currentExecutor()
         .select({ value: count() })
         .from(notificationsTable)
-        .where(whereClause),
+        .where(predicate),
+      currentExecutor()
+        .select({ value: count() })
+        .from(notificationsTable)
+        .where(and(predicate, isNull(notificationsTable.read_at))),
     ]);
 
     return {
@@ -160,6 +192,7 @@ export class NotificationPostgresRepository implements NotificationRepository {
         pagination.limit,
         totalResult[0]?.value ?? 0
       ),
+      unread_count: unreadResult[0]?.value ?? 0,
     };
   }
 }

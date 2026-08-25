@@ -11,6 +11,8 @@ import type { NotificationService } from "../../application/service/notification
 import { DeliverPendingNotificationsUseCase } from "../../application/use_case/deliver_pending_notifications";
 import { GetNotificationPreferencesUseCase } from "../../application/use_case/get_notification_preferences";
 import { UpdateNotificationPreferencesUseCase } from "../../application/use_case/update_notification_preferences";
+import { ListNotificationsUseCase } from "../../application/use_case/list_notifications";
+import { MarkNotificationReadUseCase } from "../../application/use_case/mark_notification_read";
 import type { NotificationRepository } from "../../domain/repository/notification_repository";
 import type { NotificationPreferenceRepository } from "../../domain/repository/notification_preference_repository";
 import { NotificationPostgresRepository } from "../database/postgres_repository/notification_postgres_repository";
@@ -19,8 +21,15 @@ import { EmailNotificationChannel } from "../channel/email_notification_channel"
 import { NotificationContentRenderer } from "../../domain/service/notification_content_renderer";
 import { GetNotificationPreferencesController } from "../../presentation/controller/get_notification_preferences.controller";
 import { UpdateNotificationPreferencesController } from "../../presentation/controller/update_notification_preferences.controller";
+import { ListNotificationsController } from "../../presentation/controller/list_notifications.controller";
+import { MarkNotificationReadController } from "../../presentation/controller/mark_notification_read.controller";
 import { makeGetNotificationPreferencesTool } from "../../presentation/mcp_tool/get_notification_preferences.mcp_tool";
 import { makeUpdateNotificationPreferencesTool } from "../../presentation/mcp_tool/update_notification_preferences.mcp_tool";
+import { makeListNotificationsTool } from "../../presentation/mcp_tool/list_notifications.mcp_tool";
+import { makeMarkNotificationReadTool } from "../../presentation/mcp_tool/mark_notification_read.mcp_tool";
+import { makeMarkAllNotificationsReadTool } from "../../presentation/mcp_tool/mark_all_notifications_read.mcp_tool";
+import { MarkAllNotificationsReadUseCase } from "../../application/use_case/mark_all_notifications_read";
+import { MarkAllNotificationsReadController } from "../../presentation/controller/mark_all_notifications_read.controller";
 
 export class NotificationDi {
   #logger: Logger;
@@ -105,5 +114,51 @@ export class NotificationDi {
     return makeUpdateNotificationPreferencesTool(
       this.makeUpdateNotificationPreferencesUseCase()
     );
+  }
+
+  makeListNotificationsUseCase(): ListNotificationsUseCase {
+    return new ListNotificationsUseCase(
+      this.#logger,
+      this.#notificationRepository,
+      this.#contentRenderer
+    );
+  }
+
+  makeMarkAllNotificationsReadUseCase(): MarkAllNotificationsReadUseCase {
+    return new MarkAllNotificationsReadUseCase(this.#notificationRepository);
+  }
+
+  makeMarkAllNotificationsReadController(): MarkAllNotificationsReadController {
+    return new MarkAllNotificationsReadController(
+      this.makeMarkAllNotificationsReadUseCase()
+    );
+  }
+
+  makeMarkAllNotificationsReadTool() {
+    return makeMarkAllNotificationsReadTool(
+      this.makeMarkAllNotificationsReadUseCase()
+    );
+  }
+
+  makeMarkNotificationReadUseCase(): MarkNotificationReadUseCase {
+    return new MarkNotificationReadUseCase(this.#notificationRepository);
+  }
+
+  makeListNotificationsController(): ListNotificationsController {
+    return new ListNotificationsController(this.makeListNotificationsUseCase());
+  }
+
+  makeMarkNotificationReadController(): MarkNotificationReadController {
+    return new MarkNotificationReadController(
+      this.makeMarkNotificationReadUseCase()
+    );
+  }
+
+  makeListNotificationsTool() {
+    return makeListNotificationsTool(this.makeListNotificationsUseCase());
+  }
+
+  makeMarkNotificationReadTool() {
+    return makeMarkNotificationReadTool(this.makeMarkNotificationReadUseCase());
   }
 }

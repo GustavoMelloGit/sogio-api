@@ -18,7 +18,7 @@ export const passwordSchema = z.string().min(8).max(128);
 
 export const userSchema = baseEntitySchema.extend({
   name: z.string().min(1).max(100),
-  email: z.string().email().max(255),
+  email: z.email().max(255),
   password: passwordSchema,
   role: z.enum(["user", "admin"]).optional().default("user"),
   locale: localeSchema.optional().default(DEFAULT_LOCALE),

@@ -15,7 +15,7 @@ import {
 const outputSchema = z.object({
   properties: z.array(
     z.object({
-      id: z.string().uuid(),
+      id: z.uuid(),
       name: z.string(),
     })
   ),

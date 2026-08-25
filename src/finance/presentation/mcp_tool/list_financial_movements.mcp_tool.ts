@@ -1,9 +1,7 @@
 import { z } from "zod";
 import {
-  DEFAULT_LIMIT,
-  DEFAULT_PAGE,
-  MAX_LIMIT,
-  MAX_PAGE,
+  paginationFields,
+  toPaginationInput,
 } from "../../../core/application/dto/pagination";
 import type { FindPropertyFinancialMovementsUseCase } from "../../application/use_case/find_property_financial_movements";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
@@ -28,20 +26,7 @@ const inputSchema = {
     .describe(
       "Only include movements recorded on or before this instant. ISO-8601 date-time with an explicit UTC offset, e.g. 2026-08-31T23:59:59-03:00."
     ),
-  page: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(MAX_PAGE)
-    .default(DEFAULT_PAGE)
-    .describe("Page number to retrieve, starting at 1."),
-  limit: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(MAX_LIMIT)
-    .default(DEFAULT_LIMIT)
-    .describe(`Number of movements per page, up to ${MAX_LIMIT}.`),
+  ...paginationFields,
 };
 
 export function makeListFinancialMovementsTool(
@@ -59,7 +44,7 @@ export function makeListFinancialMovementsTool(
       return useCase.execute(
         {
           propertyId: input.property_id,
-          pagination: { page: input.page, limit: input.limit },
+          pagination: toPaginationInput(input),
           dateFilter: {
             start_date: input.start_date,
             end_date: input.end_date,

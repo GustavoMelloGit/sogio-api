@@ -14,51 +14,31 @@ import {
 import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
-  MAX_LIMIT,
-  MAX_PAGE,
+  paginatedOutputSchema,
+  paginationFields,
+  toPaginationInput,
 } from "../../../core/application/dto/pagination";
 import { settingTypeSchema } from "../../../core/domain/value_object/setting_value";
 
 const inputSchema = z
   .object({
     property_id: z.uuidv4("Property ID must be a valid UUID"),
-    page: z.coerce
-      .number()
-      .int()
-      .positive()
-      .max(MAX_PAGE)
-      .default(DEFAULT_PAGE),
-    limit: z.coerce
-      .number()
-      .int()
-      .positive()
-      .max(MAX_LIMIT)
-      .default(DEFAULT_LIMIT),
+    ...paginationFields,
   })
   .strict();
 
-const outputSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.string().uuid(),
-      property_id: z.string().uuid(),
-      key: z.string(),
-      value: z.unknown(),
-      type: settingTypeSchema,
-      description: z.string().nullable(),
-      created_at: z.string().datetime(),
-      updated_at: z.string().datetime(),
-    })
-  ),
-  pagination: z.object({
-    page: z.number().int(),
-    limit: z.number().int(),
-    total: z.number().int(),
-    total_pages: z.number().int(),
-    has_next: z.boolean(),
-    has_previous: z.boolean(),
-  }),
+const propertySettingOutputSchema = z.object({
+  id: z.uuid(),
+  property_id: z.uuid(),
+  key: z.string(),
+  value: z.unknown(),
+  type: settingTypeSchema,
+  description: z.string().nullable(),
+  created_at: z.iso.datetime(),
+  updated_at: z.iso.datetime(),
 });
+
+const outputSchema = paginatedOutputSchema(propertySettingOutputSchema);
 
 type Input = z.infer<typeof inputSchema>;
 
@@ -107,7 +87,7 @@ export class ListPropertySettingsController implements Controller {
     return this.useCase.execute(
       {
         property_id: input.property_id,
-        pagination: { page: input.page, limit: input.limit },
+        pagination: toPaginationInput(input),
       },
       user
     );

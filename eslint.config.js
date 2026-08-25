@@ -52,6 +52,7 @@ export default defineConfig([
         "error",
         { ignoredSchemaNames: IGNORED_SCHEMA_NAMES },
       ],
+      "sogio/zod-format-shorthand": "error",
     },
   },
   {

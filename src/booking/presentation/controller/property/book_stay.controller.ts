@@ -49,13 +49,13 @@ const inputSchema = z.object({
 const outputSchema = z.object({
   message: z.string(),
   data: z.object({
-    id: z.string().uuid(),
+    id: z.uuid(),
     guests: z.number(),
     entrance_code: z.string(),
     source: z.string(),
-    tenant_id: z.string().uuid(),
-    check_in: z.string().datetime(),
-    check_out: z.string().datetime(),
+    tenant_id: z.uuid(),
+    check_in: z.iso.datetime(),
+    check_out: z.iso.datetime(),
     price: z.number().int().describe("Price in cents"),
   }),
 });

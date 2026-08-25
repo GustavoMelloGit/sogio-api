@@ -10,13 +10,18 @@ export type ClaimedNotification = {
   recipient: NotificationRecipient;
 };
 
+export type NotificationInbox = PaginatedResult<Notification> & {
+  unread_count: number;
+};
+
 export interface NotificationRepository {
   save(notification: Notification): Promise<void>;
   saveMany(notifications: Notification[]): Promise<void>;
   claimDue(limit: number, now: Date): Promise<ClaimedNotification[]>;
   notificationOfId(id: string): Promise<Notification | null>;
-  allOfUser(
+  markInboxReadOfUser(userId: string): Promise<number>;
+  inboxOfUser(
     userId: string,
     pagination: PaginationInput
-  ): Promise<PaginatedResult<Notification>>;
+  ): Promise<NotificationInbox>;
 }

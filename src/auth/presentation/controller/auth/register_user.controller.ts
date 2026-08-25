@@ -23,12 +23,12 @@ const inputSchema = z.object({
 const outputSchema = z.object({
   token: z.string().describe("JWT bearer token"),
   user: z.object({
-    id: z.string().uuid(),
+    id: z.uuid(),
     name: z.string(),
-    email: z.string().email(),
+    email: z.email(),
     role: z.enum(["user", "admin"]),
-    created_at: z.string().datetime(),
-    updated_at: z.string().datetime(),
+    created_at: z.iso.datetime(),
+    updated_at: z.iso.datetime(),
   }),
 });
 

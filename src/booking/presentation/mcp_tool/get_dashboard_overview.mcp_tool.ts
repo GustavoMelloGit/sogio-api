@@ -3,8 +3,7 @@ import type { GetDashboardOverviewUseCase } from "../../application/use_case/das
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
 
 export const inputSchema = {
-  date: z
-    .string()
+  date: z.iso
     .date()
     .transform(value => new Date(`${value}T00:00:00.000Z`))
     .optional()
