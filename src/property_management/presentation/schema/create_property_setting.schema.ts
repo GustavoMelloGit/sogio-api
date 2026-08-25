@@ -7,7 +7,7 @@ import {
 
 export const createPropertySettingInput = {
   property_id: z
-    .uuid()
+    .uuid("Property ID must be a valid UUID")
     .describe(
       "ID of the property the setting should be created for. Must be a property administered by the authenticated user."
     ),

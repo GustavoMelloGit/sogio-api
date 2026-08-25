@@ -9,15 +9,21 @@ import {
   MAX_MCP_IMPORT_RECORDS,
 } from "../../../core/application/import/import_failure";
 import type { ImportRecordStream } from "../../../core/application/import/source_record";
-import { MAX_PROPERTY_IMAGES } from "../../domain/entity/property";
+import {
+  MAX_PROPERTY_CAPACITY,
+  MAX_PROPERTY_IMAGES,
+} from "../../domain/entity/property";
 
 const recordSchema = z.object({
   name: propertyImportRecordShape.name.describe(
     "Name the owner uses to identify the property."
   ),
-  capacity: propertyImportRecordShape.capacity.describe(
-    "Maximum number of guests the property accommodates."
-  ),
+  capacity: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_PROPERTY_CAPACITY)
+    .describe("Maximum number of guests the property accommodates."),
   street: propertyImportRecordShape.street.describe(
     "Street name of the property's address."
   ),

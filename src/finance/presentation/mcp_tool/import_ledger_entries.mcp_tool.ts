@@ -4,6 +4,7 @@ import {
   type ImportBatchLedgerEntriesUseCase,
 } from "../../application/use_case/import_batch_ledger_entries";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
+import { MAX_LEDGER_AMOUNT_IN_CENTS } from "../../domain/entity/ledger_entry";
 import type { ImportRecordStream } from "../../../core/application/import/source_record";
 import {
   ImportRejectedError,
@@ -17,9 +18,14 @@ const recordSchema = z.object({
   kind: ledgerEntryImportRecordShape.kind.describe(
     "Whether this movement is an expense or a revenue."
   ),
-  amount: ledgerEntryImportRecordShape.amount.describe(
-    "Amount in cents, always positive — the sign is derived from kind."
-  ),
+  amount: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_LEDGER_AMOUNT_IN_CENTS)
+    .describe(
+      "Amount in cents, always positive — the sign is derived from kind."
+    ),
   category: ledgerEntryImportRecordShape.category.describe(
     "For kind=expense, must be one of: MANUTENÇÃO, ESTADIA, AQUISIÇÕES, FINANCIAMENTO, GASTOS_FIXOS, OUTROS. For kind=revenue, free text up to 100 characters."
   ),

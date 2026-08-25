@@ -25,7 +25,7 @@ export const createExternalBookingSourceInput = {
     .describe(PLATFORM_NAME_DESCRIPTION),
   sync_url: z
     .url()
-    .max(2048)
+    .max(2048, "Sync URL must be at most 2048 characters")
     .describe(
       "Public iCal URL exported by the platform, e.g. https://www.airbnb.com/calendar/ical/12345.ics. Copy it from the platform's calendar export screen."
     ),

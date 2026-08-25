@@ -410,4 +410,42 @@ describe("import_stays tool", () => {
     expect(dispatchedEventNames).toContain("stay_imported");
     expect(dispatchedEventNames).not.toContain("stay_booked");
   });
+
+  it("never lets the caller choose the entrance code, and never returns it", async () => {
+    const { user } = await createUserFixture({
+      name: "João Silva",
+      email: "import-stays-tool-entrance-code@sogio.dev",
+      password: "password123",
+    });
+    const property = await createPropertyFixture({ userId: user.id });
+
+    const registeredTool = registerImportStaysTool(user);
+    const record = {
+      ...stayRecord({
+        propertyId: property.id,
+        checkIn: "2035-07-10",
+        checkOut: "2035-07-15",
+        price: 100000,
+        phone: "5511955551111",
+      }),
+      entrance_code: "1234567",
+    };
+
+    const result = await callTool(
+      registeredTool,
+      { records: [record] as StayRecordInput[] },
+      makeExtra()
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain("1234567");
+
+    const [stay] = await db
+      .select()
+      .from(staysTable)
+      .where(eq(staysTable.property_id, property.id));
+
+    expect(stay?.entrance_code).not.toBe("1234567");
+    expect(stay?.entrance_code).toMatch(/^[0-9]+$/);
+  });
 });
