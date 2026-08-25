@@ -5,6 +5,7 @@ import { ForbiddenError } from "../../../application/error/forbidden_error";
 import { IllegalStateError } from "../../../application/error/illegal_state_error";
 import { PayloadTooLargeError } from "../../../application/error/payload_too_large_error";
 import { ResourceNotFoundError } from "../../../application/error/resource_not_found_error";
+import { TooManyRequestsError } from "../../../application/error/too_many_requests_error";
 import { UnauthorizedError } from "../../../application/error/unauthorized_error";
 import { ValidationError } from "../../../application/error/validation_error";
 import type { User } from "../../../../auth/domain/entity/user";
@@ -231,6 +232,7 @@ const errorCodeMap: Record<string, number> = {
   [UnauthorizedError.name]: 401,
   [IllegalStateError.name]: 500,
   [PayloadTooLargeError.name]: 413,
+  [TooManyRequestsError.name]: 429,
 };
 
 /**
@@ -272,8 +274,12 @@ function buildErrorLogContext(
   return { name: error.name, message: error.message, stack: error.stack };
 }
 
-function buildRateLimitKey(controller: Controller, callerIp: string): string {
-  return `${controller.method}:${controller.path}:${callerIp}`;
+function buildRateLimitKey(controller: Controller, key: string): string {
+  return `${controller.method}:${controller.path}:${key}`;
+}
+
+function buildUserRateLimitKey(controller: Controller, userId: string): string {
+  return buildRateLimitKey(controller, `user:${userId}`);
 }
 
 async function drainRateLimitedRequestBody(request: Request): Promise<void> {
@@ -354,6 +360,12 @@ export function BunHttpControllerAdapter(
   if (requiredCapability && adminOnly) {
     throw new Error(
       `Route ${controller.method} ${controller.path} declares requiredCapability together with adminOnly, which bypasses the check entirely`
+    );
+  }
+
+  if (controller.userRateLimitPolicy && !authenticated && !adminOnly) {
+    throw new Error(
+      `Route ${controller.method} ${controller.path} declares userRateLimitPolicy but is neither authenticated nor adminOnly, so the check would never run`
     );
   }
 
@@ -453,6 +465,23 @@ export function BunHttpControllerAdapter(
               `Your current plan doesn't include ${label}. Upgrade your plan to unlock it.`
             );
           }
+        }
+      }
+
+      if (controller.userRateLimitPolicy && user) {
+        const decision = rateLimiter.consume(
+          buildUserRateLimitKey(controller, user.id),
+          controller.userRateLimitPolicy
+        );
+        if (!decision.allowed) {
+          if (controller.bodyMode === "stream") {
+            await drainRateLimitedRequestBody(request);
+          }
+          return corsMiddleware.addCorsHeaders(
+            buildRateLimitedResponse(decision.retryAfterSeconds),
+            request.headers.get("Origin"),
+            controller.corsPolicy
+          );
         }
       }
 
