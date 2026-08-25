@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  stayImportRecordFieldsSchema,
+  stayImportRecordShape,
   type ImportBatchStaysUseCase,
 } from "../../application/use_case/import_batch_stays";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
@@ -12,48 +12,45 @@ import {
   MAX_MCP_IMPORT_RECORDS,
 } from "../../../core/application/import/import_failure";
 
-const recordInputSchema = stayImportRecordFieldsSchema
-  .omit({ entrance_code: true })
-  .extend({
-    property_id: stayImportRecordFieldsSchema.shape.property_id.describe(
-      "ID of the property the stay belongs to. Must be a property administered by the authenticated user."
+const recordInputSchema = z.object({
+  property_id: stayImportRecordShape.property_id.describe(
+    "ID of the property the stay belongs to. Must be a property administered by the authenticated user."
+  ),
+  check_in: z
+    .string()
+    .max(32)
+    .describe(
+      "Check-in date, in YYYY-MM-DD or DD/MM/YYYY format. It is anchored at the property's check-in time (property setting check_in_time, default 14:00) in the owner's time zone."
     ),
-    check_in: z
-      .string()
-      .max(32)
-      .describe(
-        "Check-in date, in YYYY-MM-DD or DD/MM/YYYY format. It is anchored at the property's check-in time (property setting check_in_time, default 14:00) in the owner's time zone."
-      ),
-    check_out: z
-      .string()
-      .max(32)
-      .describe(
-        "Check-out date, in YYYY-MM-DD or DD/MM/YYYY format. Must be a later calendar day than check_in. It is anchored at the property's check-out time (property setting check_out_time, default 11:00) in the owner's time zone."
-      ),
-    guests: z
-      .number()
-      .int()
-      .positive()
-      .max(MAX_PROPERTY_CAPACITY)
-      .describe("Number of guests staying."),
-    price: z
-      .number()
-      .int()
-      .nonnegative()
-      .max(MAX_STAY_PRICE_IN_CENTS)
-      .describe("Total stay price in cents."),
-    source: stayImportRecordFieldsSchema.shape.source.describe(
-      "Booking source/channel, e.g. DIRECT, AIRBNB, BOOKING, or any other label used to import historic data."
+  check_out: z
+    .string()
+    .max(32)
+    .describe(
+      "Check-out date, in YYYY-MM-DD or DD/MM/YYYY format. Must be a later calendar day than check_in. It is anchored at the property's check-out time (property setting check_out_time, default 11:00) in the owner's time zone."
     ),
-    tenant_name: stayImportRecordFieldsSchema.shape.tenant_name.describe(
-      "Full name of the guest staying at the property."
-    ),
-    tenant_phone: stayImportRecordFieldsSchema.shape.tenant_phone.describe(
-      "Guest phone number, digits only, including country and area code, e.g. 5511999990000. Identifies the tenant: a phone that already exists is reused, otherwise a new tenant is created."
-    ),
-    tenant_sex:
-      stayImportRecordFieldsSchema.shape.tenant_sex.describe("Guest's sex."),
-  });
+  guests: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_PROPERTY_CAPACITY)
+    .describe("Number of guests staying."),
+  price: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(MAX_STAY_PRICE_IN_CENTS)
+    .describe("Total stay price in cents."),
+  source: stayImportRecordShape.source.describe(
+    "Booking source/channel, e.g. DIRECT, AIRBNB, BOOKING, or any other label used to import historic data."
+  ),
+  tenant_name: stayImportRecordShape.tenant_name.describe(
+    "Full name of the guest staying at the property."
+  ),
+  tenant_phone: stayImportRecordShape.tenant_phone.describe(
+    "Guest phone number, digits only, including country and area code, e.g. 5511999990000. Identifies the tenant: a phone that already exists is reused, otherwise a new tenant is created."
+  ),
+  tenant_sex: stayImportRecordShape.tenant_sex.describe("Guest's sex."),
+});
 
 const inputSchema = {
   records: z
