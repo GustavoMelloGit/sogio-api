@@ -38,6 +38,12 @@ const RATE_LIMIT_POLICY: RateLimitPolicy = {
   maxAttempts: 5,
 };
 
+const USER_RATE_LIMIT_POLICY: RateLimitPolicy = {
+  keyDimension: "user",
+  windowMs: 60 * 60 * 1000,
+  maxAttempts: 10,
+};
+
 const outputSchema = z.object({
   imported: z.number().int(),
 });
@@ -78,6 +84,7 @@ export class ImportPropertiesController implements Controller {
   method = HttpControllerMethod.POST;
   bodyMode = "stream" as const;
   rateLimitPolicy = RATE_LIMIT_POLICY;
+  userRateLimitPolicy = USER_RATE_LIMIT_POLICY;
 
   openApiSpec: OpenApiOperation = {
     summary: "Import properties",

@@ -7,12 +7,19 @@ import {
 } from "../../../../core/presentation/controller/controller";
 import type { User } from "../../../../auth/domain/entity/user";
 import type { OpenApiOperation } from "../../../../core/presentation/open_api/open_api_types";
+import type { RateLimitPolicy } from "../../../../core/application/rate_limit/rate_limit_policy";
 import {
   bodyFromZod,
   errorResponse,
   responseFromZod,
   validationErrorResponse,
 } from "../../../../core/infra/http/swagger/schema_helpers";
+
+const USER_RATE_LIMIT_POLICY: RateLimitPolicy = {
+  keyDimension: "user",
+  windowMs: 60 * 60 * 1000,
+  maxAttempts: 120,
+};
 
 const inputSchema = z.object({
   guests: z
@@ -66,6 +73,7 @@ export class BookStayController implements Controller {
   path = "/booking/property/:property_id/book";
   method = HttpControllerMethod.POST;
   inputSchema = inputSchema;
+  userRateLimitPolicy = USER_RATE_LIMIT_POLICY;
 
   openApiSpec: OpenApiOperation = {
     summary: "Book a stay",

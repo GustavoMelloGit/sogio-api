@@ -2,6 +2,13 @@ import { z } from "zod";
 import type { RecordRevenueUseCase } from "../../application/use_case/record_revenue";
 import { MAX_LEDGER_AMOUNT_IN_CENTS } from "../../domain/entity/ledger_entry";
 import type { McpToolDefinition } from "../../../core/presentation/mcp_tool/mcp_tool";
+import type { RateLimitPolicy } from "../../../core/application/rate_limit/rate_limit_policy";
+
+const RATE_LIMIT_POLICY: RateLimitPolicy = {
+  keyDimension: "user",
+  windowMs: 60 * 60 * 1000,
+  maxAttempts: 120,
+};
 
 export const inputSchema = {
   property_id: z
@@ -38,6 +45,7 @@ export function makeRecordRevenueTool(
     description:
       "Records a financial revenue entry for a property. Revenue from a booked stay is already recorded automatically, so use this only for money that did not come from a stay booked in Sogio.",
     inputSchema,
+    rateLimitPolicy: RATE_LIMIT_POLICY,
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,

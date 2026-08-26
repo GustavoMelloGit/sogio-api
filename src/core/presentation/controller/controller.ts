@@ -99,6 +99,7 @@ export interface Controller {
    * knows nothing about this controller or why the numbers were chosen.
    */
   rateLimitPolicy?: RateLimitPolicy;
+  userRateLimitPolicy?: RateLimitPolicy;
   /**
    * Opt-in CORS policy. `"public"` responds to any origin with
    * `Access-Control-Allow-Origin: *` and no `Access-Control-Allow-Credentials`

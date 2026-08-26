@@ -15,7 +15,7 @@
  *   enforce their own policy directly through `RateLimiter.consume`,
  *   outside the adapter's automatic per-request `peer-ip` check.
  */
-export type RateLimitKeyDimension = "peer-ip" | "caller-key";
+export type RateLimitKeyDimension = "peer-ip" | "caller-key" | "user";
 
 /**
  * A rate limiting policy a route declares for itself. The primitive that

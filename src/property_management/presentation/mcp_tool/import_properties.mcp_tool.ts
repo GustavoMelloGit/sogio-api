@@ -6,10 +6,17 @@ import {
   MAX_MCP_IMPORT_RECORDS,
 } from "../../../core/application/import/import_failure";
 import type { ImportRecordStream } from "../../../core/application/import/source_record";
+import type { RateLimitPolicy } from "../../../core/application/rate_limit/rate_limit_policy";
 import {
   MAX_PROPERTY_CAPACITY,
   MAX_PROPERTY_IMAGES,
 } from "../../domain/entity/property";
+
+const RATE_LIMIT_POLICY: RateLimitPolicy = {
+  keyDimension: "user",
+  windowMs: 60 * 60 * 1000,
+  maxAttempts: 30,
+};
 
 const recordSchema = z.object({
   name: z
@@ -123,6 +130,7 @@ export function makeImportPropertiesTool(
   return {
     name: "import_properties",
     requiredCapability: "bulk_import",
+    rateLimitPolicy: RATE_LIMIT_POLICY,
     description: `Imports properties in bulk, up to ${MAX_MCP_IMPORT_RECORDS} records per call. The batch is accepted or rejected as a whole: a record that fails validation rolls back the entire import, and the failures are returned so they can be fixed and retried. If the batch would push the account over its property quota, the entire batch is rejected — never partially imported.`,
     inputSchema,
     annotations: {

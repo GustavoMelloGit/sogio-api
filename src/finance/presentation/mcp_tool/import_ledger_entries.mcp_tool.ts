@@ -6,7 +6,14 @@ import {
   ImportRejectedError,
   MAX_MCP_IMPORT_RECORDS,
 } from "../../../core/application/import/import_failure";
+import type { RateLimitPolicy } from "../../../core/application/rate_limit/rate_limit_policy";
 import { MAX_LEDGER_AMOUNT_IN_CENTS } from "../../domain/entity/ledger_entry";
+
+const RATE_LIMIT_POLICY: RateLimitPolicy = {
+  keyDimension: "user",
+  windowMs: 60 * 60 * 1000,
+  maxAttempts: 30,
+};
 
 const recordSchema = z.object({
   property_id: z
@@ -79,6 +86,7 @@ export function makeImportLedgerEntriesTool(
   return {
     name: "import_ledger_entries",
     requiredCapability: "bulk_import",
+    rateLimitPolicy: RATE_LIMIT_POLICY,
     description:
       "Imports financial movements (expenses and revenues) for one or more properties in a single batch. The whole batch is accepted or rejected atomically: on rejection, nothing is written and the result lists which records failed and why. This does not deduplicate — resubmitting an already-accepted batch inserts every row again; use delete_ledger_entry to remove duplicates.",
     inputSchema,
