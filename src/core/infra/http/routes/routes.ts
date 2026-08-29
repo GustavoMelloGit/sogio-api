@@ -14,6 +14,7 @@ import { PropertyManagementDi } from "../../../../property_management/infra/di/p
 import { BackofficeDi } from "../../../../backoffice/infra/di/backoffice_di";
 import { BillingDi } from "../../../../billing/infra/di/billing_di";
 import { NotificationDi } from "../../../../notification/infra/di/notification_di";
+import { MarketingDi } from "../../../../marketing/infra/di/marketing_di";
 import type { AccessCapabilityKey } from "../../../../billing/domain/capability/capability_registry";
 import { OpenApiBuilder } from "../swagger/open_api_builder";
 import { scalarUiHtml } from "../swagger/scalar_ui";
@@ -33,6 +34,7 @@ const propertyManagementDi = new PropertyManagementDi(
 );
 const backofficeDi = new BackofficeDi();
 const notificationDi = new NotificationDi();
+const marketingDi = new MarketingDi();
 
 stayDi.registerEventHandlers();
 financeDi.registerEventHandlers();
@@ -380,6 +382,13 @@ const notificationControllers: Route[] = [
   },
 ];
 
+const marketingControllers: Route[] = [
+  {
+    authenticated: false,
+    controller: marketingDi.makeJoinWaitlistController(),
+  },
+];
+
 const controllers = [
   ...tenantControllers,
   ...propertyControllers,
@@ -392,6 +401,7 @@ const controllers = [
   ...backofficeControllers,
   ...billingControllers,
   ...notificationControllers,
+  ...marketingControllers,
   healthController,
 ];
 
