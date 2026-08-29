@@ -8,3 +8,4 @@ export * from "./schemas/finance_schemas";
 export * from "./schemas/backoffice_schemas";
 export * from "./schemas/billing_schemas";
 export * from "./schemas/notification_schemas";
+export * from "./schemas/marketing_schemas";
