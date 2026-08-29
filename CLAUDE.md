@@ -59,7 +59,7 @@ Sem isso, dois agentes em worktrees diferentes se destroem: o helper `truncate()
 
 ### Estrutura de Camadas
 
-Cada módulo de negócio (`auth`, `booking`, `property_management`, `finance`, `billing`, `notification`) possui quatro camadas:
+Cada módulo de negócio (`auth`, `booking`, `property_management`, `finance`, `billing`, `notification`, `marketing`) possui quatro camadas:
 
 ```
 src/[modulo]/
@@ -166,6 +166,18 @@ A preferência de idioma **não vive aqui**: `locale` e `time_zone` são campos 
 As duas rotas de preferência (`GET`/`PUT /notifications/preferences`) têm as tools MCP correspondentes: são dados do próprio usuário.
 
 **A caixa de entrada** (`GET /notifications`, paginada, e `POST /notifications/:notification_id/read`) mostra só o que foi **entregue**: a query filtra `status === "sent"`, então uma notificação `pending` ou `failed` nunca aparece — `markRead()` lança `IllegalStateError` (500) numa linha que não é `sent`, e `sent` é terminal (`markFailed` lança numa já enviada), então "aparece na lista ⟹ pode marcar como lida" vale para sempre. Uma linha irrenderizável (tipo saiu do registro, ou o payload não satisfaz mais o contrato do tipo) é omitida em vez de mostrada com texto de substituição: a saída do registro é filtrada em SQL (`total` fica exato), enquanto payload inválido é descartado no caso de uso com `warn` — nesse segundo caso, deliberadamente, uma página pode vir mais curta que `limit` com `total` ainda contando a linha. A resposta traz `unread_count` do inbox inteiro, não da página; não há filtro `unread_only` nem índice novo — o volume não pede. A posse é checada no caso de uso, não no repositório (mesmo idioma de `DeleteLedgerEntryUseCase`): ausente, de outro usuário e em estado errado colapsam no mesmo `404`. As duas rotas são `authenticated: true` sem `allowWithoutPlatformAccess` e sem `requiredCapability`, como as de preferência, e têm as tools MCP correspondentes (`list_notifications`, `mark_notification_read`) na mesma entrega. A caixa de entrada não guarda nenhum dado pessoal novo: `title`/`body` continuam sendo renderizados na leitura, a partir do mesmo `payload` que já existia — nada a mais fica persistido só para a listagem existir.
+
+### Bounded Context `marketing`
+
+Captação de interesse antes do cadastro. Hoje tem um agregado só, `WaitlistLead`, e uma rota: `POST /waitlist` — a lista de espera da landing page.
+
+**É o único endpoint público de escrita da API.** Quem chama é um visitante anônimo, do navegador, sem sessão. Daí três consequências que não são detalhe de implementação:
+
+**Nunca `401`, nunca `403`.** O cliente HTTP da landing tem um interceptor global: qualquer `401` apaga o token do `localStorage` e redireciona o navegador para `/login` — uma pessoa preenchendo o formulário seria tirada dele no meio e não voltaria. Por isso a rota é `authenticated: false` (o `AuthMiddleware` nunca roda, e um header `Authorization` qualquer é ignorado em vez de rejeitado) e usa `corsPolicy: "public"` em vez de uma entrada nova em `CORS_ALLOWED_ORIGINS`: `CorsMiddleware.handlePreflightRequest` responde **403** para origem fora da allowlist, então o preflight da landing seria bloqueado. `corsPolicy: "public"` também não concede `Access-Control-Allow-Credentials` — a landing não tem credencial a enviar — e sobrevive às URLs de preview da Vercel sem mexer em variável de ambiente. Entrada malformada é `422`; excesso de chamadas é `429` (5 por IP a cada 10 minutos, via `rateLimitPolicy` com `keyDimension: "peer-ip"`).
+
+**Idempotência pelo WhatsApp, em uma única escrita.** O número normalizado (só dígitos, 10 ou 11) é a chave natural: entrar duas vezes atualiza nome, faixa e origem e responde `201` de novo, com o **mesmo `id`** — nunca `409`. Um erro faria a pessoa achar que falhou e reenviar, gerando duplicata. A escrita é um `insert ... on conflict (whatsapp) do update` que devolve o id persistido, não um `leadOfWhatsapp()` seguido de `save()`: o duplo-clique manda dois POSTs simultâneos, e o caminho ler-depois-escrever perderia a corrida com uma violação de unique virando `500`. `consented_at` fica **fora** do `set` — a data do primeiro consentimento não é sobrescrita —, e `deleted_at` também: um lead apagado a pedido do titular que reenvia o formulário continua apagado, em vez de ser silenciosamente revivido.
+
+**Sem tool MCP — exceção deliberada, não dívida.** Cai na exceção "links públicos não autenticados": não há usuário logado a quem escopar a ação, e uma IA no `/mcp` age sempre em nome de um usuário. Não há rota de leitura dos leads nesta entrega; consulta e exclusão por pedido do titular (LGPD) são `SELECT`/`UPDATE ... SET deleted_at` direto no Postgres. O `id` devolvido é uuid, sempre **string**: o cliente valida a resposta com um schema e um id numérico faria a pessoa ver erro com o lead já gravado. `position` não é devolvido — um endpoint público não precisa revelar o tamanho da base.
 
 ### Importação de dados em massa
 
