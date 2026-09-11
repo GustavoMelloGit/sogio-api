@@ -23,11 +23,11 @@ import { MAX_REQUEST_BODY_BYTES } from "../body/body_limits";
 
 const tenantDi = new TenantDi();
 const propertyDi = new PropertyDi();
-const authDi = new AuthDi();
 const stayDi = new StayDi();
 const corsMiddleware = new CorsMiddleware();
 const financeDi = new FinanceDi();
 const billingDi = new BillingDi();
+const authDi = new AuthDi(billingDi.makeAiAssistantAccess());
 const propertyManagementDi = new PropertyManagementDi(
   billingDi.makeEntitlementService(),
   stayDi.makeStayPropertyOccupancy()

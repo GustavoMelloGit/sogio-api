@@ -1,3 +1,4 @@
+import type { AiAssistantAccess } from "../../application/service/ai_assistant_access";
 import { type Hasher } from "../../application/service/hasher";
 import {
   SessionManager,
@@ -99,8 +100,10 @@ export class AuthDi {
   #emailService: EmailService;
   #passwordResetRequestRepository: PasswordResetRequestRepository;
   #eventDispatcher: EventDispatcher;
+  #aiAssistantAccess: AiAssistantAccess;
 
-  constructor() {
+  constructor(aiAssistantAccess: AiAssistantAccess) {
+    this.#aiAssistantAccess = aiAssistantAccess;
     this.#authRepository = new AuthPostgresRepository();
     this.#hasher = new BunHasher();
     this.#sessionManager = new SessionManager();
