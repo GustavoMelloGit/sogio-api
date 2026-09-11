@@ -8,6 +8,7 @@ import type { Logger } from "../../../../core/application/logger/logger";
 import type { User } from "../../../domain/entity/user";
 import type {
   AuthorizationDecision,
+  DecideAuthorizationOutcome,
   DecideAuthorizationRequestResult,
   DecideAuthorizationRequestUseCase,
 } from "../../../application/use_case/decide_authorization_request";
@@ -109,7 +110,7 @@ export class DecideAuthorizationRequestController implements Controller {
    * denial carries `error_description` in its query string.
    */
   #log(
-    result: "approve" | "deny" | "not_found",
+    result: DecideAuthorizationOutcome | "not_found",
     clientId: string | undefined,
     redirectLocation?: string
   ): void {
@@ -123,7 +124,7 @@ export class DecideAuthorizationRequestController implements Controller {
       context.redirect_host = new URL(redirectLocation).host;
     }
 
-    if (result === "not_found") {
+    if (result === "not_found" || result === "plan_denied") {
       this.logger.warn("authorize_decision", context);
     } else {
       this.logger.info("authorize_decision", context);

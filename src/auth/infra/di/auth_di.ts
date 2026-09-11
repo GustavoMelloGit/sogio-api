@@ -330,7 +330,8 @@ export class AuthDi {
       this.#delegatedSecretService,
       consentAbsoluteLifetimeMs,
       consentInactivityTtlMs,
-      this.makeConsentCascade()
+      this.makeConsentCascade(),
+      this.#aiAssistantAccess
     );
   }
 

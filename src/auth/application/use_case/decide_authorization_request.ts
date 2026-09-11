@@ -6,11 +6,14 @@ import type { AuthorizationCodeRepository } from "../../domain/repository/delega
 import type { AuthorizationRequestRepository } from "../../domain/repository/delegated_access/authorization_request_repository";
 import type { ConsentRepository } from "../../domain/repository/delegated_access/consent_repository";
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
+import type { AiAssistantAccess } from "../service/ai_assistant_access";
 import type { ConsentCascade } from "../service/consent_cascade";
 import type { IssuedCredentialRepository } from "../../domain/repository/delegated_access/issued_credential_repository";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 
 export type AuthorizationDecision = "approve" | "deny";
+
+export type DecideAuthorizationOutcome = AuthorizationDecision | "plan_denied";
 
 export type DecideAuthorizationRequestInput = {
   identifier: string;
@@ -21,7 +24,7 @@ export type DecideAuthorizationRequestResult =
   | { outcome: "not_found" }
   | {
       outcome: "redirect";
-      decision: AuthorizationDecision;
+      decision: DecideAuthorizationOutcome;
       clientId: string;
       location: string;
     };
@@ -34,6 +37,9 @@ export type DecideAuthorizationRequestResult =
 const AUTHORIZATION_CODE_TTL_MS = 60 * 1000;
 
 const ACCESS_DENIED_DESCRIPTION = "The user denied the authorization request.";
+
+const PLAN_ACCESS_DENIED_DESCRIPTION =
+  "This account's plan does not include AI assistant access. Upgrade your plan to connect an AI assistant.";
 
 /**
  * Approve or deny a Pending Authorization Request (task 10, contract step
@@ -90,7 +96,8 @@ export class DecideAuthorizationRequestUseCase
     private readonly secretService: DelegatedSecretService,
     private readonly consentAbsoluteLifetimeMs: number,
     private readonly consentInactivityTtlMs: number,
-    private readonly consentCascade: ConsentCascade
+    private readonly consentCascade: ConsentCascade,
+    private readonly aiAssistantAccess: AiAssistantAccess
   ) {}
 
   async execute(
@@ -119,6 +126,21 @@ export class DecideAuthorizationRequestUseCase
         location: this.#buildRedirect(claimed.redirect_uri, claimed.state, {
           error: "access_denied",
           errorDescription: ACCESS_DENIED_DESCRIPTION,
+        }),
+      };
+    }
+
+    if (
+      user.role !== "admin" &&
+      !(await this.aiAssistantAccess.canConnect(user.id))
+    ) {
+      return {
+        outcome: "redirect",
+        decision: "plan_denied",
+        clientId: appRegistration.id,
+        location: this.#buildRedirect(claimed.redirect_uri, claimed.state, {
+          error: "access_denied",
+          errorDescription: PLAN_ACCESS_DENIED_DESCRIPTION,
         }),
       };
     }
