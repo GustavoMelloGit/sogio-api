@@ -1,9 +1,15 @@
+import { z } from "zod";
 import {
   ControllerHttpResponse,
   HttpControllerMethod,
   type Controller,
   type ControllerRequest,
 } from "../../../../core/presentation/controller/controller";
+import type { OpenApiOperation } from "../../../../core/presentation/open_api/open_api_types";
+import {
+  errorResponse,
+  responseFromZod,
+} from "../../../../core/infra/http/swagger/schema_helpers";
 import type { AuthMiddleware } from "../../middleware/auth.middleware";
 import type {
   GetPendingAuthorizationRequestResult,
@@ -11,6 +17,15 @@ import type {
 } from "../../../application/use_case/get_pending_authorization_request";
 import { oauthProtocolError } from "./oauth_error_response";
 import { parseUniqueQueryParams } from "./unique_query_params";
+
+const outputSchema = z.object({
+  app_display_name: z.string(),
+  app_display_name_verified: z.literal(false),
+  redirect_host: z.string(),
+  scope_description: z.string(),
+  has_existing_consent: z.boolean(),
+  can_connect: z.boolean(),
+});
 
 /**
  * Query parameter carrying the opaque pending-request identifier. Shared
@@ -49,6 +64,24 @@ export class GetPendingAuthorizationRequestController implements Controller {
   method = HttpControllerMethod.GET;
   parameterSource = "query" as const;
 
+  openApiSpec: OpenApiOperation = {
+    summary: "Get pending authorization request",
+    description:
+      "Display-only lookup of a Pending Authorization Request, for the OAuth consent screen. `can_connect` tells the caller identified by whatever session it presents (optional — this is reachable before login) whether it can consent to the connection right now: true when it has platform access and its plan includes AI assistant access, true for an admin, and false both when the plan doesn't include it and when no caller is identified.",
+    tags: ["Auth"],
+    responses: {
+      "200": responseFromZod("Pending authorization request", outputSchema, {
+        app_display_name: "Example App",
+        app_display_name_verified: false,
+        redirect_host: "example.com",
+        scope_description: "Read and manage your Sogio account",
+        has_existing_consent: false,
+        can_connect: true,
+      }),
+      "404": errorResponse("Not found"),
+    },
+  };
+
   constructor(
     private readonly useCase: GetPendingAuthorizationRequestUseCase,
     private readonly authMiddleware: AuthMiddleware
@@ -78,6 +111,7 @@ export class GetPendingAuthorizationRequestController implements Controller {
     const result = await this.useCase.execute({
       identifier,
       userId: user?.id,
+      userRole: user?.role,
     });
 
     return this.#respond(result);
@@ -103,6 +137,7 @@ export class GetPendingAuthorizationRequestController implements Controller {
         redirect_host: result.redirectHost,
         scope_description: result.scopeDescription,
         has_existing_consent: result.hasExistingConsent,
+        can_connect: result.canConnect,
       },
     });
   }

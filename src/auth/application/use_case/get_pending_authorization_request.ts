@@ -5,6 +5,8 @@ import type { ConsentRepository } from "../../domain/repository/delegated_access
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 import { describeScope } from "../../domain/service/oauth_scope_policy";
 import { redirectUriDisplayAnchor } from "../../domain/service/redirect_uri_policy";
+import type { UserRole } from "../../domain/entity/user";
+import type { AiAssistantAccess } from "../service/ai_assistant_access";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 
 export type GetPendingAuthorizationRequestInput = {
@@ -16,6 +18,7 @@ export type GetPendingAuthorizationRequestInput = {
    * ever for this one identified caller.
    */
   userId: string | undefined;
+  userRole: UserRole | undefined;
 };
 
 export type GetPendingAuthorizationRequestResult =
@@ -27,6 +30,7 @@ export type GetPendingAuthorizationRequestResult =
       redirectHost: string;
       scopeDescription: string;
       hasExistingConsent: boolean;
+      canConnect: boolean;
     };
 
 /**
@@ -76,7 +80,8 @@ export class GetPendingAuthorizationRequestUseCase
     private readonly consentRepository: ConsentRepository,
     private readonly secretService: DelegatedSecretService,
     private readonly consentAbsoluteLifetimeMs: number,
-    private readonly consentInactivityTtlMs: number
+    private readonly consentInactivityTtlMs: number,
+    private readonly aiAssistantAccess: AiAssistantAccess
   ) {}
 
   async execute(
@@ -108,7 +113,21 @@ export class GetPendingAuthorizationRequestUseCase
         input.userId,
         appRegistration.id
       ),
+      canConnect: await this.#canConnect(input.userId, input.userRole),
     };
+  }
+
+  async #canConnect(
+    userId: string | undefined,
+    userRole: UserRole | undefined
+  ): Promise<boolean> {
+    if (!userId) {
+      return false;
+    }
+    if (userRole === "admin") {
+      return true;
+    }
+    return this.aiAssistantAccess.canConnect(userId);
   }
 
   #isLive(
