@@ -18,6 +18,7 @@ describe("AccessCapabilityKey (C-1)", () => {
     expect(accessEntries.map(entry => entry.key)).toEqual([
       "export_reports",
       "bulk_import",
+      "ai_assistant",
     ]);
   });
 

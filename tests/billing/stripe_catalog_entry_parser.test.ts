@@ -272,7 +272,7 @@ describe("parseStripeCatalogEntry — sogio_export_reports (D-3)", () => {
       "Capability metadata absent for one or more capabilities; falling back to registry defaults (D-3)",
       {
         price_id: "price_test_1",
-        capabilities: ["export_reports", "bulk_import"],
+        capabilities: ["export_reports", "bulk_import", "ai_assistant"],
       },
     ]);
   });
@@ -284,6 +284,7 @@ describe("parseStripeCatalogEntry — sogio_export_reports (D-3)", () => {
         ...VALID_METADATA,
         sogio_export_reports: "true",
         sogio_bulk_import: "true",
+        sogio_ai_assistant: "true",
       },
     });
 
