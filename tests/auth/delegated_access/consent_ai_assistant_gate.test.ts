@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "bun:test";
+import { eq } from "drizzle-orm";
 import { api } from "../../helpers/server";
 import { truncate } from "../../helpers/database";
 import {
@@ -9,9 +10,15 @@ import { createAuthToken } from "../../helpers/fixtures/auth_token";
 import {
   createAppRegistrationFixture,
   createAuthorizationRequestFixture,
+  createConsentFixture,
 } from "../../helpers/fixtures/delegated_access";
-import { upgradeToPro } from "../../helpers/fixtures/plan";
+import { FREE_PLAN_ID, upgradeToPro } from "../../helpers/fixtures/plan";
 import { ConsentPostgresRepository } from "../../../src/auth/infra/database/postgres_repository/delegated_access/consent_postgres_repository";
+import { db } from "../../../src/core/infra/database/drizzle/database";
+import {
+  authorizationCodesTable,
+  subscriptionsTable,
+} from "../../../src/core/infra/database/drizzle/schema";
 
 const TABLES = [
   "issued_credentials",
@@ -42,6 +49,13 @@ async function decide(
     status: response.status,
     body: (await response.json()) as DecisionBody,
   };
+}
+
+async function downgradeToFree(userId: string): Promise<void> {
+  await db
+    .update(subscriptionsTable)
+    .set({ plan_id: FREE_PLAN_ID })
+    .where(eq(subscriptionsTable.user_id, userId));
 }
 
 async function pendingRequest(
@@ -91,6 +105,45 @@ describe("OAuth consent — ai_assistant capability gate", () => {
 
     const replay = await decide(token, identifier, "approve");
     expect(replay.status).toBe(404);
+  });
+
+  it("account that was pro, consented, and fell to free is denied even with a still-usable consent, and the consent is untouched", async () => {
+    const app = await createAppRegistrationFixture();
+    const { user } = await createUserFixture({
+      name: "Conta Rebaixada",
+      email: "downgraded.consent-ai-assistant@sogio.dev",
+      password: "password123",
+    });
+    await upgradeToPro(user.id);
+    const lastUsedAt = new Date(Date.now() - 60 * 60 * 1000);
+    await createConsentFixture({
+      userId: user.id,
+      appRegistrationId: app.id,
+      lastUsedAt,
+    });
+    await downgradeToFree(user.id);
+    const token = await createAuthToken(user.id);
+    const { identifier } = await createAuthorizationRequestFixture({
+      appRegistrationId: app.id,
+    });
+
+    const { status, body } = await decide(token, identifier, "approve");
+
+    expect(status).toBe(200);
+    const redirectUrl = new URL(body.redirect_to);
+    expect(redirectUrl.searchParams.get("error")).toBe("access_denied");
+    expect(redirectUrl.searchParams.get("error_description")).toBe(
+      PLAN_ACCESS_DENIED_DESCRIPTION
+    );
+    expect(redirectUrl.searchParams.get("code")).toBeNull();
+
+    const authorizationCodes = await db.select().from(authorizationCodesTable);
+    expect(authorizationCodes).toHaveLength(0);
+
+    const consentRepository = new ConsentPostgresRepository();
+    const consent = await consentRepository.findByUserAndApp(user.id, app.id);
+    expect(consent).not.toBeNull();
+    expect(consent?.last_used_at.getTime()).toBe(lastUsedAt.getTime());
   });
 
   it("pro account approving mints a code and registers a consent", async () => {
