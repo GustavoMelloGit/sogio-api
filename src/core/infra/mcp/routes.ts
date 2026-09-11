@@ -12,6 +12,10 @@ import type { AuthDi } from "../../../auth/infra/di/auth_di";
 import type { NotificationDi } from "../../../notification/infra/di/notification_di";
 import type { TenantDi } from "../../../booking/infra/di/tenant_di";
 import { CapabilitySet } from "../../../billing/domain/capability/capability_set";
+import {
+  AI_ASSISTANT_CAPABILITY_KEY,
+  capabilityDeniedMessage,
+} from "../../../billing/domain/capability/capability_denied_message";
 import { ForbiddenError } from "../../application/error/forbidden_error";
 import { PayloadTooLargeError } from "../../application/error/payload_too_large_error";
 import { TooManyRequestsError } from "../../application/error/too_many_requests_error";
@@ -267,6 +271,24 @@ export function makeMcpRequestHandler(
           "public"
         );
       }
+
+      if (!entitlement.capabilities.allows(AI_ASSISTANT_CAPABILITY_KEY)) {
+        logger.warn("mcp", {
+          endpoint: "mcp",
+          result: "forbidden",
+          capability: AI_ASSISTANT_CAPABILITY_KEY,
+        });
+        return corsMiddleware.addCorsHeaders(
+          withNoStore(
+            forbiddenResponse(
+              capabilityDeniedMessage(AI_ASSISTANT_CAPABILITY_KEY)
+            )
+          ),
+          origin,
+          "public"
+        );
+      }
+
       capabilities = entitlement.capabilities;
     }
 
