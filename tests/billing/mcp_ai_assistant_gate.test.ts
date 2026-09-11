@@ -49,6 +49,26 @@ async function callToolsList(token: string): Promise<Response> {
   });
 }
 
+async function callInitialize(token: string): Promise<Response> {
+  return api("/mcp", {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-11-25",
+        capabilities: {},
+        clientInfo: { name: "sogio-test-client", version: "1.0.0" },
+      },
+    }),
+  });
+}
+
 async function downgradeToFree(userId: string): Promise<void> {
   await db
     .update(subscriptionsTable)
@@ -96,6 +116,25 @@ describe("POST /mcp — ai_assistant capability gate", () => {
     });
 
     const response = await callToolsList(accessToken);
+    const body = (await response.json()) as ToolResultErrorBody;
+
+    expect(response.status).toBe(403);
+    expect(body.isError).toBe(true);
+    expect(body.content[0]?.text).toBe(UPGRADE_MESSAGE);
+  });
+
+  it("rejects a free account with 403 on initialize, the first method any MCP client calls", async () => {
+    const { user } = await createUserFixture({
+      name: "Conta Free",
+      email: "free.mcp-ai-assistant-initialize@sogio.dev",
+      password: "password123",
+    });
+    const { accessToken } = await createMcpAccessTokenFixture({
+      userId: user.id,
+      resource: MCP_RESOURCE,
+    });
+
+    const response = await callInitialize(accessToken);
     const body = (await response.json()) as ToolResultErrorBody;
 
     expect(response.status).toBe(403);
