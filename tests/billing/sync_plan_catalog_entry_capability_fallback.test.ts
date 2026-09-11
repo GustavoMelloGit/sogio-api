@@ -76,6 +76,7 @@ function makeEntry(
       max_properties: 3,
       export_reports: false,
       bulk_import: false,
+      ai_assistant: false,
     },
     trial_days: 0,
     is_offered: true,

@@ -90,6 +90,7 @@ describe("list_plans tool", () => {
       max_properties: 5,
       export_reports: true,
       bulk_import: true,
+      ai_assistant: true,
     });
     expect(pro?.price_amount).toBe(2500);
     expect(pro?.trial_days).toBe(14);

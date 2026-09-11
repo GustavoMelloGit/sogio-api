@@ -71,6 +71,7 @@ describe("CapabilitySet.of — resolution ignores keys outside the registry (D-7
       max_properties: 5,
       export_reports: false,
       bulk_import: false,
+      ai_assistant: false,
     });
   });
 });

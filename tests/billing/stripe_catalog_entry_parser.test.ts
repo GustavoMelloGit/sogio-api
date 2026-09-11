@@ -85,6 +85,7 @@ describe("parseStripeCatalogEntry — a fully valid entry (DA-4)", () => {
         max_properties: 5,
         export_reports: false,
         bulk_import: false,
+        ai_assistant: false,
       },
       trial_days: 14,
       is_offered: true,
@@ -327,6 +328,7 @@ describe("parseStripeCatalogEntry — sogio_export_reports (D-3)", () => {
       max_properties: 5,
       export_reports: false,
       bulk_import: false,
+      ai_assistant: false,
     });
   });
 });
