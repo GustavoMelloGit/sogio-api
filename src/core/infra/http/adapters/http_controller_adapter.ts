@@ -11,7 +11,7 @@ import { ValidationError } from "../../../application/error/validation_error";
 import type { User } from "../../../../auth/domain/entity/user";
 import type { EntitlementService } from "../../../../billing/application/service/entitlement_service";
 import type { CapabilityKey } from "../../../../billing/domain/capability/capability_key";
-import { capabilityRegistryEntryOf } from "../../../../billing/domain/capability/capability_registry";
+import { capabilityDeniedMessage } from "../../../../billing/domain/capability/capability_denied_message";
 import {
   ControllerHttpResponse,
   type Controller,
@@ -460,9 +460,8 @@ export function BunHttpControllerAdapter(
             requiredCapability &&
             !entitlement.capabilities.allows(requiredCapability)
           ) {
-            const { label } = capabilityRegistryEntryOf(requiredCapability);
             throw new ForbiddenError(
-              `Your current plan doesn't include ${label}. Upgrade your plan to unlock it.`
+              capabilityDeniedMessage(requiredCapability)
             );
           }
         }
