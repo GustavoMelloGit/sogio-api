@@ -138,7 +138,13 @@ export class CorsMiddleware {
     return headers;
   }
 
-  private isOriginAllowed(origin: string | null): boolean {
+  /**
+   * Público porque a defesa contra CSRF das requisições autenticadas por
+   * cookie usa exatamente a mesma allowlist: origem que não pode ler a
+   * resposta também não pode disparar uma escrita com a sessão de outra
+   * pessoa.
+   */
+  isOriginAllowed(origin: string | null): boolean {
     if (!origin) {
       return false;
     }

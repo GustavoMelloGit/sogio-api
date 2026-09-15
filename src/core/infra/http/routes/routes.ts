@@ -199,6 +199,13 @@ const authControllers: Route[] = [
     controller: authDi.makeSignInController(),
   },
   {
+    // `allowWithoutPlatformAccess`: quem está sem plano ainda precisa
+    // conseguir sair.
+    authenticated: true,
+    allowWithoutPlatformAccess: true,
+    controller: authDi.makeSignOutController(),
+  },
+  {
     authenticated: true,
     allowWithoutPlatformAccess: true,
     controller: authDi.makeGetUserController(),

@@ -8,6 +8,7 @@ import {
   type ControllerRequest,
 } from "../../../../core/presentation/controller/controller";
 import type { OpenApiOperation } from "../../../../core/presentation/open_api/open_api_types";
+import { readSessionSecret } from "../../http/session_cookie";
 import type { RateLimitPolicy } from "../../../../core/application/rate_limit/rate_limit_policy";
 import {
   bodyFromZod,
@@ -39,7 +40,7 @@ export class ChangePasswordController implements Controller {
   openApiSpec: OpenApiOperation = {
     summary: "Change password",
     description:
-      "Changes the authenticated user's password, requiring the current password.",
+      "Changes the authenticated user's password, requiring the current password. Every other session of the user is ended.",
     tags: ["Auth"],
     requestBody: bodyFromZod(inputSchema, {
       example: {
@@ -57,7 +58,13 @@ export class ChangePasswordController implements Controller {
   constructor(private readonly useCase: ChangePasswordUseCase) {}
 
   async handle(request: ControllerRequest, user: User): Promise<undefined> {
-    await this.useCase.execute(request.body as Input, user);
+    await this.useCase.execute(
+      {
+        ...(request.body as Input),
+        currentSessionSecret: readSessionSecret(request),
+      },
+      user
+    );
     return undefined;
   }
 }

@@ -44,7 +44,7 @@ export class SignInUseCase implements UseCase<Input, Output> {
       throw new UnauthorizedError("Incorrect e-mail or password");
     }
 
-    const token = await this.sessionManager.createSession(user.id, user.role);
+    const token = await this.sessionManager.createSession(user.id);
 
     return {
       token,

@@ -223,6 +223,34 @@ Permite ao proprietário trazer para dentro do Sogio, de uma vez, o histórico q
 
 Os schemas do Drizzle ORM ficam em `src/core/infra/database/drizzle/schemas/`. Repositórios usam `db.query` e DML do Drizzle. Registros são mapeados para entidades via `reconstitute()`.
 
+### Sessão do App
+
+A sessão do usuário no front é um **segredo opaco de 32 bytes**, entregue uma
+única vez no sign-in. O servidor guarda apenas o SHA-256 dele, na tabela
+`sessions` — mesmo padrão (E10) das credenciais OAuth e do pedido de
+recuperação de senha.
+
+Ela chega à API de duas formas, e é a mesma sessão nas duas:
+
+- **Cookie `httpOnly`** (`SESSION_COOKIE_NAME`), que é como o navegador
+  autentica. O front nunca toca no segredo, então um XSS não leva a sessão.
+- **`Authorization: Bearer`**, para script, `/docs` e integração. Tem
+  precedência quando os dois chegam juntos.
+
+Três consequências que o código registra em comentário, e que valem lembrar:
+
+1. **Rota com `corsPolicy: "public"` nunca aceita cookie.** Ela responde a
+   qualquer origem; aceitar credencial ambiente ali seria entregar a sessão a
+   qualquer site. A decisão é do `HttpControllerAdapter`, que conhece a
+   política da rota.
+2. **Escrita autenticada por cookie exige `Origin` da allowlist** (CSRF). Com
+   Bearer não exige: aquele token só chega se alguém o anexar de propósito.
+3. **Trocar a senha encerra as outras sessões; redefinir por email encerra
+   todas.** É o que fecha R11 de `.claude/plans/2026-08-15-gestao-de-senha.md`.
+
+O `/mcp` segue em trilho separado (`issued_credentials` + `CredentialVerifier`)
+e não enxerga cookie nenhum.
+
 ### Variáveis de Ambiente
 
 Definidas em `src/core/infra/config/environments.ts`:
@@ -230,7 +258,11 @@ Definidas em `src/core/infra/config/environments.ts`:
 - `PORT` — porta do servidor
 - `DATABASE_URL` — string de conexão PostgreSQL
 - `NODE_ENV` — `development | test | sandbox | production`
-- `JWT_SECRET` — chave de assinatura dos tokens
+- `JWT_SECRET` — chave de assinatura do JWT de sessão antigo. **Temporária**: só existe enquanto `LegacyJwtSessionVerifier` aceita a sessão emitida antes da migração para cookie. Sai uma release depois
+- `SESSION_ABSOLUTE_TTL_SECONDS` — vida máxima de uma sessão do app; default 30 dias
+- `SESSION_INACTIVITY_TTL_SECONDS` — janela de inatividade de uma sessão; default 14 dias
+- `SESSION_COOKIE_NAME` — nome do cookie da sessão; default `sogio_session`
+- `SESSION_COOKIE_DOMAIN` — `Domain` do cookie. Vazio em desenvolvimento (o cookie fica preso ao host, e `localhost` vale em qualquer porta); em produção, `.sogio.app`, para apex e `www` compartilharem a sessão
 - `SERVER_HOSTNAME` — endereço em que o `Bun.serve()` faz bind; default `0.0.0.0`. Em produção deve ser `127.0.0.1` (o processo fica atrás de um reverse proxy nginx). Não se chama `HOSTNAME` porque essa variável é auto-exportada pelo Docker (contém o container id) e o Bun dá precedência ao ambiente do processo sobre o `.env`
 - `RESEND_API_KEY` — chave da API do Resend, usada para enviar emails transacionais (ex: recuperação de senha). Obrigatória fora de `development`
 - `PASSWORD_RESET_EMAIL_FROM` — remetente (`"Nome <email>"`) usado nos emails enviados. Obrigatória fora de `development`

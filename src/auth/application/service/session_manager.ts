@@ -1,55 +1,114 @@
-import jwt from "jsonwebtoken";
 import { UnauthorizedError } from "../../../core/application/error/unauthorized_error";
-import { env } from "../../../core/infra/config/environments";
-import type { UserRole } from "../../domain/entity/user";
+import {
+  sessionAbsoluteTtlMs,
+  sessionInactivityTtlMs,
+} from "../../../core/infra/config/environments";
+import { Session } from "../../domain/entity/session";
+import type { SessionRepository } from "../../domain/repository/session_repository";
+import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
+
+export type VerifiedSession = {
+  userId: string;
+  sessionId: string;
+};
 
 export interface ISessionManager {
-  createSession(userId: string, role: UserRole): Promise<string>;
-  verifySession(token: string): Promise<{ userId: string; role: UserRole }>;
+  createSession(userId: string): Promise<string>;
+  verifySession(secret: string): Promise<VerifiedSession>;
+  revokeSession(secret: string): Promise<void>;
+  revokeAllForUser(userId: string, exceptSecret?: string): Promise<void>;
 }
 
+/**
+ * Registrar o uso a cada requisição dobraria a escrita do endpoint mais
+ * quente. Com esta folga, uma sessão em uso contínuo grava no máximo uma vez
+ * a cada cinco minutos, e a expiração por inatividade continua com precisão
+ * muito acima do que uma janela de dias exige.
+ */
+const TOUCH_THROTTLE_MS = 5 * 60 * 1000;
+
+/**
+ * Sessão do app: segredo opaco entregue uma vez, digest persistido.
+ *
+ * Substituiu um JWT stateless de 1 dia. O motivo é revogação: com o JWT era
+ * arquitetonicamente impossível derrubar uma sessão existente ao trocar a
+ * senha (R11 em `.claude/plans/2026-08-15-gestao-de-senha.md`). Aqui,
+ * encerrar é um `UPDATE`.
+ *
+ * O mesmo segredo serve ao cookie do navegador e ao `Authorization: Bearer`
+ * de quem chama a API direto — é a credencial que muda de transporte, nunca
+ * de natureza.
+ */
 export class SessionManager implements ISessionManager {
-  constructor() {}
+  constructor(
+    private readonly sessionRepository: SessionRepository,
+    private readonly secretService: DelegatedSecretService
+  ) {}
 
-  async createSession(userId: string, role: UserRole): Promise<string> {
-    const token = this.#sign(userId, role);
+  async createSession(userId: string): Promise<string> {
+    const { secret, digest } = this.secretService.generate();
+    const now = new Date();
 
-    return token;
+    await this.sessionRepository.create(
+      Session.create({
+        user_id: userId,
+        secret_digest: digest,
+        expires_at: new Date(now.getTime() + sessionAbsoluteTtlMs),
+        last_used_at: now,
+      })
+    );
+
+    return secret;
   }
 
-  async verifySession(
-    token: string
-  ): Promise<{ userId: string; role: UserRole }> {
-    const payload = this.#verify(token);
+  /**
+   * Nunca distingue o motivo da recusa — inexistente, expirada, parada ou
+   * encerrada saem todas como a mesma `UnauthorizedError`, para não abrir
+   * oráculo sobre o estado de uma sessão específica.
+   */
+  async verifySession(secret: string): Promise<VerifiedSession> {
+    const session = await this.sessionRepository.findBySecretDigest(
+      this.secretService.digest(secret)
+    );
 
-    if (!payload.userId) {
+    const now = new Date();
+
+    if (!session || !session.isValid(now, sessionInactivityTtlMs)) {
       throw new UnauthorizedError("Unauthorized");
     }
 
-    return payload;
-  }
-
-  #sign(userId: string, role: UserRole): string {
-    return jwt.sign({ userId, role }, env.JWT_SECRET, { expiresIn: "1d" });
-  }
-
-  #verify(token: string): { userId: string; role: UserRole } {
-    try {
-      const decoded = jwt.verify(token, env.JWT_SECRET);
-
-      if (typeof decoded !== "object" || !("userId" in decoded)) {
-        throw new UnauthorizedError("Unauthorized");
-      }
-
-      const role: UserRole =
-        "role" in decoded &&
-        (decoded.role === "admin" || decoded.role === "user")
-          ? (decoded.role as UserRole)
-          : "user";
-
-      return { userId: decoded.userId as string, role };
-    } catch {
-      throw new UnauthorizedError("Unauthorized");
+    if (now.getTime() - session.last_used_at.getTime() > TOUCH_THROTTLE_MS) {
+      await this.sessionRepository.touch(session.id, now);
     }
+
+    return { userId: session.user_id, sessionId: session.id };
+  }
+
+  /** Logout: encerrar uma sessão inexistente é sucesso, não erro. */
+  async revokeSession(secret: string): Promise<void> {
+    const session = await this.sessionRepository.findBySecretDigest(
+      this.secretService.digest(secret)
+    );
+
+    if (!session) {
+      return;
+    }
+
+    await this.sessionRepository.revoke(session.id);
+  }
+
+  /**
+   * `exceptSecret` poupa a sessão de quem pediu — é o que faz a troca de
+   * senha derrubar os outros aparelhos sem deslogar a própria pessoa no meio
+   * da ação.
+   */
+  async revokeAllForUser(userId: string, exceptSecret?: string): Promise<void> {
+    const current = exceptSecret
+      ? await this.sessionRepository.findBySecretDigest(
+          this.secretService.digest(exceptSecret)
+        )
+      : null;
+
+    await this.sessionRepository.revokeAllForUser(userId, current?.id);
   }
 }

@@ -178,7 +178,7 @@ describe("OAuth consent — ai_assistant capability gate", () => {
       email: "admin.consent-ai-assistant@sogio.dev",
       password: "password123",
     });
-    const token = await createAuthToken(user.id, "admin");
+    const token = await createAuthToken(user.id);
     const { identifier } = await createAuthorizationRequestFixture({
       appRegistrationId: app.id,
     });
@@ -255,7 +255,7 @@ describe("OAuth consent — ai_assistant capability gate", () => {
       email: "admin-pending.consent-ai-assistant@sogio.dev",
       password: "password123",
     });
-    const token = await createAuthToken(user.id, "admin");
+    const token = await createAuthToken(user.id);
     const { identifier } = await createAuthorizationRequestFixture({
       appRegistrationId: app.id,
     });

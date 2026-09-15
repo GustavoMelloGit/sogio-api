@@ -152,7 +152,7 @@ describe("platform-access gate (DA-9)", () => {
       email: "admin.no-subscription@sogio.dev",
       password: "password123",
     });
-    const token = await createAuthToken(user.id, "admin");
+    const token = await createAuthToken(user.id);
 
     const res = await api("/settings", {
       method: "GET",

@@ -1,5 +1,6 @@
 import type { Controller } from "../../../presentation/controller/controller";
 import type { OpenApiResponse } from "../../../presentation/open_api/open_api_types";
+import { env } from "../../config/environments";
 import {
   MAX_BUFFERED_BODY_BYTES,
   MAX_REQUEST_BODY_BYTES,
@@ -52,7 +53,9 @@ export class OpenApiBuilder {
       const operation: Record<string, unknown> = { ...controller.openApiSpec };
 
       if (authenticated) {
-        operation.security = [{ bearerAuth: [] }];
+        // Alternativas, não exigências somadas: a mesma sessão autentica pelo
+        // cookie (navegador) ou pelo header (script, docs, integração).
+        operation.security = [{ bearerAuth: [] }, { cookieAuth: [] }];
       }
 
       if (
@@ -83,7 +86,15 @@ export class OpenApiBuilder {
           bearerAuth: {
             type: "http",
             scheme: "bearer",
-            bearerFormat: "JWT",
+            description:
+              "Segredo opaco da sessão, devolvido pelo sign-in. Não é JWT: só o digest existe no servidor.",
+          },
+          cookieAuth: {
+            type: "apiKey",
+            in: "cookie",
+            name: env.SESSION_COOKIE_NAME,
+            description:
+              "Cookie httpOnly gravado pelo sign-in. É como o navegador autentica; o cookie não é legível por JavaScript.",
           },
         },
       },

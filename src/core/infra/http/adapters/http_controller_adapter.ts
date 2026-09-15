@@ -20,6 +20,7 @@ import {
 } from "../../../presentation/controller/controller";
 import { CorsMiddleware } from "../../../presentation/middleware/cors.middleware";
 import { MiddlewareDi } from "../../../../auth/infra/di/middleware";
+import type { SessionCredential } from "../../../../auth/presentation/middleware/auth.middleware";
 import { serializeDatesRecursively } from "../utils/date_serializer";
 import { CoreDi } from "../../di/core_di";
 import { resolveCallerIp } from "../../rate_limit/caller_ip_resolver";
@@ -32,8 +33,40 @@ import {
   MAX_REQUEST_BODY_BYTES,
 } from "../body/body_limits";
 
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 const middlewareDi = new MiddlewareDi();
 const corsMiddleware = new CorsMiddleware();
+
+/**
+ * Defesa contra CSRF das requisições autenticadas por cookie.
+ *
+ * Enquanto a sessão era Bearer, CSRF não existia: o token só chegava se o
+ * JavaScript do chamador o anexasse. O cookie é credencial ambiente — o
+ * navegador o envia sozinho, inclusive num formulário postado por outro
+ * site —, então todo método que altera dados exige `Origin` da allowlist.
+ * `SameSite=Lax` já barra a maior parte disso no navegador; esta checagem é
+ * a camada que não depende do navegador se comportar.
+ *
+ * `GET` e `HEAD` ficam de fora: não alteram estado, e a resposta continua
+ * ilegível para a outra origem por causa do próprio CORS.
+ */
+function assertSameSiteRequest(
+  request: Request,
+  credential: SessionCredential
+): void {
+  if (credential.source !== "cookie") {
+    return;
+  }
+
+  if (!UNSAFE_METHODS.has(request.method)) {
+    return;
+  }
+
+  if (!corsMiddleware.isOriginAllowed(request.headers.get("Origin"))) {
+    throw new ForbiddenError("Origin not allowed");
+  }
+}
 const coreDi = new CoreDi();
 const logger = coreDi.makeLogger();
 const rateLimiter = coreDi.makeRateLimiter();
@@ -53,6 +86,7 @@ class ControllerRequestParser {
         body: {},
         query: this.#parseQuery(),
         headers: this.#parseHeaders(),
+        cookies: this.#parseCookies(),
         method: this.request.method as HttpControllerMethod,
         url: this.request.url,
         peerIp,
@@ -68,6 +102,7 @@ class ControllerRequestParser {
       body: this.#parseBody(),
       query: this.#parseQuery(),
       headers: this.#parseHeaders(),
+      cookies: this.#parseCookies(),
       method: this.request.method as HttpControllerMethod,
       url: this.request.url,
       peerIp,
@@ -204,6 +239,41 @@ class ControllerRequestParser {
 
   #parseHeaders(): Record<string, string> {
     return Object.fromEntries(this.request.headers.entries());
+  }
+
+  /**
+   * Parse do header `Cookie`. Um nome repetido fica com a primeira
+   * ocorrência: é o que o navegador considera o cookie mais específico, e
+   * escolher a última deixaria um cookie plantado em domínio mais amplo
+   * sobrescrever o da própria origem.
+   */
+  #parseCookies(): Record<string, string> {
+    const header = this.request.headers.get("cookie");
+
+    if (!header) {
+      return {};
+    }
+
+    const cookies: Record<string, string> = {};
+
+    for (const part of header.split(";")) {
+      const separator = part.indexOf("=");
+
+      if (separator === -1) {
+        continue;
+      }
+
+      const name = part.slice(0, separator).trim();
+      const value = part.slice(separator + 1).trim();
+
+      if (!name || name in cookies) {
+        continue;
+      }
+
+      cookies[name] = decodeURIComponent(value);
+    }
+
+    return cookies;
   }
 
   #collectUnique(
@@ -426,7 +496,22 @@ export function BunHttpControllerAdapter(
       let user: User | undefined;
       if (requiresAuth) {
         const authMiddleware = middlewareDi.makeAuthMiddleware();
-        user = await authMiddleware.handle(controllerRequest);
+        // Rota de CORS público responde a qualquer origem; aceitar cookie ali
+        // seria entregar a sessão a qualquer site. A decisão é do adapter,
+        // que é quem conhece a política da rota, e não de quem escreve o
+        // controller.
+        const credential = authMiddleware.extract(
+          controllerRequest,
+          controller.corsPolicy !== "public"
+        );
+
+        if (!credential) {
+          throw new UnauthorizedError("Unauthorized");
+        }
+
+        assertSameSiteRequest(request, credential);
+
+        user = await authMiddleware.authenticate(credential);
       }
 
       if (adminOnly && user?.role !== "admin") {

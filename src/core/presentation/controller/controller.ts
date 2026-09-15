@@ -26,6 +26,12 @@ export type ControllerRequest = {
   body: Record<string, unknown>;
   query: Record<string, string>;
   headers: Record<string, string>;
+  /**
+   * Cookies já separados do header `Cookie`. Vive aqui, e não em cada
+   * middleware, para que toda rota enxergue a mesma forma — hoje só a sessão
+   * do app usa, mas o parse é do transporte, não de quem consome.
+   */
+  cookies: Record<string, string>;
   method: HttpControllerMethod;
   url: string;
   /**

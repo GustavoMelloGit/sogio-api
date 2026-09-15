@@ -52,10 +52,7 @@ export class RegisterUserUseCase implements UseCase<Input, Output> {
 
     await this.eventDispatcher.dispatch(new UserCreatedEvent(savedUser.id));
 
-    const token = await this.sessionManager.createSession(
-      savedUser.id,
-      savedUser.role
-    );
+    const token = await this.sessionManager.createSession(savedUser.id);
 
     return {
       token,

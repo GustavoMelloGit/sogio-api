@@ -25,7 +25,7 @@ async function createAuthTokenForNewUser(): Promise<string> {
     email: `settings-user-${crypto.randomUUID()}@sogio.dev`,
     password: "password123",
   });
-  return createAuthToken(user.id, "user");
+  return createAuthToken(user.id);
 }
 
 async function createAuthTokenForAdmin(): Promise<string> {
@@ -34,7 +34,7 @@ async function createAuthTokenForAdmin(): Promise<string> {
     email: `settings-admin-${crypto.randomUUID()}@sogio.dev`,
     password: "password123",
   });
-  return createAuthToken(user.id, "admin");
+  return createAuthToken(user.id);
 }
 
 async function createSetting(
@@ -134,13 +134,13 @@ describe("POST /settings", () => {
     expect(res.status).toBe(403);
   });
 
-  it("403 — token with forged admin role is rejected when user is 'user' in db", async () => {
+  it("403 — a plain user's session never grants admin (role comes from the db)", async () => {
     const { user } = await createUserFixture({
       name: "Forged Role User",
       email: `forged-role-${crypto.randomUUID()}@sogio.dev`,
       password: "password123",
     });
-    const forgedToken = await createAuthToken(user.id, "admin");
+    const forgedToken = await createAuthToken(user.id);
 
     const res = await createSetting(forgedToken, {
       key: "app.name",

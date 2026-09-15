@@ -5,6 +5,7 @@ import { bunServeOptions } from "./core/infra/http/routes/routes";
 import { CoreDi } from "./core/infra/di/core_di";
 import type { Logger } from "./core/application/logger/logger";
 import { NotificationDi } from "./notification/infra/di/notification_di";
+import { SessionPostgresRepository } from "./auth/infra/database/postgres_repository/session_postgres_repository";
 
 async function checkDatabaseConnection(logger: Logger) {
   try {
@@ -46,6 +47,38 @@ async function main() {
   logger.info(`📄 OpenAPI JSON: ${baseUrl}/docs/spec`);
 
   startNotificationDelivery(logger);
+  startSessionCleanup(logger);
+}
+
+/**
+ * Sessão vencida não vira faxina para depois (E9): a linha morta sai sozinha.
+ * A varredura é horária e nunca apaga sessão viva — só o que já passou da
+ * vida absoluta, que o `AuthMiddleware` de qualquer forma já recusa.
+ */
+function startSessionCleanup(logger: Logger) {
+  const sessionRepository = new SessionPostgresRepository();
+
+  const timer = setInterval(
+    async () => {
+      try {
+        const deleted = await sessionRepository.deleteExpired(new Date());
+
+        if (deleted > 0) {
+          logger.info("Expired sessions pruned", { deleted });
+        }
+      } catch (error) {
+        logger.error("Session cleanup run crashed", {
+          error:
+            error instanceof Error
+              ? { name: error.name, message: error.message }
+              : String(error),
+        });
+      }
+    },
+    60 * 60 * 1000
+  );
+
+  timer.unref();
 }
 
 function startNotificationDelivery(logger: Logger) {
