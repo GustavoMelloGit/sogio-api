@@ -71,13 +71,18 @@ describe("CapabilitySet.of — resolution ignores keys outside the registry (D-7
       max_properties: 5,
       export_reports: false,
       bulk_import: false,
+      ai_assistant: false,
     });
   });
 });
 
 describe("CapabilitySet.of — reports a fallback when a value falls back to the registry default (C-5)", () => {
   it("reports reason 'absent' when a capability key is missing entirely", () => {
-    const set = CapabilitySet.of({ export_reports: true, bulk_import: false });
+    const set = CapabilitySet.of({
+      export_reports: true,
+      bulk_import: false,
+      ai_assistant: false,
+    });
 
     expect(set.fallbacks).toEqual([
       { key: "max_properties", reason: "absent" },
@@ -89,6 +94,7 @@ describe("CapabilitySet.of — reports a fallback when a value falls back to the
       max_properties: "not-a-number",
       export_reports: true,
       bulk_import: false,
+      ai_assistant: false,
     });
 
     expect(set.fallbacks).toEqual([
@@ -101,6 +107,7 @@ describe("CapabilitySet.of — reports a fallback when a value falls back to the
       max_properties: 5,
       export_reports: true,
       bulk_import: false,
+      ai_assistant: false,
     });
 
     expect(set.fallbacks).toEqual([]);

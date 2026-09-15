@@ -4,6 +4,7 @@ import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
 import { createPropertyFixture } from "../helpers/fixtures/property";
 import { createMcpAccessTokenFixture } from "../helpers/fixtures/delegated_access";
+import { upgradeToPro } from "../helpers/fixtures/plan";
 import { MCP_RESOURCE_PATH } from "../../src/auth/presentation/controller/delegated_access/oauth_protected_resource_metadata.controller";
 import { apiBaseUrl } from "../../src/core/infra/config/environments";
 import {
@@ -158,6 +159,7 @@ describe("POST /mcp", () => {
       email: "joao.tools-list@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const { accessToken: token } = await createMcpAccessTokenFixture({
       userId: user.id,
       resource: MCP_RESOURCE,
@@ -225,6 +227,7 @@ describe("POST /mcp", () => {
       email: "joao.mcp@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(owner.id);
     const { user: otherUser } = await createUserFixture({
       name: "Maria Souza",
       email: "maria.mcp@sogio.dev",
@@ -310,6 +313,7 @@ describe("POST /mcp", () => {
       email: "joao.connection-survives-413@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const { accessToken: token } = await createMcpAccessTokenFixture({
       userId: user.id,
       resource: MCP_RESOURCE,
@@ -366,6 +370,7 @@ describe("POST /mcp", () => {
       email: "joao.413-before-401@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const { accessToken: token } = await createMcpAccessTokenFixture({
       userId: user.id,
       resource: MCP_RESOURCE,
@@ -461,6 +466,7 @@ describe("POST /mcp", () => {
       email: "joao.initialize@sogio.dev",
       password: "password123",
     });
+    await upgradeToPro(user.id);
     const { accessToken: token } = await createMcpAccessTokenFixture({
       userId: user.id,
       resource: MCP_RESOURCE,

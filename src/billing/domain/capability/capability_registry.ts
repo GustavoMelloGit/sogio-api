@@ -51,6 +51,14 @@ export const CAPABILITY_REGISTRY = [
     label: "bulk data imports",
     metadata_key: "sogio_bulk_import",
   },
+  {
+    key: "ai_assistant",
+    kind: "access",
+    default: false,
+    required: false,
+    label: "AI assistant access",
+    metadata_key: "sogio_ai_assistant",
+  },
 ] as const satisfies readonly CapabilityRegistryEntry[];
 
 type CapabilityRegistryEntryUnion = (typeof CAPABILITY_REGISTRY)[number];

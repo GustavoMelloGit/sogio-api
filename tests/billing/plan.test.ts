@@ -40,6 +40,7 @@ describe("Plan — capabilities schema tolerates an unknown key (D-7)", () => {
       max_properties: 3,
       export_reports: false,
       bulk_import: false,
+      ai_assistant: false,
     });
   });
 });

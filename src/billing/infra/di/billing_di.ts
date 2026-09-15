@@ -12,8 +12,10 @@ import { PlanPostgresRepository } from "../database/postgres_repository/plan_pos
 import { SubscriptionPostgresRepository } from "../database/postgres_repository/subscription_postgres_repository";
 import { SubscriptionHistoryPostgresRepository } from "../database/postgres_repository/subscription_history_postgres_repository";
 import { ProcessedGatewayEventPostgresRepository } from "../database/postgres_repository/processed_gateway_event_postgres_repository";
+import type { AiAssistantAccess } from "../../../auth/application/service/ai_assistant_access";
 import type { EntitlementService } from "../../application/service/entitlement_service";
 import { SubscriptionEntitlementService } from "../../application/service/subscription_entitlement_service";
+import { SubscriptionAiAssistantAccess } from "../../application/service/subscription_ai_assistant_access";
 import type { PaymentGateway } from "../../application/gateway/payment_gateway";
 import type { GatewayWebhookVerifier } from "../../application/gateway/gateway_webhook_verifier";
 import { StripePaymentGateway } from "../gateway/stripe_payment_gateway";
@@ -120,6 +122,10 @@ export class BillingDi {
 
   makeEntitlementService(): EntitlementService {
     return this.#entitlementService;
+  }
+
+  makeAiAssistantAccess(): AiAssistantAccess {
+    return new SubscriptionAiAssistantAccess(this.#entitlementService);
   }
 
   makeStartFreeSubscriptionOnUserCreatedHandler() {

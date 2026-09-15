@@ -68,6 +68,7 @@ describe("capabilitiesSchema", () => {
       max_properties: 5,
       export_reports: true,
       bulk_import: false,
+      ai_assistant: false,
     });
 
     expect(result.success).toBe(true);

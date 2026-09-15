@@ -17,6 +17,7 @@ import { CapabilitySet } from "../../src/billing/domain/capability/capability_se
 import { registerMcpTool } from "../../src/core/infra/mcp/mcp_tool_adapter";
 import { truncate } from "../helpers/database";
 import { createUserFixture } from "../helpers/fixtures/user";
+import { makeTestAiAssistantAccess } from "../helpers/ai_assistant_access";
 
 const TABLES = ["users"];
 
@@ -52,7 +53,7 @@ async function callTool(
 
 function registerGetMeTool(user: User): RegisteredTool {
   const server = new McpServer({ name: "test-server", version: "1.0.0" });
-  const authDi = new AuthDi();
+  const authDi = new AuthDi(makeTestAiAssistantAccess());
 
   return registerMcpTool(
     server,

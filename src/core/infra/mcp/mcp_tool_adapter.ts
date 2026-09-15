@@ -5,8 +5,7 @@ import type {
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { z } from "zod";
 import type { User } from "../../../auth/domain/entity/user";
-import type { CapabilityKey } from "../../../billing/domain/capability/capability_key";
-import { capabilityRegistryEntryOf } from "../../../billing/domain/capability/capability_registry";
+import { capabilityDeniedMessage } from "../../../billing/domain/capability/capability_denied_message";
 import type { CapabilitySet } from "../../../billing/domain/capability/capability_set";
 import { ForbiddenError } from "../../application/error/forbidden_error";
 import { TooManyRequestsError } from "../../application/error/too_many_requests_error";
@@ -77,9 +76,4 @@ export function registerMcpTool(
       }
     }
   );
-}
-
-function capabilityDeniedMessage(key: CapabilityKey): string {
-  const { label } = capabilityRegistryEntryOf(key);
-  return `Your current plan doesn't include ${label}. Upgrade your plan to unlock it.`;
 }

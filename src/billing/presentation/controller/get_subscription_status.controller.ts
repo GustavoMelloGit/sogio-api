@@ -51,6 +51,7 @@ export class GetSubscriptionStatusController implements Controller {
           max_properties: 5,
           export_reports: false,
           bulk_import: false,
+          ai_assistant: true,
         },
         plan: {
           id: "7b2d9e04-1c5f-4e83-8a77-9f0c3b5d2e64",

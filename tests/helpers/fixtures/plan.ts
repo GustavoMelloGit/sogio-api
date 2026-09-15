@@ -13,12 +13,14 @@ const FREE_PLAN_CAPABILITIES: TotalCapabilityValues = {
   max_properties: 1,
   export_reports: false,
   bulk_import: false,
+  ai_assistant: false,
 };
 
 const PRO_PLAN_CAPABILITIES: TotalCapabilityValues = {
   max_properties: 5,
   export_reports: true,
   bulk_import: true,
+  ai_assistant: true,
 };
 
 export async function seedPlans(): Promise<void> {

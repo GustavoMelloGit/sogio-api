@@ -76,6 +76,7 @@ function makeEntry(
       max_properties: 3,
       export_reports: false,
       bulk_import: false,
+      ai_assistant: false,
     },
     trial_days: 0,
     is_offered: true,
@@ -115,6 +116,7 @@ describe("SyncPlanCatalogEntryUseCase — capability fallback warns on the write
     expect(call?.[1]?.fallbacks).toEqual([
       { key: "export_reports", reason: "absent" },
       { key: "bulk_import", reason: "absent" },
+      { key: "ai_assistant", reason: "absent" },
     ]);
   });
 
@@ -138,6 +140,7 @@ describe("SyncPlanCatalogEntryUseCase — capability fallback warns on the write
     expect(call?.[1]?.fallbacks).toEqual([
       { key: "export_reports", reason: "wrong_type" },
       { key: "bulk_import", reason: "absent" },
+      { key: "ai_assistant", reason: "absent" },
     ]);
   });
 
