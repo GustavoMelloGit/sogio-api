@@ -335,11 +335,6 @@ const billingControllers: Route[] = [
   {
     authenticated: true,
     allowWithoutPlatformAccess: true,
-    controller: billingDi.makeEnsureFreeSubscriptionController(),
-  },
-  {
-    authenticated: true,
-    allowWithoutPlatformAccess: true,
     controller: billingDi.makeGetSubscriptionHistoryController(),
   },
   {
