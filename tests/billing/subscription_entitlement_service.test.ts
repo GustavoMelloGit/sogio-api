@@ -39,6 +39,9 @@ function makeSubscriptionRepository(
     linkCustomerReferenceIfAbsent: () => {
       throw new Error("not implemented in test stub");
     },
+    recordPlanChoiceIfAbsent: () => {
+      throw new Error("not implemented in test stub");
+    },
     save: () => {
       throw new Error("not implemented in test stub");
     },

@@ -47,6 +47,7 @@ export class GrantPlanUseCase implements UseCase<Input, Output> {
       is_perpetual: plan.is_perpetual,
       billing_interval: plan.billing_interval,
     });
+    subscription.recordPlanChoice();
 
     await this.subscriptionRepository.save(subscription);
 

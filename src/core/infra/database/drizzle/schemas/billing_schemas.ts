@@ -60,6 +60,7 @@ export const subscriptionsTable = pgTable(
     external_customer_reference: varchar({ length: 255 }),
 
     external_event_at: timestamp({ withTimezone: true, mode: "date" }),
+    plan_chosen_at: timestamp({ withTimezone: true, mode: "date" }),
   },
   table => [
 
