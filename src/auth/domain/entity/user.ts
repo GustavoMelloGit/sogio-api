@@ -23,6 +23,7 @@ export const userSchema = baseEntitySchema.extend({
   role: z.enum(["user", "admin"]).optional().default("user"),
   locale: localeSchema.optional().default(DEFAULT_LOCALE),
   time_zone: timeZoneSchema.optional().default(DEFAULT_TIME_ZONE),
+  password_changed_at: z.date().nullable().optional(),
 });
 
 export type UserData = z.infer<typeof userSchema>;
@@ -58,6 +59,7 @@ export class User {
   /** Troca de senha (R10/R12) — recebe o hash já calculado; hashing é responsabilidade de `Hasher`, em `application`. */
   public changePassword(newPasswordHash: string): void {
     this.#data.password = newPasswordHash;
+    this.#data.password_changed_at = new Date();
     this.#data.updated_at = new Date();
   }
 
@@ -86,6 +88,10 @@ export class User {
 
   get created_at() {
     return this.#data.created_at;
+  }
+
+  get password_changed_at() {
+    return this.#data.password_changed_at;
   }
 
   get updated_at() {

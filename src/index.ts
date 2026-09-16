@@ -6,6 +6,7 @@ import { CoreDi } from "./core/infra/di/core_di";
 import type { Logger } from "./core/application/logger/logger";
 import { NotificationDi } from "./notification/infra/di/notification_di";
 import { SessionPostgresRepository } from "./auth/infra/database/postgres_repository/session_postgres_repository";
+import { sessionInactivityTtlMs } from "./core/infra/config/environments";
 
 async function checkDatabaseConnection(logger: Logger) {
   try {
@@ -55,13 +56,19 @@ async function main() {
  * A varredura é horária e nunca apaga sessão viva — só o que já passou da
  * vida absoluta, que o `AuthMiddleware` de qualquer forma já recusa.
  */
+const REVOKED_SESSION_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
 function startSessionCleanup(logger: Logger) {
   const sessionRepository = new SessionPostgresRepository();
 
   const timer = setInterval(
     async () => {
       try {
-        const deleted = await sessionRepository.deleteExpired(new Date());
+        const deleted = await sessionRepository.deleteExpired(
+          new Date(),
+          sessionInactivityTtlMs,
+          REVOKED_SESSION_GRACE_MS
+        );
 
         if (deleted > 0) {
           logger.info("Expired sessions pruned", { deleted });

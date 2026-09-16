@@ -17,6 +17,13 @@ export const usersTable = pgTable("users", {
   role: varchar({ length: 20 }).notNull().default("user"),
   locale: varchar({ length: 20 }).notNull().default("pt-BR"),
   time_zone: varchar({ length: 64 }).notNull().default("America/Sao_Paulo"),
+  /**
+   * Última troca de senha. Serve de corte para o JWT de sessão antigo, que
+   * nenhuma revogação alcança por ser stateless: um token emitido antes disto
+   * não vale mais. Some junto com a janela de compatibilidade, a menos que
+   * vire dado útil por si.
+   */
+  password_changed_at: timestamp({ withTimezone: true, mode: "date" }),
 });
 
 export const usersRelations = relations(usersTable, ({ many }) => ({

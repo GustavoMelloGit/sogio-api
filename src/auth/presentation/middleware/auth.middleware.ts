@@ -1,5 +1,5 @@
 import { UnauthorizedError } from "../../../core/application/error/unauthorized_error";
-import { env } from "../../../core/infra/config/environments";
+import { sessionCookieName } from "../http/session_cookie";
 import type { ISessionManager } from "../../application/service/session_manager";
 import type { LegacyJwtSessionVerifier } from "../../application/service/legacy_jwt_session_verifier";
 import type { User } from "../../domain/entity/user";
@@ -45,17 +45,29 @@ export class AuthMiddleware {
     }
 
     const cookie = allowCookie
-      ? request.cookies[env.SESSION_COOKIE_NAME]
+      ? request.cookies[sessionCookieName()]
       : undefined;
 
     return cookie ? { secret: cookie, source: "cookie" } : null;
   }
 
   async authenticate(credential: SessionCredential): Promise<User> {
-    const userId = await this.#resolveUserId(credential);
-    const user = await this.authRepository.findUserById(userId);
+    const resolved = await this.#resolve(credential);
+    const user = await this.authRepository.findUserById(resolved.userId);
 
     if (!user) {
+      throw new UnauthorizedError("Unauthorized");
+    }
+
+    // Revogação não alcança um JWT: ele é stateless. Sem este corte, trocar
+    // ou redefinir a senha derrubaria as sessões novas e deixaria de pé
+    // justamente a credencial que alguém pode ter roubado do `localStorage`
+    // antes da migração — o cenário que motivou a mudança.
+    if (
+      resolved.legacyIssuedAt &&
+      user.password_changed_at &&
+      user.password_changed_at > resolved.legacyIssuedAt
+    ) {
       throw new UnauthorizedError("Unauthorized");
     }
 
@@ -82,7 +94,7 @@ export class AuthMiddleware {
    */
   async handleOptional(
     request: ControllerRequest,
-    allowCookie = true
+    allowCookie: boolean
   ): Promise<User | null> {
     try {
       return await this.handle(request, allowCookie);
@@ -96,13 +108,15 @@ export class AuthMiddleware {
    * do header, e some junto com `LegacyJwtSessionVerifier` uma release depois
    * do deploy.
    */
-  async #resolveUserId(credential: SessionCredential): Promise<string> {
+  async #resolve(
+    credential: SessionCredential
+  ): Promise<{ userId: string; legacyIssuedAt?: Date }> {
     try {
       const { userId } = await this.sessionManager.verifySession(
         credential.secret
       );
 
-      return userId;
+      return { userId };
     } catch (error) {
       if (credential.source !== "header") {
         throw error;
@@ -114,7 +128,7 @@ export class AuthMiddleware {
         throw error;
       }
 
-      return legacy.userId;
+      return { userId: legacy.userId, legacyIssuedAt: legacy.issuedAt };
     }
   }
 }

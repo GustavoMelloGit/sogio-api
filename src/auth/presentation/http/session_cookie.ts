@@ -19,6 +19,25 @@ import type { ControllerRequest } from "../../../core/presentation/controller/co
  * - `Max-Age` igual à vida absoluta da sessão, para o navegador descartar o
  *   cookie junto com a linha que o banco também já considera morta.
  */
+/**
+ * Em ambiente publicado o nome ganha o prefixo `__Secure-`, que o navegador
+ * só aceita de origem https e com `Secure`. Sem ele, com o cookie em
+ * `.sogio.app`, qualquer subdomínio — inclusive um servido em http, ou
+ * tomado por XSS — poderia sobrescrever a sessão e fixar a da vítima na
+ * conta do atacante. `__Host-` seria melhor ainda, mas proíbe `Domain`, e o
+ * apex e o `www` precisam compartilhar a sessão.
+ *
+ * O front deriva o mesmo nome; as duas pontas têm de concordar.
+ */
+export const sessionCookieName = (): string =>
+  isLocalEnvironment()
+    ? env.SESSION_COOKIE_NAME
+    : `__Secure-${env.SESSION_COOKIE_NAME}`;
+
+function isLocalEnvironment(): boolean {
+  return env.NODE_ENV === "development" || env.NODE_ENV === "test";
+}
+
 export function buildSessionCookie(secret: string): string {
   return serialize(secret, Math.floor(sessionAbsoluteTtlMs / 1000));
 }
@@ -30,7 +49,7 @@ export function buildClearedSessionCookie(): string {
 
 function serialize(value: string, maxAgeSeconds: number): string {
   const attributes = [
-    `${env.SESSION_COOKIE_NAME}=${value}`,
+    `${sessionCookieName()}=${value}`,
     "Path=/",
     "HttpOnly",
     "SameSite=Lax",
@@ -41,7 +60,7 @@ function serialize(value: string, maxAgeSeconds: number): string {
     attributes.push(`Domain=${env.SESSION_COOKIE_DOMAIN}`);
   }
 
-  if (env.NODE_ENV !== "development" && env.NODE_ENV !== "test") {
+  if (!isLocalEnvironment()) {
     attributes.push("Secure");
   }
 
@@ -49,8 +68,12 @@ function serialize(value: string, maxAgeSeconds: number): string {
 }
 
 /**
- * Segredo da sessão que está fazendo esta requisição, venha ele do cookie ou
- * do header. Mesma precedência do `AuthMiddleware`: header primeiro.
+ * Segredo da sessão que está fazendo esta requisição.
+ *
+ * Lê o que o adapter já resolveu, em vez de reparsear header e cookie: a
+ * decisão de aceitar cookie depende da política de CORS da rota, e só o
+ * adapter a conhece. Reparsear aqui reintroduziria essa decisão no
+ * controller, que é justamente o que a invariante 5 proíbe.
  *
  * Existe para os casos em que o controller precisa da credencial em si, e não
  * só de quem ela representa — encerrar a própria sessão no logout, e poupá-la
@@ -59,15 +82,5 @@ function serialize(value: string, maxAgeSeconds: number): string {
 export function readSessionSecret(
   request: ControllerRequest
 ): string | undefined {
-  const header = request.headers["authorization"];
-
-  if (header?.startsWith("Bearer ")) {
-    const bearer = header.slice("Bearer ".length).trim();
-
-    if (bearer) {
-      return bearer;
-    }
-  }
-
-  return request.cookies[env.SESSION_COOKIE_NAME];
+  return request.sessionCredential?.secret;
 }

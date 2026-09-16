@@ -1,6 +1,6 @@
 import type { Controller } from "../../../presentation/controller/controller";
 import type { OpenApiResponse } from "../../../presentation/open_api/open_api_types";
-import { env } from "../../config/environments";
+import { sessionCookieName } from "../../../../auth/presentation/http/session_cookie";
 import {
   MAX_BUFFERED_BODY_BYTES,
   MAX_REQUEST_BODY_BYTES,
@@ -92,7 +92,7 @@ export class OpenApiBuilder {
           cookieAuth: {
             type: "apiKey",
             in: "cookie",
-            name: env.SESSION_COOKIE_NAME,
+            name: sessionCookieName(),
             description:
               "Cookie httpOnly gravado pelo sign-in. É como o navegador autentica; o cookie não é legível por JavaScript.",
           },

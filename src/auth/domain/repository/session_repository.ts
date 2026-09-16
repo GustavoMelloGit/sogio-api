@@ -9,8 +9,14 @@ export interface SessionRepository {
    */
   touch(sessionId: string, usedAt: Date): Promise<void>;
   revoke(sessionId: string): Promise<void>;
+  /** Encerra pelo digest, sem ler antes: um `UPDATE` só, idempotente. */
+  revokeBySecretDigest(secretDigest: string): Promise<void>;
   /** Encerra todas as sessões do usuário, opcionalmente poupando uma. */
   revokeAllForUser(userId: string, exceptSessionId?: string): Promise<void>;
-  /** Remove sessões vencidas há mais de `olderThan` (E9). */
-  deleteExpired(olderThan: Date): Promise<number>;
+  /** Remove sessões mortas: vencidas, ociosas ou revogadas há tempo (E9). */
+  deleteExpired(
+    now: Date,
+    inactivityTtlMs: number,
+    revokedGraceMs: number
+  ): Promise<number>;
 }

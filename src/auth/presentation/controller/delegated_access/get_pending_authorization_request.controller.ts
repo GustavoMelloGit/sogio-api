@@ -106,7 +106,7 @@ export class GetPendingAuthorizationRequestController implements Controller {
       );
     }
 
-    const user = await this.authMiddleware.handleOptional(request);
+    const user = await this.authMiddleware.handleOptional(request, true);
 
     const result = await this.useCase.execute({
       identifier,

@@ -86,15 +86,9 @@ export class SessionManager implements ISessionManager {
 
   /** Logout: encerrar uma sessão inexistente é sucesso, não erro. */
   async revokeSession(secret: string): Promise<void> {
-    const session = await this.sessionRepository.findBySecretDigest(
+    await this.sessionRepository.revokeBySecretDigest(
       this.secretService.digest(secret)
     );
-
-    if (!session) {
-      return;
-    }
-
-    await this.sessionRepository.revoke(session.id);
   }
 
   /**

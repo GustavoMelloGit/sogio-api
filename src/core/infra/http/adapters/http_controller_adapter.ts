@@ -35,6 +35,14 @@ import {
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 const middlewareDi = new MiddlewareDi();
 const corsMiddleware = new CorsMiddleware();
 
@@ -270,7 +278,14 @@ class ControllerRequestParser {
         continue;
       }
 
-      cookies[name] = decodeURIComponent(value);
+      // `decodeURIComponent` estoura em sequência percentual inválida
+      // (`%`, `%ZZ`). Como este parse roda antes de rota, método e
+      // autenticação, deixar o erro subir transformaria um cookie lixo —
+      // que qualquer subdomínio consegue plantar — em 500 para toda
+      // requisição daquela pessoa, inclusive o sign-in que a tiraria da
+      // situação. Cookie ilegível tem de fazer a autenticação falhar, não a
+      // requisição inteira.
+      cookies[name] = safeDecode(value);
     }
 
     return cookies;
@@ -512,6 +527,7 @@ export function BunHttpControllerAdapter(
         assertSameSiteRequest(request, credential);
 
         user = await authMiddleware.authenticate(credential);
+        controllerRequest.sessionCredential = credential;
       }
 
       if (adminOnly && user?.role !== "admin") {

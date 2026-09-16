@@ -95,6 +95,12 @@ const envSchema = z
       .int()
       .positive()
       .default(60 * 60 * 24 * 14),
+    /**
+     * Data-limite (ISO) até a qual o JWT de sessão antigo continua sendo
+     * aceito pelo header, durante a migração para cookie. Ausente significa
+     * recusar — a janela precisa ser aberta de propósito e fechar sozinha.
+     */
+    LEGACY_JWT_ACCEPTED_UNTIL: z.coerce.date().optional(),
     /** Nome do cookie que carrega o segredo da sessão do app. */
     SESSION_COOKIE_NAME: z
       .string()

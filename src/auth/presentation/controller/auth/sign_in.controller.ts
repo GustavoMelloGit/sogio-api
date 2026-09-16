@@ -8,6 +8,7 @@ import {
 } from "../../../../core/presentation/controller/controller";
 import { buildSessionCookie } from "../../http/session_cookie";
 import type { OpenApiOperation } from "../../../../core/presentation/open_api/open_api_types";
+import type { RateLimitPolicy } from "../../../../core/application/rate_limit/rate_limit_policy";
 import {
   bodyFromZod,
   errorResponse,
@@ -38,10 +39,22 @@ const outputSchema = z.object({
 
 type Input = z.infer<typeof inputSchema>;
 
+/**
+ * Cada sign-in bem-sucedido passou a inserir uma linha em `sessions`, então
+ * o endpoint deixou de ser stateless: sem teto, uma rajada engorda a tabela
+ * além de tentar senhas.
+ */
+const RATE_LIMIT_POLICY: RateLimitPolicy = {
+  keyDimension: "peer-ip",
+  windowMs: 60 * 1000,
+  maxAttempts: 20,
+};
+
 export class SignInController implements Controller {
   path = "/auth/sign-in";
   method = HttpControllerMethod.POST;
   inputSchema = inputSchema;
+  rateLimitPolicy = RATE_LIMIT_POLICY;
 
   openApiSpec: OpenApiOperation = {
     summary: "Sign in",
@@ -72,6 +85,8 @@ export class SignInController implements Controller {
       status: 200,
       body: output,
       headers: { "Set-Cookie": buildSessionCookie(output.token) },
+      // A resposta carrega o segredo no corpo e no `Set-Cookie` (E8).
+      cache: "no-store",
     });
   }
 }

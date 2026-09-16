@@ -75,6 +75,8 @@ export class RegisterUserController implements Controller {
       status: 200,
       body: output,
       headers: { "Set-Cookie": buildSessionCookie(output.token) },
+      // A resposta carrega o segredo no corpo e no `Set-Cookie` (E8).
+      cache: "no-store",
     });
   }
 }

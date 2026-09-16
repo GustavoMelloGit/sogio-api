@@ -5,9 +5,13 @@ import { createUserFixture } from "../helpers/fixtures/user";
 import { createAuthToken } from "../helpers/fixtures/auth_token";
 import { env } from "../../src/core/infra/config/environments";
 import { db } from "../../src/core/infra/database/drizzle/database";
-import { sessionsTable } from "../../src/core/infra/database/drizzle/schema";
+import {
+  passwordResetRequestsTable,
+  sessionsTable,
+} from "../../src/core/infra/database/drizzle/schema";
 import { eq } from "drizzle-orm";
 import { CryptoDelegatedSecretService } from "../../src/auth/infra/service/crypto_delegated_secret_service";
+import jwt from "jsonwebtoken";
 
 const COOKIE = env.SESSION_COOKIE_NAME;
 const ALLOWED_ORIGIN = "http://localhost:5173";
@@ -29,7 +33,7 @@ async function signInToken(email: string): Promise<string> {
 
 describe("Session in a cookie", () => {
   beforeEach(async () => {
-    await truncate(["sessions", "users"]);
+    await truncate(["sessions", "password_reset_requests", "users"]);
   });
 
   it("sign-in sets an httpOnly cookie and still returns the secret in the body", async () => {
@@ -209,6 +213,167 @@ describe("Session in a cookie", () => {
     });
 
     expect(response.status).toBe(204);
+  });
+
+  it("a malformed cookie does not break the request", async () => {
+    const { user } = await createUserFixture({
+      name: "Broken Cookie",
+      email: `broken-${crypto.randomUUID()}@sogio.dev`,
+      password,
+    });
+    const token = await createAuthToken(user.id);
+
+    // `%` solto estoura `decodeURIComponent`. Qualquer subdomínio consegue
+    // plantar um cookie assim; ele não pode derrubar a API para a vítima.
+    const response = await api("/auth/me", {
+      headers: { Cookie: `junk=%; ${COOKIE}=${token}` },
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it("a write by cookie with no Origin at all is refused", async () => {
+    const { user } = await createUserFixture({
+      name: "No Origin",
+      email: `no-origin-${crypto.randomUUID()}@sogio.dev`,
+      password,
+    });
+    const token = await createAuthToken(user.id);
+
+    // Fail-closed de propósito: navegador sempre manda `Origin` num POST, e
+    // quem chama de fora do navegador usa Bearer, que não passa por aqui.
+    const response = await api("/auth/change-password", {
+      method: "POST",
+      headers: { Cookie: `${COOKIE}=${token}` },
+      body: JSON.stringify({
+        currentPassword: password,
+        newPassword: "OutraSenha456",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+  });
+
+  it("a legacy JWT authenticates from the header but never from the cookie", async () => {
+    const { user } = await createUserFixture({
+      name: "Legacy",
+      email: `legacy-${crypto.randomUUID()}@sogio.dev`,
+      password,
+    });
+
+    const legacy = jwt.sign({ userId: user.id, role: "user" }, env.JWT_SECRET, {
+      expiresIn: "1d",
+    });
+
+    const byHeader = await api("/auth/me", {
+      headers: { Authorization: `Bearer ${legacy}` },
+    });
+    const byCookie = await api("/auth/me", {
+      headers: { Cookie: `${COOKIE}=${legacy}` },
+    });
+
+    expect(byHeader.status).toBe(200);
+    expect(byCookie.status).toBe(401);
+  });
+
+  it("a legacy JWT issued before the account changed is refused", async () => {
+    const { user } = await createUserFixture({
+      name: "Legacy Stale",
+      email: `legacy-stale-${crypto.randomUUID()}@sogio.dev`,
+      password,
+    });
+
+    // Emitido antes da última alteração da conta: é o token que alguém teria
+    // roubado do `localStorage` antes de a vítima redefinir a senha.
+    await api("/auth/change-password", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${await createAuthToken(user.id)}` },
+      body: JSON.stringify({
+        currentPassword: password,
+        newPassword: "OutraSenha456",
+      }),
+    });
+
+    const issuedAt = Math.floor((Date.now() - 60_000) / 1000);
+    const stale = jwt.sign(
+      { userId: user.id, role: "user", iat: issuedAt },
+      env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    const response = await api("/auth/me", {
+      headers: { Authorization: `Bearer ${stale}` },
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("signing out does not touch another user's session", async () => {
+    const mine = await createUserFixture({
+      name: "Mine",
+      email: `mine-${crypto.randomUUID()}@sogio.dev`,
+      password,
+    });
+    const theirs = await createUserFixture({
+      name: "Theirs",
+      email: `theirs-${crypto.randomUUID()}@sogio.dev`,
+      password,
+    });
+
+    const mySession = await createAuthToken(mine.user.id);
+    const theirSession = await createAuthToken(theirs.user.id);
+
+    const first = await api("/auth/sign-out", {
+      method: "POST",
+      headers: { Cookie: `${COOKIE}=${mySession}`, Origin: ALLOWED_ORIGIN },
+    });
+    const second = await api("/auth/sign-out", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${mySession}` },
+    });
+
+    expect(first.status).toBe(204);
+    // A rota é autenticada, então a segunda tentativa nem chega ao caso de
+    // uso: a sessão já não vale. Sair duas vezes não é erro para quem usa o
+    // app — o front ignora a falha e limpa a tela de qualquer forma.
+    expect(second.status).toBe(401);
+
+    const untouched = await api("/auth/me", {
+      headers: { Authorization: `Bearer ${theirSession}` },
+    });
+
+    expect(untouched.status).toBe(200);
+  });
+
+  it("resetting the password by email ends every session, including the caller's", async () => {
+    const { user } = await createUserFixture({
+      name: "Reset All",
+      email: `reset-all-${crypto.randomUUID()}@sogio.dev`,
+      password,
+    });
+
+    const session = await createAuthToken(user.id);
+    const secretService = new CryptoDelegatedSecretService();
+    const { secret, digest } = secretService.generate();
+
+    await db.insert(passwordResetRequestsTable).values({
+      user_id: user.id,
+      token_digest: digest,
+      expires_at: new Date(Date.now() + 60 * 60 * 1000),
+    });
+
+    const reset = await api("/auth/password-reset/confirm", {
+      method: "POST",
+      body: JSON.stringify({ token: secret, newPassword: "OutraSenha456" }),
+    });
+
+    expect(reset.status).toBe(204);
+
+    const afterwards = await api("/auth/me", {
+      headers: { Authorization: `Bearer ${session}` },
+    });
+
+    expect(afterwards.status).toBe(401);
   });
 
   it("changing the password ends the other sessions and keeps the current one", async () => {

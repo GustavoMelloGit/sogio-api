@@ -32,6 +32,13 @@ export type ControllerRequest = {
    * do app usa, mas o parse é do transporte, não de quem consome.
    */
   cookies: Record<string, string>;
+  /**
+   * Credencial de sessão que o adapter aceitou para esta requisição, quando a
+   * rota é autenticada. É a única leitura válida da credencial num
+   * controller: só o adapter conhece a política de CORS da rota, e portanto
+   * só ele pode decidir se o cookie vale ali.
+   */
+  sessionCredential?: { secret: string; source: "header" | "cookie" };
   method: HttpControllerMethod;
   url: string;
   /**

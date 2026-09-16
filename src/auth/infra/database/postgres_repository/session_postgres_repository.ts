@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt, ne } from "drizzle-orm";
+import { and, eq, isNull, lt, ne, or } from "drizzle-orm";
 import { Session, type SessionData } from "../../../domain/entity/session";
 import type { SessionRepository } from "../../../domain/repository/session_repository";
 import { db } from "../../../../core/infra/database/drizzle/database";
@@ -61,6 +61,20 @@ export class SessionPostgresRepository implements SessionRepository {
       .where(eq(sessionsTable.id, sessionId));
   }
 
+  async revokeBySecretDigest(secretDigest: string): Promise<void> {
+    const now = new Date();
+
+    await db
+      .update(sessionsTable)
+      .set({ revoked_at: now, updated_at: now })
+      .where(
+        and(
+          eq(sessionsTable.secret_digest, secretDigest),
+          isNull(sessionsTable.revoked_at)
+        )
+      );
+  }
+
   async revoke(sessionId: string): Promise<void> {
     const now = new Date();
 
@@ -90,10 +104,32 @@ export class SessionPostgresRepository implements SessionRepository {
       );
   }
 
-  async deleteExpired(olderThan: Date): Promise<number> {
+  /**
+   * Expurgo por qualquer uma das três formas de morrer, e não só pela vida
+   * absoluta: uma sessão encerrada no logout do dia 1 ficaria 30 dias no
+   * banco, inválida mas presente, carregando `user_id` e a trilha de quando
+   * a pessoa usou o produto.
+   *
+   * A revogada ganha uma janela curta antes de sair, que é o que permite
+   * investigar um incidente recente.
+   */
+  async deleteExpired(
+    now: Date,
+    inactivityTtlMs: number,
+    revokedGraceMs: number
+  ): Promise<number> {
     const deleted = await db
       .delete(sessionsTable)
-      .where(lt(sessionsTable.expires_at, olderThan))
+      .where(
+        or(
+          lt(sessionsTable.expires_at, now),
+          lt(
+            sessionsTable.last_used_at,
+            new Date(now.getTime() - inactivityTtlMs)
+          ),
+          lt(sessionsTable.revoked_at, new Date(now.getTime() - revokedGraceMs))
+        )
+      )
       .returning({ id: sessionsTable.id });
 
     return deleted.length;

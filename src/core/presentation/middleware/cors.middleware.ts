@@ -9,8 +9,14 @@ export class CorsMiddleware {
   private readonly allowedHeaders: string[];
 
   constructor() {
-    const isProduction = env.NODE_ENV === "production";
-    if (isProduction) {
+    // `sandbox` conta como ambiente publicado: ali a allowlist tem de ser a
+    // configurada, não `localhost:*`. O predicado é o mesmo que decide o
+    // `Secure` do cookie de sessão — os dois precisam concordar sobre o que é
+    // ambiente local, senão a checagem de `Origin` contra CSRF recusa o
+    // próprio front do sandbox e, pior, confia em qualquer página servida em
+    // localhost.
+    const isLocal = env.NODE_ENV === "development" || env.NODE_ENV === "test";
+    if (!isLocal) {
       // Explicit allowlist (E8), configurable via CORS_ALLOWED_ORIGINS —
       // never a wildcard, which combined with credentials below is `*`.
       this.allowedOrigins = [...corsAllowedOrigins];

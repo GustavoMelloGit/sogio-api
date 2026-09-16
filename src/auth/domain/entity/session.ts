@@ -56,7 +56,7 @@ export class Session {
    * porque é configuração de ambiente, não regra do agregado.
    */
   public isValid(now: Date, inactivityTtlMs: number): boolean {
-    if (this.#data.revoked_at) {
+    if (this.#data.revoked_at || this.#data.deleted_at) {
       return false;
     }
 

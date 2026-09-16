@@ -42,6 +42,7 @@ export class SignOutController implements Controller {
     return new ControllerHttpResponse({
       status: 204,
       headers: { "Set-Cookie": buildClearedSessionCookie() },
+      cache: "no-store",
     });
   }
 }
