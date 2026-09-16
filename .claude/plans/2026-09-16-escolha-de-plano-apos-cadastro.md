@@ -154,3 +154,18 @@ A PR #80 já está publicada: tudo vai em commits novos, sem reescrever o histó
 - Onde: `tests/billing/ensure_free_subscription_route.test.ts`
 - Problema: a integridade do risco aceito em D-2 depende de três fatos que nenhum teste trava: a unicidade de `subscriptions.user_id`, `save()` fazer `INSERT` em vez de upsert por `user_id`, e o `dispatch` vir depois do `save`. Um refactor que mude qualquer um deles passaria na suíte e poderia duplicar o Histórico ou sobrescrever uma assinatura.
 - Recomendação: um teste que dispare cerca de 5 chamadas paralelas numa conta sem assinatura e afirme **só o estado final**: exatamente 1 linha, exatamente 1 entrada `started`, e nenhuma resposta fora de `204`/`500`, sem fixar quantos `500` saem. Com menos valor, também faltam o `404` com catálogo sem `free` e um teste de CSRF específico da rota. O teste genérico de CSRF já existe em `tests/auth/session_cookie.test.ts:173,232`.
+
+### Revisão do escopo final (task 5)
+
+**Analista de Segurança, 2026-09-16.** Escopo: `git diff origin/main` em `7b11085`, com 7 arquivos: `return_to`, as URLs de retorno sob `/app`, seus testes, o parágrafo do `CLAUDE.md` e este plano.
+
+**Resultado: nenhum achado crítico, moderado ou informativo novo.** Nada bloqueia o merge.
+
+- **Rota e portão.** `git diff origin/main` está vazio em `src/core/`, `src/billing/infra/`, `src/auth/`, `tests/core/` e `drizzle/`. Não há rota nova, controller novo nem `allowWithoutPlatformAccess` novo. Os dois casos de uso só são usados pelos controllers que já existem em `main`.
+- **MCP.** Nenhuma tool nova. O diff do `CLAUDE.md` é só o parágrafo das URLs de retorno, sem exceção nova. Checkout e Portal seguem na exceção de sessões de pagamento que já existia.
+- **Resíduos.** O `grep` da task 4, somado a `planChosenAt` e `plan_choice`, volta vazio em `src`, `tests`, `drizzle` e `CLAUDE.md`. A OpenAPI é gerada em runtime a partir do controller, e a descrição dele não fala mais em escolha de plano (I-1 resolvido).
+- **Open redirect (D-5).** `return_to` é `z.enum(CHECKOUT_RETURN_TARGETS).default("billing")` (`create_checkout_session.controller.ts:22`). O caso de uso só indexa `RETURN_PATHS`, que tem caminhos literais (`create_checkout_session.ts:24-36`). A origem vem de `FRONT_BASE_URL`, que precisa ser uma origem exata (`environments.ts:207`). Campos extras são descartados, e o controller repassa só `plan_code` e `return_to`. O `422` não ecoa o valor enviado.
+- **Trava por teste.** `https://evil.example/phish`, `/app/settings/billing`, `//evil.example`, `BILLING` e `""` dão `422` pela rota HTTP (`tests/billing/create_checkout_session.test.ts:396-419`). O teste não passa por acaso: o `beforeEach` limpa o preço do Pro, então um schema afrouxado cairia no `IllegalStateError` e daria `500`. Nesta revisão, os 19 testes dos dois arquivos passaram.
+- **Portal.** `RETURN_PATH` é constante e o `Input` é `Record<string, never>` (`create_billing_portal_session.ts:8,14`). Nada do chamador entra na URL, e o teste afirma a URL exata.
+- **LGPD.** Nenhum dado pessoal novo é coletado, armazenado ou logado.
+- **Nota para o front (não é achado).** `?checkout=success` é só aviso de UX, porque qualquer um digita essa URL. O acesso continua vindo do webhook, como em `main`.
