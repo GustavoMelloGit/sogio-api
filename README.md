@@ -8,8 +8,8 @@ These instructions will get you a copy of the project up and running on your loc
 
 ### Prerequisites
 
-- [Docker](https://www.docker.com/)
-- [Docker Compose](https://docs.docker.com/compose/)
+- [Bun](https://bun.sh/)
+- [Apple container](https://github.com/apple/container) (macOS on Apple silicon), which runs the local PostgreSQL
 
 ### Installing
 
@@ -21,19 +21,27 @@ These instructions will get you a copy of the project up and running on your loc
    ```bash
    cd sogio-api
    ```
+3. Install the dependencies:
+   ```bash
+   bun install
+   ```
 
 ### Running the application
 
-1. Start the application using Docker Compose:
+1. Start the local database (creates the `sogio_db` container and the `sogio_db_data` volume on first run):
    ```bash
-   docker compose up
+   bun run db:start
    ```
 2. Run the database migrations:
    ```bash
-   docker-compose exec api bun run db:migrate
+   bun run db:migrate
+   ```
+3. Start the development server:
+   ```bash
+   bun run dev
    ```
 
-This will start the development server. The API will be available at `http://localhost:3000`.
+Stop the database with `bun run db:stop`; its data stays in the `sogio_db_data` volume.
 
 ## Project Structure
 

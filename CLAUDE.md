@@ -30,6 +30,10 @@ bun run lint:check   # ESLint sem fix (CI)
 bun run format       # Formatação com Prettier
 bun run format:check # Verificação do Prettier (CI)
 
+# Banco de Dados local (Apple container)
+bun run db:start      # Sobe o Postgres local (sogio_db, porta 5434), criando container e volume se não existirem
+bun run db:stop       # Para o Postgres local; o volume sogio_db_data é preservado
+
 # Banco de Dados (Drizzle ORM)
 bun run db:push       # Envia o schema para o banco
 bun run db:migration  # Gera arquivos de migration
@@ -44,6 +48,8 @@ bun run test          # Executa todos os testes
 ```
 
 Os testes ficam em `tests/<bounded context>/<test name>.test.ts`.
+
+**O Postgres local roda no Apple container, não no Docker.** `scripts/local_database.ts` é o substituto do antigo `docker-compose.yml`: sobe o serviço do `container` se ele estiver parado, e cria o container `sogio_db` e o volume `sogio_db_data` só quando não existem. O Apple container não tem política de restart, então depois de reiniciar a máquina o banco fica parado até alguém rodar `bun run db:start` — a suíte de testes falha com conexão recusada nesse estado. O volume é montado em `/var/lib/postgresql/data`, mas o `PGDATA` aponta para o subdiretório `pgdata`: o volume é uma imagem ext4 com `lost+found` na raiz, e o `initdb` recusa um diretório que não está vazio.
 
 **Cada worktree tem o seu próprio banco de teste.** O nome sai do path da worktree (`tests/test_database.ts`): a worktree principal continua usando o banco declarado no `DATABASE_URL` do `.env.test` (`sogio_test`), e cada worktree em `.claude/worktrees/<branch>` usa `sogio_test_<slug>_<hash-do-path>`. O preload `tests/preload_test_database.ts` roda antes de `tests/setup.ts`, cria o banco se ele não existir, aplica o schema Drizzle e só então reescreve `process.env.DATABASE_URL` — por isso `environments.ts` nunca pode ser importado por esse módulo, e por isso `db:push:test` deixou de ser obrigatório antes do primeiro run (continua existindo para preparar o banco sem rodar a suíte). O custo é ~1,8 s por execução, contra uma suíte de ~40 s.
 
