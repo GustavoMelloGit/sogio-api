@@ -5,7 +5,7 @@ import type { User } from "../../domain/entity/user";
  * aplicativo, com o escopo concedido pelo Consentimento sob o qual a
  * credencial foi emitida. Não é `User` sozinho (Linguagem Ubíqua do plano
  * de autorização OAuth do MCP, questionamento 16): o transporte ganha a
- * identidade do aplicativo para log e auditoria, algo que o JWT de sessão,
+ * identidade do aplicativo para log e auditoria, algo que a sessão do app,
  * por definição, nunca poderia fornecer. As tools continuam recebendo só
  * `User` — é o transporte (`src/core/infra/mcp/routes.ts`) que lê o
  * `Requester` inteiro.
@@ -18,8 +18,8 @@ export type Requester = {
 
 /**
  * Abstração de verificação de credencial exposta pelo BC Auth. O `/mcp`
- * (`src/core/infra/mcp`) depende só disto — nunca de OAuth ou de JWT
- * diretamente (Decisão Arquitetural 2) — e tem, hoje, uma única
+ * (`src/core/infra/mcp`) depende só disto — nunca de OAuth nem da sessão do
+ * app diretamente (Decisão Arquitetural 2) — e tem, hoje, uma única
  * implementação: `OAuthCredentialVerifier`
  * (`src/auth/infra/service/oauth_credential_verifier.ts`). `verify` recusa
  * lançando `UnauthorizedError` quando a credencial não existe, expirou, foi
