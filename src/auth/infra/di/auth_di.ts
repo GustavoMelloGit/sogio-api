@@ -2,10 +2,16 @@ import type { AiAssistantAccess } from "../../application/service/ai_assistant_a
 import type { ExternalIdentityProvider } from "../../application/service/external_identity_provider";
 import { GoogleIdentityProvider } from "../identity_provider/google_identity_provider";
 import { StartExternalSignInUseCase } from "../../application/use_case/start_external_sign_in";
+import { CompleteExternalSignInUseCase } from "../../application/use_case/complete_external_sign_in";
 import type { ExternalSignInRequestRepository } from "../../domain/repository/external_sign_in_request_repository";
 import { ExternalSignInRequestPostgresRepository } from "../database/postgres_repository/external_sign_in_request_postgres_repository";
+import type { LinkedIdentityRepository } from "../../domain/repository/linked_identity_repository";
+import { LinkedIdentityPostgresRepository } from "../database/postgres_repository/linked_identity_postgres_repository";
 import { StartGoogleSignInController } from "../../presentation/controller/auth/start_google_sign_in.controller";
+import { CompleteGoogleSignInController } from "../../presentation/controller/auth/complete_google_sign_in.controller";
 import { GOOGLE_SIGN_IN_CALLBACK_PATH } from "../../presentation/controller/auth/google_sign_in_paths";
+import type { TransactionRunner } from "../../../core/application/transaction/transaction_runner";
+import { DrizzleTransactionRunner } from "../../../core/infra/database/drizzle/drizzle_transaction_runner";
 import { type Hasher } from "../../application/service/hasher";
 import {
   SessionManager,
@@ -114,6 +120,8 @@ export class AuthDi {
   #eventDispatcher: EventDispatcher;
   #aiAssistantAccess: AiAssistantAccess;
   #externalSignInRequestRepository: ExternalSignInRequestRepository;
+  #linkedIdentityRepository: LinkedIdentityRepository;
+  #transactionRunner: TransactionRunner;
   #googleRedirectUri: string;
 
   constructor(aiAssistantAccess: AiAssistantAccess) {
@@ -142,6 +150,8 @@ export class AuthDi {
     this.#eventDispatcher = inMemoryEventDispatcher;
     this.#externalSignInRequestRepository =
       new ExternalSignInRequestPostgresRepository();
+    this.#linkedIdentityRepository = new LinkedIdentityPostgresRepository();
+    this.#transactionRunner = new DrizzleTransactionRunner();
     this.#googleRedirectUri = `${apiBaseUrl}${GOOGLE_SIGN_IN_CALLBACK_PATH}`;
   }
 
@@ -500,6 +510,27 @@ export class AuthDi {
   makeStartGoogleSignInController() {
     return new StartGoogleSignInController(
       this.makeStartExternalSignInUseCase(),
+      this.#logger
+    );
+  }
+
+  makeCompleteExternalSignInUseCase() {
+    return new CompleteExternalSignInUseCase(
+      this.makeExternalIdentityProvider(),
+      this.#externalSignInRequestRepository,
+      this.#linkedIdentityRepository,
+      this.#authRepository,
+      this.#sessionManager,
+      this.#transactionRunner,
+      this.#eventDispatcher,
+      this.#delegatedSecretService,
+      this.#googleRedirectUri
+    );
+  }
+
+  makeCompleteGoogleSignInController() {
+    return new CompleteGoogleSignInController(
+      this.makeCompleteExternalSignInUseCase(),
       this.#logger
     );
   }

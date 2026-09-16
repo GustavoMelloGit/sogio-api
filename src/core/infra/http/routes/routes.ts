@@ -249,6 +249,10 @@ const authControllers: Route[] = [
     authenticated: false,
     controller: authDi.makeStartGoogleSignInController(),
   },
+  {
+    authenticated: false,
+    controller: authDi.makeCompleteGoogleSignInController(),
+  },
 ];
 
 const discoveryControllers: Route[] = [
