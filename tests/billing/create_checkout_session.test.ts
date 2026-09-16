@@ -8,6 +8,9 @@ import type { PaymentGateway } from "../../src/billing/application/gateway/payme
 import { db } from "../../src/core/infra/database/drizzle/database";
 import { plansTable } from "../../src/core/infra/database/drizzle/schema";
 import { eq } from "drizzle-orm";
+import { api } from "../helpers/server";
+import { createAuthToken } from "../helpers/fixtures/auth_token";
+import { CreateCheckoutSessionController } from "../../src/billing/presentation/controller/create_checkout_session.controller";
 
 const TABLES = ["properties", "addresses", "users"];
 const FRONT_BASE_URL = "http://localhost:5173";
@@ -288,4 +291,130 @@ describe("CreateCheckoutSessionUseCase (DA-4)", () => {
     );
     expect(result.url).toBe("https://checkout.stripe.com/test-session");
   });
+});
+
+describe("CreateCheckoutSessionUseCase — return URLs", () => {
+  beforeEach(async () => {
+    await truncate(TABLES);
+    await clearProPriceReference();
+    await setProPriceReference();
+  });
+
+  it("returns to the billing settings page under /app for return_to billing", async () => {
+    const { user } = await createUserFixture({
+      name: "Conta Checkout Retorno Billing",
+      email: "checkout.return.billing@sogio.dev",
+      password: "password123",
+    });
+    const gateway = new StubPaymentGateway();
+    const useCase = new CreateCheckoutSessionUseCase(
+      subscriptionRepository,
+      planRepository,
+      gateway,
+      FRONT_BASE_URL
+    );
+
+    await useCase.execute({ plan_code: "pro", return_to: "billing" }, user);
+
+    expect(gateway.createCheckoutSessionCalls[0]?.success_url).toBe(
+      `${FRONT_BASE_URL}/app/settings/billing?checkout=success`
+    );
+    expect(gateway.createCheckoutSessionCalls[0]?.cancel_url).toBe(
+      `${FRONT_BASE_URL}/app/settings/billing?checkout=canceled`
+    );
+  });
+
+  it("returns to the app home for return_to onboarding", async () => {
+    const { user } = await createUserFixture({
+      name: "Conta Checkout Retorno Onboarding",
+      email: "checkout.return.onboarding@sogio.dev",
+      password: "password123",
+    });
+    const gateway = new StubPaymentGateway();
+    const useCase = new CreateCheckoutSessionUseCase(
+      subscriptionRepository,
+      planRepository,
+      gateway,
+      FRONT_BASE_URL
+    );
+
+    await useCase.execute({ plan_code: "pro", return_to: "onboarding" }, user);
+
+    expect(gateway.createCheckoutSessionCalls[0]?.success_url).toBe(
+      `${FRONT_BASE_URL}/app?checkout=success`
+    );
+    expect(gateway.createCheckoutSessionCalls[0]?.cancel_url).toBe(
+      `${FRONT_BASE_URL}/app?checkout=canceled`
+    );
+  });
+});
+
+describe("POST /billing/checkout-session — return_to", () => {
+  beforeEach(async () => {
+    await truncate(TABLES);
+    await clearProPriceReference();
+  });
+
+  it("defaults return_to to billing when the caller omits it", () => {
+    const controller = new CreateCheckoutSessionController(
+      {} as CreateCheckoutSessionUseCase
+    );
+
+    const parsed = controller.inputSchema.parse({ plan_code: "pro" });
+
+    expect(parsed.return_to).toBe("billing");
+  });
+
+  it("forwards the validated return_to to the use case", async () => {
+    type CheckoutInput = Parameters<CreateCheckoutSessionUseCase["execute"]>[0];
+    const calls: CheckoutInput[] = [];
+    const controller = new CreateCheckoutSessionController({
+      execute: async (input: CheckoutInput) => {
+        calls.push(input);
+        return { url: "https://checkout.stripe.com/test-session" };
+      },
+    } as unknown as CreateCheckoutSessionUseCase);
+    const { user } = await createUserFixture({
+      name: "Conta Checkout Controller",
+      email: "checkout.return.controller@sogio.dev",
+      password: "password123",
+    });
+
+    await controller.handle(
+      {
+        body: controller.inputSchema.parse({
+          plan_code: "pro",
+          return_to: "onboarding",
+        }),
+      } as unknown as Parameters<CreateCheckoutSessionController["handle"]>[0],
+      user
+    );
+
+    expect(calls).toEqual([{ plan_code: "pro", return_to: "onboarding" }]);
+  });
+
+  for (const returnTo of [
+    "https://evil.example/phish",
+    "/app/settings/billing",
+    "//evil.example",
+    "BILLING",
+    "",
+  ]) {
+    it(`rejects return_to ${JSON.stringify(returnTo)} with 422`, async () => {
+      const { user } = await createUserFixture({
+        name: "Conta Checkout Retorno Invalido",
+        email: "checkout.return.invalid@sogio.dev",
+        password: "password123",
+      });
+      const token = await createAuthToken(user.id);
+
+      const res = await api("/billing/checkout-session", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token },
+        body: JSON.stringify({ plan_code: "pro", return_to: returnTo }),
+      });
+
+      expect(res.status).toBe(422);
+    });
+  }
 });
