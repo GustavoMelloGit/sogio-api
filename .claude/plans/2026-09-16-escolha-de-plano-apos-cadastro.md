@@ -186,3 +186,48 @@ A PR #80 já está publicada: tudo vai em commits novos, sem reescrever o histó
      - exceção MCP de D-4
    - Registrar o resultado neste plano.
    - Dependencies: task 5
+
+## Revisão de Segurança
+
+**Analista de Segurança, 2026-09-16.** Escopo: `git diff origin/main` da branch `feat/plan-choice-after-signup`, com foco em `8c05aae`…`5e07a1e`. Além da leitura do código, uma sonda descartável (não commitada) rodou contra o servidor de teste: 20 chamadas paralelas numa conta sem assinatura, escrita por cookie com e sem `Origin` da allowlist, e uma conta `trial_expired` enviando corpo forjado.
+
+**Resultado: nenhum achado crítico nem moderado.** Os quatro achados abaixo são informativos e nenhum bloqueia o merge.
+
+### Verificações que passaram
+
+- **Exceção ao portão de platform access (D-3).** `EnsureFreeSubscriptionUseCase` retorna antes de ler o catálogo quando existe qualquer linha em `subscriptions` para o `user_id`, sem olhar o status (`ensure_free_subscription.ts:25-28`). Nenhuma conta bloqueada com assinatura muda de estado. Isso está coberto por teste para `payment_failed` e para Pro ativo, em trial, vencido e cancelado, e a sonda confirmou `trial_expired`: a conta segue `trialing`, com `blocked_reason: "trial_expired"`. Nenhum caminho apaga só a assinatura: a única remoção é o cascade do purge LGPD (`auth_postgres_repository.ts:138`). Por isso não dá para fabricar o estado "sem assinatura" e ganhar um segundo trial pelo Checkout, que só oferece trial com `trial_ends_at === null`.
+- **Concorrência (D-2).** Na sonda, 20 POSTs paralelos deram 1×`204` e 19×`500`, todos com o corpo genérico `{"message":"Internal server error"}`. Ficou 1 linha em `subscriptions` e 1 entrada `started` no Histórico. A restrição `subscriptions_user_id_unique` (`drizzle/0007_robust_cobalt_man.sql:31`) barra o segundo `INSERT`, e o `dispatch` só roda depois do `save` (`ensure_free_subscription.ts:43-45`). Por isso a chamada perdedora não emite `SubscriptionStartedEvent`, cujo único handler é o do Histórico. A janela acontece uma vez na vida da conta: depois que a linha existe, toda chamada é `204` sem escrita, e o `500` não se repete.
+- **IDOR e mass assignment.** O controller não declara `inputSchema` e ignora a requisição. O alvo vem só de `user.id` da sessão (`ensure_free_subscription.controller.ts:32-35`). Na sonda, um corpo com o `user_id` de outra conta, `plan_code: "pro"` e `status: "active"` recebeu `204`: a outra conta continuou sem linha e a assinatura do chamador ficou intacta.
+- **CSRF.** `assertSameSiteRequest` roda em toda rota autenticada antes de `authenticate`, com ou sem `allowWithoutPlatformAccess` (`http_controller_adapter.ts:497`). Na sonda, cookie com `Origin: https://evil.example` deu `403`, cookie sem `Origin` deu `403` e nenhuma assinatura foi criada. Com a origem da allowlist, `204`. O cookie ainda é `SameSite=Lax`. E o pior caso de um CSRF aqui seria criar o Free de uma vítima sem assinatura, que é o próprio comportamento desejado.
+- **Open redirect (D-5).** `return_to` é `z.enum(CHECKOUT_RETURN_TARGETS)` (`create_checkout_session.controller.ts:22`) e vira caminhos fixos sob `FRONT_BASE_URL` (`create_checkout_session.ts:24-36`). O Portal usa uma constante (`create_billing_portal_session.ts:14`). Um teste HTTP ainda trava a regra: `https://evil.example/phish`, `/app/settings/billing`, `//evil.example`, `BILLING` e `""` dão `422` (`tests/billing/create_checkout_session.test.ts:396-419`).
+- **Exceção MCP (D-4).** Procede. `/mcp` exige `has_platform_access` de todo não-admin (`src/core/infra/mcp/routes.ts:254-258`), e `SubscriptionEntitlementService` nunca concede acesso sem assinatura. A tool seria um no-op para todo não-admin que chegasse até ela.
+- **LGPD.** Nenhum dado pessoal novo. A rota grava a mesma linha e a mesma entrada de Histórico que o cadastro já grava (execução de contrato), e as duas têm `ON DELETE cascade` a partir de `users`. A saída de `plan_chosen_at` reduz o que fica armazenado.
+- **Resíduos.** `git diff origin/main -- drizzle/ src/core/infra/database/` está vazio: schema, snapshots e journal são idênticos a `main`. Não há `plan_chosen_at`, `needs_plan_choice`, `recordPlanChoice` nem `confirm_free_plan_choice` em `src`, `drizzle` ou `CLAUDE.md`. Em `tests`, as únicas ocorrências são as asserções de ausência de `get_subscription_status.test.ts:54,82`, que a task 2 pediu. A exceção fica na documentação OpenAPI do Checkout (I-1).
+
+### Achados
+
+**INFORMATIVO I-1: resíduo de "escolha de plano" na OpenAPI do Checkout**
+
+- Onde: `src/billing/presentation/controller/create_checkout_session.controller.ts:46`
+- Problema: a descrição termina com "Creating a session never records the initial plan choice — only the subscription actually starting does.". A API não registra mais escolha nenhuma (D-1), então o `/docs` descreve um estado que não existe. O trecho "where the initial plan choice happens" também amarra o contrato da API a uma tela do front.
+- Impacto: documentação enganosa para integradores e para a IA que lê o spec. Sem impacto de segurança.
+- Correção: apagar a última frase e encurtar o trecho do `onboarding` para "`onboarding` returns to the app home.".
+
+**INFORMATIVO I-2: o `500` da corrida loga SQL, parâmetros e stack**
+
+- Onde: `src/core/infra/http/adapters/http_controller_adapter.ts:333` (erro não mapeado numa rota que não é de protocolo), disparado por `subscription_postgres_repository.ts:144`
+- Problema: na sonda, cada chamada perdedora logou em `ERROR` a mensagem do Drizzle (`Failed query: insert into "subscriptions" ... params: <id>, <created_at>, <updated_at>, <user_id>, <plan_id>, active, ...`) com o stack. Hoje os parâmetros são só identificadores e datas, sem nome nem email. O volume é limitado a uma janela por conta. O risco foi aceito em D-2, e esta revisão concorda.
+- Impacto: ruído em alerta de erro, porque um duplo clique vira um `ERROR` com stack. Pela LGPD, o log leva o `user_id` pseudonimizado, como outros logs já levam.
+- Recomendação (opcional): se o ruído incomodar em produção, o caminho barato é um método de repositório com `insert ... on conflict (user_id) do nothing returning id`, usado só por `EnsureFreeSubscriptionUseCase`, que despacha o evento apenas quando uma linha volta. **Nunca** `on conflict (user_id) do update`: isso transformaria uma corrida com o webhook na sobrescrita de uma assinatura Pro pelo Free.
+
+**INFORMATIVO I-3: rota sem rate limit**
+
+- Onde: `src/core/infra/http/routes/routes.ts:335-339`
+- Análise: cada chamada custa a leitura da sessão, a do usuário e uma leitura indexada de `subscriptions` (o `touch` da sessão tem throttle), sem chamada ao gateway. A escrita acontece no máximo uma vez na vida da conta. O perfil é o mesmo de `GET /billing/subscription` e `GET /billing/subscription/history`, também alcançáveis sem platform access e sem limite. A rota não abre superfície nova de abuso. No caso operacional de catálogo sem `free`, cada chamada gera um `404` logado em `ERROR`: um flood de log autenticado igual ao de qualquer rota que responde `404`.
+- Recomendação (opcional): para ficar uniforme com Checkout e Portal, um `userRateLimitPolicy` de cerca de 30 chamadas por minuto por usuário.
+
+**INFORMATIVO I-4: as garantias da corrida não têm teste de regressão**
+
+- Onde: `tests/billing/ensure_free_subscription_route.test.ts`
+- Problema: a integridade do risco aceito em D-2 depende de três fatos que nenhum teste trava: a unicidade de `subscriptions.user_id`, `save()` fazer `INSERT` em vez de upsert por `user_id`, e o `dispatch` vir depois do `save`. Um refactor que mude qualquer um deles passaria na suíte e poderia duplicar o Histórico ou sobrescrever uma assinatura.
+- Recomendação: um teste que dispare cerca de 5 chamadas paralelas numa conta sem assinatura e afirme **só o estado final**: exatamente 1 linha, exatamente 1 entrada `started`, e nenhuma resposta fora de `204`/`500`, sem fixar quantos `500` saem. Com menos valor, também faltam o `404` com catálogo sem `free` e um teste de CSRF específico da rota. O teste genérico de CSRF já existe em `tests/auth/session_cookie.test.ts:173,232`.
