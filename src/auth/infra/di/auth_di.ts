@@ -1,4 +1,6 @@
 import type { AiAssistantAccess } from "../../application/service/ai_assistant_access";
+import type { ExternalIdentityProvider } from "../../application/service/external_identity_provider";
+import { GoogleIdentityProvider } from "../identity_provider/google_identity_provider";
 import { type Hasher } from "../../application/service/hasher";
 import {
   SessionManager,
@@ -85,6 +87,7 @@ import {
   consentInactivityTtlMs,
   passwordResetRequestTtlMs,
   frontBaseUrl,
+  env,
 } from "../../../core/infra/config/environments";
 
 export class AuthDi {
@@ -461,5 +464,16 @@ export class AuthDi {
    */
   makeDisconnectAppController() {
     return new DisconnectAppController(this.makeRevokeConsentUseCase());
+  }
+
+  makeExternalIdentityProvider(): ExternalIdentityProvider | null {
+    if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
+      return null;
+    }
+
+    return new GoogleIdentityProvider(
+      env.GOOGLE_CLIENT_ID,
+      env.GOOGLE_CLIENT_SECRET
+    );
   }
 }
