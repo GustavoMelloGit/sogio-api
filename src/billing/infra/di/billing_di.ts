@@ -187,10 +187,7 @@ export class BillingDi {
   }
 
   makeGetSubscriptionStatusUseCase() {
-    return new GetSubscriptionStatusUseCase(
-      this.#entitlementService,
-      this.#subscriptionRepository
-    );
+    return new GetSubscriptionStatusUseCase(this.#entitlementService);
   }
 
   makeEnsureFreeSubscriptionUseCase() {

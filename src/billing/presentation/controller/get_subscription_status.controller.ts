@@ -32,7 +32,6 @@ const outputSchema = z.object({
       "no_subscription",
     ])
     .optional(),
-  needs_plan_choice: z.boolean(),
 });
 
 export class GetSubscriptionStatusController implements Controller {
@@ -42,7 +41,7 @@ export class GetSubscriptionStatusController implements Controller {
   openApiSpec: OpenApiOperation = {
     summary: "Get subscription status",
     description:
-      "Returns the authenticated user's current platform entitlement — whether they have access, their subscription status, the plan whose limits actually apply and, if blocked, why. The plan is the effective one: a canceled subscription past its paid period reports the Free plan, matching capabilities. `needs_plan_choice` is true only while the account has a subscription whose initial plan choice was never made — confirm Free through `POST /billing/subscription/free-plan` or pick a paid plan through checkout; it is false for an account with no subscription at all.",
+      "Returns the authenticated user's current platform entitlement — whether they have access, their subscription status, the plan whose limits actually apply and, if blocked, why. The plan is the effective one: a canceled subscription past its paid period reports the Free plan, matching capabilities.",
     tags: ["Billing"],
     responses: {
       "200": responseFromZod("Current subscription status", outputSchema, {
@@ -59,7 +58,6 @@ export class GetSubscriptionStatusController implements Controller {
           code: "pro",
           name: "Pro",
         },
-        needs_plan_choice: false,
       }),
       "401": errorResponse("Unauthorized"),
     },
