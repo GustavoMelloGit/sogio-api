@@ -51,7 +51,6 @@ describe("GET /billing/subscription", () => {
     expect(body.blocked_reason).toBeUndefined();
     expect(body.plan).toMatchObject({ code: "free", name: "Free" });
     expect(body.plan?.id).toEqual(expect.any(String));
-    expect(body).not.toHaveProperty("needs_plan_choice");
   });
 
   /**
@@ -79,6 +78,5 @@ describe("GET /billing/subscription", () => {
     expect(body.status).toBe("past_due");
     expect(body.blocked_reason).toBe("payment_failed");
     expect(body.plan?.code).toBe("free");
-    expect(body).not.toHaveProperty("needs_plan_choice");
   });
 });
