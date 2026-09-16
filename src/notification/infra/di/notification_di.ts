@@ -4,8 +4,10 @@ import { inMemoryEventDispatcher } from "../../../core/infra/event/in_memory_eve
 import { CoreDi } from "../../../core/infra/di/core_di";
 import { SubscriptionPaymentFailedEvent } from "../../../billing/domain/event/subscription_payment_failed_event";
 import { SubscriptionTrialEndingEvent } from "../../../billing/domain/event/subscription_trial_ending_event";
+import { IdentityLinkedEvent } from "../../../auth/domain/event/identity_linked_event";
 import { NotifyOnSubscriptionPaymentFailed } from "../../application/handler/notify_on_subscription_payment_failed";
 import { NotifyOnSubscriptionTrialEnding } from "../../application/handler/notify_on_subscription_trial_ending";
+import { NotifyOnIdentityLinked } from "../../application/handler/notify_on_identity_linked";
 import { PersistingNotificationService } from "../../application/service/persisting_notification_service";
 import type { NotificationService } from "../../application/service/notification_service";
 import { DeliverPendingNotificationsUseCase } from "../../application/use_case/deliver_pending_notifications";
@@ -68,6 +70,10 @@ export class NotificationDi {
         this.#logger,
         this.#notificationService
       )
+    );
+    this.#eventDispatcher.register(
+      IdentityLinkedEvent.NAME,
+      new NotifyOnIdentityLinked(this.#logger, this.#notificationService)
     );
   }
 

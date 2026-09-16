@@ -1,6 +1,7 @@
 import { ExternalSignInRequest } from "../../domain/entity/external_sign_in_request";
 import { LinkedIdentity } from "../../domain/entity/linked_identity";
 import { User } from "../../domain/entity/user";
+import { IdentityLinkedEvent } from "../../domain/event/identity_linked_event";
 import { UserCreatedEvent } from "../../domain/event/user_created_event";
 import type { AuthRepository } from "../../domain/repository/auth_repository";
 import type { ExternalSignInRequestRepository } from "../../domain/repository/external_sign_in_request_repository";
@@ -215,6 +216,10 @@ export class CompleteExternalSignInUseCase
           provider: claimed.provider,
           subject: identity.subject,
         })
+      );
+
+      await this.eventDispatcher.dispatch(
+        new IdentityLinkedEvent(decision.user_id, claimed.provider)
       );
 
       const token = await this.sessionManager.createSession(decision.user_id);
