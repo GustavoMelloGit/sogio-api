@@ -122,3 +122,14 @@ A suíte aplica o schema por `push`, nunca o SQL das migrations; o backfill é t
    - Dependencies: tasks 2, 3, 4, 5
 8. **Revisão de segurança**
    - Dependencies: tasks 6, 7
+
+## Revisão de Segurança
+
+Sem achado crítico nem moderado. Pontos verificados:
+
+- **Open redirect (`return_to`)** — enum fechado com `z.enum`, default aplicado no schema; o caso de uso traduz a chave para caminhos constantes prefixados por `FRONT_BASE_URL`. URL absoluta, caminho, `//host`, variação de caixa e string vazia viram `422` (travado por teste). Nenhum valor do chamador chega à URL.
+- **`POST /billing/subscription/free-plan`** — o alvo sai só da sessão (`user.id`), sem corpo, sem parâmetro de rota: não há IDOR nem mass assignment. Autenticada por cookie, a escrita passa por `assertSameSiteRequest` (`Origin` da allowlist), como toda escrita. A única escrita é `UPDATE ... SET plan_chosen_at WHERE id AND plan_chosen_at IS NULL`, parametrizada pelo Drizzle, e não altera plano, status nem referências do gateway — inclusive sob concorrência com o webhook (D-3).
+- **Webhook** — a escolha é registrada depois da verificação de assinatura, da reivindicação de idempotência e do descarte de evento velho; nenhum caminho novo alcança transição de domínio com evento não verificado.
+- **MCP** — `confirm_free_plan_choice` passa pelo mesmo portão de transporte (`ai_assistant`, platform access, 300 req/min) e pelo mesmo caso de uso; a descrição impede o uso como "downgrade" que reportaria sucesso falso.
+- 🔵 **INFORMATIVO — sem rate limit dedicado na rota nova.** Escrita idempotente, sem efeito externo; depois da primeira chamada é uma leitura só. Mesmo tratamento das escritas de `notification` (D-4).
+- **LGPD** — `plan_chosen_at` é metadado de uso ligado à conta, com finalidade declarada (estado de onboarding), sem dado pessoal novo; sai junto com a assinatura no purge da conta (`subscriptions.user_id` com `ON DELETE cascade`). Nenhum log novo.
