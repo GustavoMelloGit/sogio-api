@@ -39,7 +39,6 @@ function rowToUserData(row: UserRow): UserData {
     time_zone: isSupportedTimeZone(row.time_zone)
       ? row.time_zone
       : DEFAULT_TIME_ZONE,
-    password_changed_at: row.password_changed_at ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
     deleted_at: row.deleted_at ?? undefined,
@@ -91,15 +90,9 @@ export class AuthPostgresRepository implements AuthRepository {
   }
 
   async updatePassword(userId: string, passwordHash: string): Promise<void> {
-    const now = new Date();
-
     await db
       .update(usersTable)
-      .set({
-        password: passwordHash,
-        password_changed_at: now,
-        updated_at: now,
-      })
+      .set({ password: passwordHash, updated_at: new Date() })
       .where(eq(usersTable.id, userId));
   }
 

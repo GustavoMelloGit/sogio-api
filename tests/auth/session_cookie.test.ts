@@ -11,7 +11,6 @@ import {
 } from "../../src/core/infra/database/drizzle/schema";
 import { eq } from "drizzle-orm";
 import { CryptoDelegatedSecretService } from "../../src/auth/infra/service/crypto_delegated_secret_service";
-import jwt from "jsonwebtoken";
 
 const COOKIE = env.SESSION_COOKIE_NAME;
 const ALLOWED_ORIGIN = "http://localhost:5173";
@@ -248,58 +247,6 @@ describe("Session in a cookie", () => {
     });
 
     expect(response.status).toBe(403);
-  });
-
-  it("a legacy JWT authenticates from the header but never from the cookie", async () => {
-    const { user } = await createUserFixture({
-      name: "Legacy",
-      email: `legacy-${crypto.randomUUID()}@sogio.dev`,
-      password,
-    });
-
-    const legacy = jwt.sign({ userId: user.id, role: "user" }, env.JWT_SECRET, {
-      expiresIn: "1d",
-    });
-
-    const byHeader = await api("/auth/me", {
-      headers: { Authorization: `Bearer ${legacy}` },
-    });
-    const byCookie = await api("/auth/me", {
-      headers: { Cookie: `${COOKIE}=${legacy}` },
-    });
-
-    expect(byHeader.status).toBe(200);
-    expect(byCookie.status).toBe(401);
-  });
-
-  it("a legacy JWT issued before the account changed is refused", async () => {
-    const { user } = await createUserFixture({
-      name: "Legacy Stale",
-      email: `legacy-stale-${crypto.randomUUID()}@sogio.dev`,
-      password,
-    });
-
-    await api("/auth/change-password", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${await createAuthToken(user.id)}` },
-      body: JSON.stringify({
-        currentPassword: password,
-        newPassword: "OutraSenha456",
-      }),
-    });
-
-    const issuedAt = Math.floor((Date.now() - 60_000) / 1000);
-    const stale = jwt.sign(
-      { userId: user.id, role: "user", iat: issuedAt },
-      env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
-
-    const response = await api("/auth/me", {
-      headers: { Authorization: `Bearer ${stale}` },
-    });
-
-    expect(response.status).toBe(401);
   });
 
   it("signing out does not touch another user's session", async () => {

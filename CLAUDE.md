@@ -247,9 +247,6 @@ Três consequências que o código registra em comentário, e que valem lembrar:
    Bearer não exige: aquele token só chega se alguém o anexar de propósito.
 3. **Trocar a senha encerra as outras sessões; redefinir por email encerra
    todas.** É o que fecha R11 de `.claude/plans/2026-08-15-gestao-de-senha.md`.
-   Revogação não alcança um JWT, que é stateless — por isso
-   `users.password_changed_at` corta qualquer token antigo emitido antes da
-   troca.
 
 Uma rota autenticada **não pode** declarar `corsPolicy: "public"`: o boot
 falha se isso acontecer (`routes.ts`), porque o cookie não autentica ali e a
@@ -265,11 +262,9 @@ Definidas em `src/core/infra/config/environments.ts`:
 - `PORT` — porta do servidor
 - `DATABASE_URL` — string de conexão PostgreSQL
 - `NODE_ENV` — `development | test | sandbox | production`
-- `JWT_SECRET` — chave de assinatura do JWT de sessão antigo. **Temporária**: só existe enquanto `LegacyJwtSessionVerifier` aceita a sessão emitida antes da migração para cookie. Sai uma release depois
 - `SESSION_ABSOLUTE_TTL_SECONDS` — vida máxima de uma sessão do app; default 30 dias
 - `SESSION_INACTIVITY_TTL_SECONDS` — janela de inatividade de uma sessão; default 14 dias
 - `SESSION_COOKIE_NAME` — nome base do cookie da sessão; default `sogio_session`. Fora de desenvolvimento o nome ganha o prefixo `__Secure-`, que o navegador só aceita de origem https: sem ele, com o cookie em `.sogio.app`, um subdomínio conseguiria sobrescrever a sessão e fixar a da vítima. O front precisa usar o nome já prefixado
-- `LEGACY_JWT_ACCEPTED_UNTIL` — data ISO até a qual o JWT de sessão antigo é aceito, e só pelo header. **Ausente significa recusar**: a janela de compatibilidade se abre de propósito e fecha sozinha
 - `SESSION_COOKIE_DOMAIN` — `Domain` do cookie. Vazio em desenvolvimento (o cookie fica preso ao host, e `localhost` vale em qualquer porta); em produção, `.sogio.app`, para apex e `www` compartilharem a sessão
 - `SERVER_HOSTNAME` — endereço em que o `Bun.serve()` faz bind; default `0.0.0.0`. Em produção deve ser `127.0.0.1` (o processo fica atrás de um reverse proxy nginx). Não se chama `HOSTNAME` porque essa variável é auto-exportada pelo Docker (contém o container id) e o Bun dá precedência ao ambiente do processo sobre o `.env`
 - `RESEND_API_KEY` — chave da API do Resend, usada para enviar emails transacionais (ex: recuperação de senha). Obrigatória fora de `development`

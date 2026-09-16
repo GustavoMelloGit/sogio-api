@@ -17,7 +17,6 @@ export const usersTable = pgTable("users", {
   role: varchar({ length: 20 }).notNull().default("user"),
   locale: varchar({ length: 20 }).notNull().default("pt-BR"),
   time_zone: varchar({ length: 64 }).notNull().default("America/Sao_Paulo"),
-  password_changed_at: timestamp({ withTimezone: true, mode: "date" }),
 });
 
 export const usersRelations = relations(usersTable, ({ many }) => ({

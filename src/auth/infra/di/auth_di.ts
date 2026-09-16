@@ -4,7 +4,6 @@ import {
   SessionManager,
   type ISessionManager,
 } from "../../application/service/session_manager";
-import { LegacyJwtSessionVerifier } from "../../application/service/legacy_jwt_session_verifier";
 import { SessionPostgresRepository } from "../database/postgres_repository/session_postgres_repository";
 import { SignOutUseCase } from "../../application/use_case/sign_out";
 import { SignOutController } from "../../presentation/controller/auth/sign_out.controller";
@@ -311,11 +310,7 @@ export class AuthDi {
    * holds rather than reaching into the other container.
    */
   makeAuthMiddleware() {
-    return new AuthMiddleware(
-      this.#authRepository,
-      this.#sessionManager,
-      new LegacyJwtSessionVerifier()
-    );
+    return new AuthMiddleware(this.#authRepository, this.#sessionManager);
   }
 
   // Delegated Access — pending request consult and decision (task 10)

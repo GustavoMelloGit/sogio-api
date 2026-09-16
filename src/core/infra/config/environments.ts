@@ -19,7 +19,6 @@ const envSchema = z
     NODE_ENV: z
       .enum(["development", "test", "sandbox", "production"])
       .default("development"),
-    JWT_SECRET: z.string().trim(),
     TUYA_DEVICE_ID: z.string().trim(),
     TUYA_CLIENT_ID: z.string().trim(),
     TUYA_CLIENT_SECRET: z.string().trim(),
@@ -86,7 +85,6 @@ const envSchema = z
       .int()
       .positive()
       .default(60 * 60 * 24 * 14),
-    LEGACY_JWT_ACCEPTED_UNTIL: z.coerce.date().optional(),
     SESSION_COOKIE_NAME: z
       .string()
       .trim()

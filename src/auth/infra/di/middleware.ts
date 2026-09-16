@@ -7,7 +7,6 @@ import {
   SessionManager,
   type ISessionManager,
 } from "../../application/service/session_manager";
-import { LegacyJwtSessionVerifier } from "../../application/service/legacy_jwt_session_verifier";
 import { SessionPostgresRepository } from "../database/postgres_repository/session_postgres_repository";
 import { ConsentCascade } from "../../application/service/consent_cascade";
 import type { CredentialVerifier } from "../../application/service/credential_verifier";
@@ -42,11 +41,7 @@ export class MiddlewareDi {
   }
 
   makeAuthMiddleware() {
-    return new AuthMiddleware(
-      this.#authRepository,
-      this.#sessionManager,
-      new LegacyJwtSessionVerifier()
-    );
+    return new AuthMiddleware(this.#authRepository, this.#sessionManager);
   }
 
   /**
