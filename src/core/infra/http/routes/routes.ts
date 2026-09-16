@@ -334,6 +334,10 @@ const billingControllers: Route[] = [
   },
   {
     authenticated: true,
+    controller: billingDi.makeConfirmFreePlanChoiceController(),
+  },
+  {
+    authenticated: true,
     allowWithoutPlatformAccess: true,
     controller: billingDi.makeGetSubscriptionHistoryController(),
   },

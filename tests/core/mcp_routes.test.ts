@@ -182,6 +182,7 @@ describe("POST /mcp", () => {
       [
         "book_stay",
         "cancel_stay",
+        "confirm_free_plan_choice",
         "create_property",
         "create_external_booking_source",
         "create_property_setting",
