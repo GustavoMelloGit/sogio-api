@@ -1,6 +1,11 @@
 import type { AiAssistantAccess } from "../../application/service/ai_assistant_access";
 import type { ExternalIdentityProvider } from "../../application/service/external_identity_provider";
 import { GoogleIdentityProvider } from "../identity_provider/google_identity_provider";
+import { StartExternalSignInUseCase } from "../../application/use_case/start_external_sign_in";
+import type { ExternalSignInRequestRepository } from "../../domain/repository/external_sign_in_request_repository";
+import { ExternalSignInRequestPostgresRepository } from "../database/postgres_repository/external_sign_in_request_postgres_repository";
+import { StartGoogleSignInController } from "../../presentation/controller/auth/start_google_sign_in.controller";
+import { GOOGLE_SIGN_IN_CALLBACK_PATH } from "../../presentation/controller/auth/google_sign_in_paths";
 import { type Hasher } from "../../application/service/hasher";
 import {
   SessionManager,
@@ -87,6 +92,7 @@ import {
   consentInactivityTtlMs,
   passwordResetRequestTtlMs,
   frontBaseUrl,
+  apiBaseUrl,
   env,
 } from "../../../core/infra/config/environments";
 
@@ -107,6 +113,8 @@ export class AuthDi {
   #passwordResetRequestRepository: PasswordResetRequestRepository;
   #eventDispatcher: EventDispatcher;
   #aiAssistantAccess: AiAssistantAccess;
+  #externalSignInRequestRepository: ExternalSignInRequestRepository;
+  #googleRedirectUri: string;
 
   constructor(aiAssistantAccess: AiAssistantAccess) {
     this.#aiAssistantAccess = aiAssistantAccess;
@@ -132,6 +140,9 @@ export class AuthDi {
     this.#rateLimiter = coreDi.makeRateLimiter();
     this.#emailService = coreDi.makeEmailService();
     this.#eventDispatcher = inMemoryEventDispatcher;
+    this.#externalSignInRequestRepository =
+      new ExternalSignInRequestPostgresRepository();
+    this.#googleRedirectUri = `${apiBaseUrl}${GOOGLE_SIGN_IN_CALLBACK_PATH}`;
   }
 
   // Use Cases
@@ -474,6 +485,22 @@ export class AuthDi {
     return new GoogleIdentityProvider(
       env.GOOGLE_CLIENT_ID,
       env.GOOGLE_CLIENT_SECRET
+    );
+  }
+
+  makeStartExternalSignInUseCase() {
+    return new StartExternalSignInUseCase(
+      this.makeExternalIdentityProvider(),
+      this.#externalSignInRequestRepository,
+      this.#delegatedSecretService,
+      this.#googleRedirectUri
+    );
+  }
+
+  makeStartGoogleSignInController() {
+    return new StartGoogleSignInController(
+      this.makeStartExternalSignInUseCase(),
+      this.#logger
     );
   }
 }

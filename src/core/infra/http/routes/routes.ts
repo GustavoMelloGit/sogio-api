@@ -245,6 +245,10 @@ const authControllers: Route[] = [
     allowWithoutPlatformAccess: true,
     controller: authDi.makeDisconnectAppController(),
   },
+  {
+    authenticated: false,
+    controller: authDi.makeStartGoogleSignInController(),
+  },
 ];
 
 const discoveryControllers: Route[] = [
