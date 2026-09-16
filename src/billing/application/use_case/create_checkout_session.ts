@@ -8,16 +8,32 @@ import type { PlanRepository } from "../../domain/repository/plan_repository";
 import type { SubscriptionRepository } from "../../domain/repository/subscription_repository";
 import type { PaymentGateway } from "../gateway/payment_gateway";
 
+export const CHECKOUT_RETURN_TARGETS = ["billing", "onboarding"] as const;
+
+export type CheckoutReturnTarget = (typeof CHECKOUT_RETURN_TARGETS)[number];
+
 type Input = {
   plan_code: string;
+  return_to: CheckoutReturnTarget;
 };
 
 type Output = {
   url: string;
 };
 
-const SUCCESS_PATH = "/settings/billing?checkout=success";
-const CANCEL_PATH = "/settings/billing?checkout=canceled";
+const RETURN_PATHS: Record<
+  CheckoutReturnTarget,
+  { success: string; cancel: string }
+> = {
+  billing: {
+    success: "/app/settings/billing?checkout=success",
+    cancel: "/app/settings/billing?checkout=canceled",
+  },
+  onboarding: {
+    success: "/app?checkout=success",
+    cancel: "/app?checkout=canceled",
+  },
+};
 
 const LIVE_GATEWAY_STATUSES = new Set(["trialing", "active", "past_due"]);
 
@@ -65,12 +81,14 @@ export class CreateCheckoutSessionUseCase implements UseCase<Input, Output> {
       ? subscription.external_customer_reference
       : await this.#createAndLinkCustomer(subscription.id, user);
 
+    const returnPaths = RETURN_PATHS[input.return_to];
+
     const session = await this.paymentGateway.createCheckoutSession({
       external_customer_reference: externalCustomerReference,
       external_price_reference: plan.external_price_reference,
       client_reference_id: user.id,
-      success_url: `${this.frontBaseUrl}${SUCCESS_PATH}`,
-      cancel_url: `${this.frontBaseUrl}${CANCEL_PATH}`,
+      success_url: `${this.frontBaseUrl}${returnPaths.success}`,
+      cancel_url: `${this.frontBaseUrl}${returnPaths.cancel}`,
       trial_period_days:
         subscription.trial_ends_at === null && plan.trial_days > 0
           ? plan.trial_days

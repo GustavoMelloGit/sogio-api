@@ -11,7 +11,7 @@ type Output = {
   url: string;
 };
 
-const RETURN_PATH = "/settings/billing?portal=return";
+const RETURN_PATH = "/app/settings/billing?portal=return";
 
 export class CreateBillingPortalSessionUseCase
   implements UseCase<Input, Output>
