@@ -24,7 +24,6 @@ import { ListPlansUseCase } from "../../application/use_case/list_plans";
 import { GrantPlanUseCase } from "../../application/use_case/grant_plan";
 import { CancelSubscriptionUseCase } from "../../application/use_case/cancel_subscription";
 import { GetSubscriptionStatusUseCase } from "../../application/use_case/get_subscription_status";
-import { ConfirmFreePlanChoiceUseCase } from "../../application/use_case/confirm_free_plan_choice";
 import { EnsureFreeSubscriptionUseCase } from "../../application/use_case/ensure_free_subscription";
 import { MarkSubscriptionPastDueUseCase } from "../../application/use_case/mark_subscription_past_due";
 import { RecordSubscriptionHistoryEntryUseCase } from "../../application/use_case/record_subscription_history_entry";
@@ -49,9 +48,8 @@ import { SubscriptionPaymentFailedEvent } from "../../domain/event/subscription_
 import { SubscriptionCanceledEvent } from "../../domain/event/subscription_canceled_event";
 import { SubscriptionRenewedEvent } from "../../domain/event/subscription_renewed_event";
 import { GetSubscriptionStatusController } from "../../presentation/controller/get_subscription_status.controller";
-import { ConfirmFreePlanChoiceController } from "../../presentation/controller/confirm_free_plan_choice.controller";
+import { EnsureFreeSubscriptionController } from "../../presentation/controller/ensure_free_subscription.controller";
 import { makeGetSubscriptionStatusTool } from "../../presentation/mcp_tool/get_subscription_status.mcp_tool";
-import { makeConfirmFreePlanChoiceTool } from "../../presentation/mcp_tool/confirm_free_plan_choice.mcp_tool";
 import { makeListPlansTool } from "../../presentation/mcp_tool/list_plans.mcp_tool";
 import { makeGetSubscriptionHistoryTool } from "../../presentation/mcp_tool/get_subscription_history.mcp_tool";
 import { ListPlansController } from "../../presentation/controller/list_plans.controller";
@@ -195,10 +193,6 @@ export class BillingDi {
     );
   }
 
-  makeConfirmFreePlanChoiceUseCase() {
-    return new ConfirmFreePlanChoiceUseCase(this.#subscriptionRepository);
-  }
-
   makeEnsureFreeSubscriptionUseCase() {
     return new EnsureFreeSubscriptionUseCase(
       this.#subscriptionRepository,
@@ -308,15 +302,9 @@ export class BillingDi {
     );
   }
 
-  makeConfirmFreePlanChoiceController() {
-    return new ConfirmFreePlanChoiceController(
-      this.makeConfirmFreePlanChoiceUseCase()
-    );
-  }
-
-  makeConfirmFreePlanChoiceTool() {
-    return makeConfirmFreePlanChoiceTool(
-      this.makeConfirmFreePlanChoiceUseCase()
+  makeEnsureFreeSubscriptionController() {
+    return new EnsureFreeSubscriptionController(
+      this.makeEnsureFreeSubscriptionUseCase()
     );
   }
 

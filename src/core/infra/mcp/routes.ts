@@ -145,7 +145,6 @@ export function makeMcpRequestHandler(
     dependencies.propertyManagementDi.makeDeletePropertySettingTool(),
     dependencies.propertyManagementDi.makeDeletePropertyTool(),
     dependencies.billingDi.makeGetSubscriptionStatusTool(),
-    dependencies.billingDi.makeConfirmFreePlanChoiceTool(),
     dependencies.authDi.makeGetUserPreferencesTool(),
     dependencies.authDi.makeUpdateUserPreferencesTool(),
     dependencies.notificationDi.makeGetNotificationPreferencesTool(),
