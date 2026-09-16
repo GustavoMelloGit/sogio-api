@@ -13,7 +13,7 @@ export const usersTable = pgTable("users", {
   ...baseSchema,
   name: varchar({ length: 255 }).notNull(),
   email: varchar({ length: 255 }).notNull().unique(),
-  password: varchar({ length: 255 }).notNull(),
+  password: varchar({ length: 255 }),
   role: varchar({ length: 20 }).notNull().default("user"),
   locale: varchar({ length: 20 }).notNull().default("pt-BR"),
   time_zone: varchar({ length: 64 }).notNull().default("America/Sao_Paulo"),
