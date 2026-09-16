@@ -47,7 +47,7 @@ export class ResetPasswordUseCase implements UseCase<Input, void> {
 
     const newPasswordHash = await this.hasher.hash(input.newPassword);
     user.changePassword(newPasswordHash);
-    await this.authRepository.updatePassword(user.id, user.password);
+    await this.authRepository.updatePassword(user.id, newPasswordHash);
 
     await this.sessionManager.revokeAllForUser(user.id);
   }

@@ -30,14 +30,15 @@ export class SignInUseCase implements UseCase<Input, Output> {
 
   async execute(input: Input): Promise<Output> {
     const user = await this.authRepository.findUserByEmail(input.email);
+    const passwordHash = user?.password ?? null;
 
-    if (!user) {
+    if (!user || passwordHash === null) {
       throw new UnauthorizedError("Incorrect e-mail or password");
     }
 
     const isPasswordValid = await this.hasher.compare(
       input.password,
-      user.password
+      passwordHash
     );
 
     if (!isPasswordValid) {

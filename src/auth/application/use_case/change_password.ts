@@ -1,5 +1,6 @@
 import type { User } from "../../domain/entity/user";
 import type { AuthRepository } from "../../domain/repository/auth_repository";
+import { ConflictError } from "../../../core/application/error/conflict_error";
 import { UnauthorizedError } from "../../../core/application/error/unauthorized_error";
 import { ValidationError } from "../../../core/application/error/validation_error";
 import type { Hasher } from "../service/hasher";
@@ -11,6 +12,9 @@ type Input = {
   newPassword: string;
   currentSessionSecret?: string;
 };
+
+export const NO_PASSWORD_MESSAGE =
+  "This account has no password yet. Use password recovery to set one.";
 
 /**
  * Troca de senha autenticada (R10/R12). `user` já foi carregado por
@@ -26,9 +30,15 @@ export class ChangePasswordUseCase implements UseCase<Input, void> {
   ) {}
 
   async execute(input: Input, user: User): Promise<void> {
+    const currentPasswordHash = user.password;
+
+    if (currentPasswordHash === null) {
+      throw new ConflictError(NO_PASSWORD_MESSAGE);
+    }
+
     const isCurrentPasswordValid = await this.hasher.compare(
       input.currentPassword,
-      user.password
+      currentPasswordHash
     );
 
     if (!isCurrentPasswordValid) {
@@ -37,7 +47,7 @@ export class ChangePasswordUseCase implements UseCase<Input, void> {
 
     const isSamePassword = await this.hasher.compare(
       input.newPassword,
-      user.password
+      currentPasswordHash
     );
 
     if (isSamePassword) {
@@ -48,7 +58,7 @@ export class ChangePasswordUseCase implements UseCase<Input, void> {
 
     const newPasswordHash = await this.hasher.hash(input.newPassword);
     user.changePassword(newPasswordHash);
-    await this.authRepository.updatePassword(user.id, user.password);
+    await this.authRepository.updatePassword(user.id, newPasswordHash);
 
     await this.sessionManager.revokeAllForUser(
       user.id,
