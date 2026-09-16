@@ -223,8 +223,6 @@ describe("Session in a cookie", () => {
     });
     const token = await createAuthToken(user.id);
 
-    // `%` solto estoura `decodeURIComponent`. Qualquer subdomínio consegue
-    // plantar um cookie assim; ele não pode derrubar a API para a vítima.
     const response = await api("/auth/me", {
       headers: { Cookie: `junk=%; ${COOKIE}=${token}` },
     });
@@ -240,8 +238,6 @@ describe("Session in a cookie", () => {
     });
     const token = await createAuthToken(user.id);
 
-    // Fail-closed de propósito: navegador sempre manda `Origin` num POST, e
-    // quem chama de fora do navegador usa Bearer, que não passa por aqui.
     const response = await api("/auth/change-password", {
       method: "POST",
       headers: { Cookie: `${COOKIE}=${token}` },
@@ -283,8 +279,6 @@ describe("Session in a cookie", () => {
       password,
     });
 
-    // Emitido antes da última alteração da conta: é o token que alguém teria
-    // roubado do `localStorage` antes de a vítima redefinir a senha.
     await api("/auth/change-password", {
       method: "POST",
       headers: { Authorization: `Bearer ${await createAuthToken(user.id)}` },
@@ -333,9 +327,6 @@ describe("Session in a cookie", () => {
     });
 
     expect(first.status).toBe(204);
-    // A rota é autenticada, então a segunda tentativa nem chega ao caso de
-    // uso: a sessão já não vale. Sair duas vezes não é erro para quem usa o
-    // app — o front ignora a falha e limpa a tela de qualquer forma.
     expect(second.status).toBe(401);
 
     const untouched = await api("/auth/me", {

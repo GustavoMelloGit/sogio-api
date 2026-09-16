@@ -104,15 +104,6 @@ export class SessionPostgresRepository implements SessionRepository {
       );
   }
 
-  /**
-   * Expurgo por qualquer uma das três formas de morrer, e não só pela vida
-   * absoluta: uma sessão encerrada no logout do dia 1 ficaria 30 dias no
-   * banco, inválida mas presente, carregando `user_id` e a trilha de quando
-   * a pessoa usou o produto.
-   *
-   * A revogada ganha uma janela curta antes de sair, que é o que permite
-   * investigar um incidente recente.
-   */
   async deleteExpired(
     now: Date,
     inactivityTtlMs: number,

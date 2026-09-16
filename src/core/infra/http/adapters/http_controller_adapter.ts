@@ -46,19 +46,6 @@ function safeDecode(value: string): string {
 const middlewareDi = new MiddlewareDi();
 const corsMiddleware = new CorsMiddleware();
 
-/**
- * Defesa contra CSRF das requisições autenticadas por cookie.
- *
- * Enquanto a sessão era Bearer, CSRF não existia: o token só chegava se o
- * JavaScript do chamador o anexasse. O cookie é credencial ambiente — o
- * navegador o envia sozinho, inclusive num formulário postado por outro
- * site —, então todo método que altera dados exige `Origin` da allowlist.
- * `SameSite=Lax` já barra a maior parte disso no navegador; esta checagem é
- * a camada que não depende do navegador se comportar.
- *
- * `GET` e `HEAD` ficam de fora: não alteram estado, e a resposta continua
- * ilegível para a outra origem por causa do próprio CORS.
- */
 function assertSameSiteRequest(
   request: Request,
   credential: SessionCredential
@@ -249,12 +236,6 @@ class ControllerRequestParser {
     return Object.fromEntries(this.request.headers.entries());
   }
 
-  /**
-   * Parse do header `Cookie`. Um nome repetido fica com a primeira
-   * ocorrência: é o que o navegador considera o cookie mais específico, e
-   * escolher a última deixaria um cookie plantado em domínio mais amplo
-   * sobrescrever o da própria origem.
-   */
   #parseCookies(): Record<string, string> {
     const header = this.request.headers.get("cookie");
 
@@ -278,13 +259,6 @@ class ControllerRequestParser {
         continue;
       }
 
-      // `decodeURIComponent` estoura em sequência percentual inválida
-      // (`%`, `%ZZ`). Como este parse roda antes de rota, método e
-      // autenticação, deixar o erro subir transformaria um cookie lixo —
-      // que qualquer subdomínio consegue plantar — em 500 para toda
-      // requisição daquela pessoa, inclusive o sign-in que a tiraria da
-      // situação. Cookie ilegível tem de fazer a autenticação falhar, não a
-      // requisição inteira.
       cookies[name] = safeDecode(value);
     }
 
@@ -511,10 +485,6 @@ export function BunHttpControllerAdapter(
       let user: User | undefined;
       if (requiresAuth) {
         const authMiddleware = middlewareDi.makeAuthMiddleware();
-        // Rota de CORS público responde a qualquer origem; aceitar cookie ali
-        // seria entregar a sessão a qualquer site. A decisão é do adapter,
-        // que é quem conhece a política da rota, e não de quem escreve o
-        // controller.
         const credential = authMiddleware.extract(
           controllerRequest,
           controller.corsPolicy !== "public"

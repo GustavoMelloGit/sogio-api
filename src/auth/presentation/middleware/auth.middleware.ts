@@ -6,11 +6,6 @@ import type { User } from "../../domain/entity/user";
 import type { AuthRepository } from "../../domain/repository/auth_repository";
 import type { ControllerRequest } from "../../../core/presentation/controller/controller";
 
-/**
- * De onde veio a credencial. O `source` importa fora da autenticação: só a
- * credencial de cookie é enviada pelo navegador por conta própria, e só ela
- * precisa da conferência de `Origin` contra CSRF.
- */
 export type SessionCredential = {
   secret: string;
   source: "header" | "cookie";
@@ -23,14 +18,6 @@ export class AuthMiddleware {
     private readonly legacyJwtVerifier: LegacyJwtSessionVerifier
   ) {}
 
-  /**
-   * O header tem precedência sobre o cookie: quem anexa `Authorization`
-   * declarou a intenção, enquanto o cookie o navegador manda sozinho.
-   *
-   * `allowCookie` é decidido pela rota, não aqui — uma rota de CORS público
-   * (os documentos de discovery e o `/mcp`) responde a qualquer origem, e
-   * aceitar credencial ambiente ali abriria CSRF.
-   */
   extract(
     request: ControllerRequest,
     allowCookie: boolean
@@ -59,10 +46,6 @@ export class AuthMiddleware {
       throw new UnauthorizedError("Unauthorized");
     }
 
-    // Revogação não alcança um JWT: ele é stateless. Sem este corte, trocar
-    // ou redefinir a senha derrubaria as sessões novas e deixaria de pé
-    // justamente a credencial que alguém pode ter roubado do `localStorage`
-    // antes da migração — o cenário que motivou a mudança.
     if (
       resolved.legacyIssuedAt &&
       user.password_changed_at &&
@@ -103,11 +86,6 @@ export class AuthMiddleware {
     }
   }
 
-  /**
-   * Sessão opaca primeiro; o JWT antigo só é tentado quando a credencial veio
-   * do header, e some junto com `LegacyJwtSessionVerifier` uma release depois
-   * do deploy.
-   */
   async #resolve(
     credential: SessionCredential
   ): Promise<{ userId: string; legacyIssuedAt?: Date }> {

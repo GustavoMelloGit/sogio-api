@@ -53,8 +53,6 @@ export class OpenApiBuilder {
       const operation: Record<string, unknown> = { ...controller.openApiSpec };
 
       if (authenticated) {
-        // Alternativas, não exigências somadas: a mesma sessão autentica pelo
-        // cookie (navegador) ou pelo header (script, docs, integração).
         operation.security = [{ bearerAuth: [] }, { cookieAuth: [] }];
       }
 

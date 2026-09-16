@@ -69,13 +69,10 @@ export class RegisterUserController implements Controller {
   async handle(request: ControllerRequest) {
     const output = await this.useCase.execute(request.body as Input);
 
-    // O navegador recebe a sessão no cookie httpOnly e nunca toca no segredo;
-    // o corpo continua trazendo o token para quem chama a API direto.
     return new ControllerHttpResponse({
       status: 200,
       body: output,
       headers: { "Set-Cookie": buildSessionCookie(output.token) },
-      // A resposta carrega o segredo no corpo e no `Set-Cookie` (E8).
       cache: "no-store",
     });
   }

@@ -26,18 +26,7 @@ export type ControllerRequest = {
   body: Record<string, unknown>;
   query: Record<string, string>;
   headers: Record<string, string>;
-  /**
-   * Cookies já separados do header `Cookie`. Vive aqui, e não em cada
-   * middleware, para que toda rota enxergue a mesma forma — hoje só a sessão
-   * do app usa, mas o parse é do transporte, não de quem consome.
-   */
   cookies: Record<string, string>;
-  /**
-   * Credencial de sessão que o adapter aceitou para esta requisição, quando a
-   * rota é autenticada. É a única leitura válida da credencial num
-   * controller: só o adapter conhece a política de CORS da rota, e portanto
-   * só ele pode decidir se o cookie vale ali.
-   */
   sessionCredential?: { secret: string; source: "header" | "cookie" };
   method: HttpControllerMethod;
   url: string;

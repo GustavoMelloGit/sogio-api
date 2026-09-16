@@ -11,11 +11,6 @@ export async function api(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
-/**
- * Valor de um cookie numa resposta. `fetch` junta os `Set-Cookie` numa string
- * só, e nenhum atributo de cookie aceita vírgula sem aspas, então separar por
- * vírgula é seguro aqui.
- */
 export function readSetCookie(
   response: Response,
   name: string
@@ -42,7 +37,6 @@ export function readSetCookie(
   return undefined;
 }
 
-/** Atributos do `Set-Cookie` de um cookie, para conferir `HttpOnly` e afins. */
 export function readSetCookieAttributes(
   response: Response,
   name: string

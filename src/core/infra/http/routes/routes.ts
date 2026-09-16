@@ -199,8 +199,6 @@ const authControllers: Route[] = [
     controller: authDi.makeSignInController(),
   },
   {
-    // `allowWithoutPlatformAccess`: quem está sem plano ainda precisa
-    // conseguir sair.
     authenticated: true,
     allowWithoutPlatformAccess: true,
     controller: authDi.makeSignOutController(),
@@ -412,13 +410,6 @@ const controllers = [
   healthController,
 ];
 
-/**
- * Rota autenticada com CORS público não pode existir: a política pública
- * responde a qualquer origem, e o adapter, por isso, recusa cookie ali — a
- * sessão do navegador simplesmente não autenticaria, e a rota pareceria
- * quebrada só para quem usa o app. Falhar no boot é melhor que descobrir
- * isso em produção.
- */
 const authenticatedPublicCors = controllers.filter(
   ({ authenticated, adminOnly, controller }) =>
     (authenticated || adminOnly) && controller.corsPolicy === "public"

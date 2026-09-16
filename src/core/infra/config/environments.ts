@@ -76,44 +76,23 @@ const envSchema = z
      * refresh, it never affects correctness, so there is nothing to force
      * an operator to set explicitly.
      */
-    /**
-     * Vida absoluta de uma sessão do app, em segundos. Mesmo em uso
-     * contínuo, a sessão morre aqui e o usuário loga de novo.
-     */
     SESSION_ABSOLUTE_TTL_SECONDS: z.coerce
       .number()
       .int()
       .positive()
       .default(60 * 60 * 24 * 30),
-    /**
-     * Janela de inatividade de uma sessão do app, em segundos. Uma sessão
-     * parada por mais que isso deixa de valer, mesmo dentro da vida
-     * absoluta.
-     */
     SESSION_INACTIVITY_TTL_SECONDS: z.coerce
       .number()
       .int()
       .positive()
       .default(60 * 60 * 24 * 14),
-    /**
-     * Data-limite (ISO) até a qual o JWT de sessão antigo continua sendo
-     * aceito pelo header, durante a migração para cookie. Ausente significa
-     * recusar — a janela precisa ser aberta de propósito e fechar sozinha.
-     */
     LEGACY_JWT_ACCEPTED_UNTIL: z.coerce.date().optional(),
-    /** Nome do cookie que carrega o segredo da sessão do app. */
     SESSION_COOKIE_NAME: z
       .string()
       .trim()
       .min(1)
       .max(64)
       .default("sogio_session"),
-    /**
-     * `Domain` do cookie de sessão. Vazio em desenvolvimento, onde o cookie
-     * fica preso ao host (`localhost`, em qualquer porta, o que basta para
-     * front e API locais se entenderem). Em produção, `.sogio.app`, para que
-     * o apex e o `www` compartilhem a sessão.
-     */
     SESSION_COOKIE_DOMAIN: z.string().trim().max(255).optional(),
     ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
     /**
@@ -287,7 +266,6 @@ export const consentAbsoluteLifetimeMs =
   env.CONSENT_ABSOLUTE_LIFETIME_SECONDS * 1000;
 export const consentInactivityTtlMs = env.CONSENT_INACTIVITY_TTL_SECONDS * 1000;
 
-/** Prazos da sessão do app, em milissegundos. */
 export const sessionAbsoluteTtlMs = env.SESSION_ABSOLUTE_TTL_SECONDS * 1000;
 export const sessionInactivityTtlMs = env.SESSION_INACTIVITY_TTL_SECONDS * 1000;
 

@@ -51,11 +51,6 @@ async function main() {
   startSessionCleanup(logger);
 }
 
-/**
- * Sessão vencida não vira faxina para depois (E9): a linha morta sai sozinha.
- * A varredura é horária e nunca apaga sessão viva — só o que já passou da
- * vida absoluta, que o `AuthMiddleware` de qualquer forma já recusa.
- */
 const REVOKED_SESSION_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function startSessionCleanup(logger: Logger) {

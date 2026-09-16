@@ -49,8 +49,6 @@ export class ResetPasswordUseCase implements UseCase<Input, void> {
     user.changePassword(newPasswordHash);
     await this.authRepository.updatePassword(user.id, user.password);
 
-    // Todas, sem exceção: aqui a hipótese é conta comprometida, e quem pede a
-    // redefinição por email não está numa sessão que valha preservar.
     await this.sessionManager.revokeAllForUser(user.id);
   }
 }

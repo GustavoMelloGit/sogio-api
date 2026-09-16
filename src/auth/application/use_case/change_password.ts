@@ -9,11 +9,6 @@ import type { UseCase } from "../../../core/application/use_case/use_case";
 type Input = {
   currentPassword: string;
   newPassword: string;
-  /**
-   * Segredo da sessão que está pedindo a troca, quando houver. Ela é a única
-   * poupada: quem trocou a senha não é deslogado no meio da ação, e todo o
-   * resto cai.
-   */
   currentSessionSecret?: string;
 };
 
@@ -55,8 +50,6 @@ export class ChangePasswordUseCase implements UseCase<Input, void> {
     user.changePassword(newPasswordHash);
     await this.authRepository.updatePassword(user.id, user.password);
 
-    // Fecha R11: até a sessão virar linha no banco, trocar a senha não
-    // expulsava ninguém, e quem tivesse roubado a sessão continuava dentro.
     await this.sessionManager.revokeAllForUser(
       user.id,
       input.currentSessionSecret

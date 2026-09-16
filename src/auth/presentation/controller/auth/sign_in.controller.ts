@@ -39,11 +39,6 @@ const outputSchema = z.object({
 
 type Input = z.infer<typeof inputSchema>;
 
-/**
- * Cada sign-in bem-sucedido passou a inserir uma linha em `sessions`, então
- * o endpoint deixou de ser stateless: sem teto, uma rajada engorda a tabela
- * além de tentar senhas.
- */
 const RATE_LIMIT_POLICY: RateLimitPolicy = {
   keyDimension: "peer-ip",
   windowMs: 60 * 1000,
@@ -79,13 +74,10 @@ export class SignInController implements Controller {
   async handle(request: ControllerRequest) {
     const output = await this.useCase.execute(request.body as Input);
 
-    // O navegador recebe a sessão no cookie httpOnly e nunca toca no segredo;
-    // o corpo continua trazendo o token para quem chama a API direto.
     return new ControllerHttpResponse({
       status: 200,
       body: output,
       headers: { "Set-Cookie": buildSessionCookie(output.token) },
-      // A resposta carrega o segredo no corpo e no `Set-Cookie` (E8).
       cache: "no-store",
     });
   }

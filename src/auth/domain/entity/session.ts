@@ -15,17 +15,6 @@ export const sessionSchema = baseEntitySchema.extend({
 export type SessionData = z.infer<typeof sessionSchema>;
 type SessionInputData = z.input<typeof sessionSchema>;
 
-/**
- * @kind Entity
- *
- * Sessão — período em que um usuário está autenticado no app a partir de um
- * navegador ou aparelho. Irmã, e não parente, de `IssuedCredential`: aquela
- * representa um aplicativo agindo em nome do usuário, esta representa o
- * próprio usuário no front.
- *
- * Guarda apenas o digest do segredo. O segredo em claro é entregue uma única
- * vez, no sign-in, e vive no cookie ou na mão de quem chama a API por Bearer.
- */
 export class Session {
   readonly #data: SessionData;
 
@@ -50,11 +39,6 @@ export class Session {
     return new Session(data);
   }
 
-  /**
-   * Uma sessão vale enquanto não foi encerrada, não passou da vida absoluta e
-   * foi usada dentro da janela de inatividade. A janela chega por parâmetro
-   * porque é configuração de ambiente, não regra do agregado.
-   */
   public isValid(now: Date, inactivityTtlMs: number): boolean {
     if (this.#data.revoked_at || this.#data.deleted_at) {
       return false;
