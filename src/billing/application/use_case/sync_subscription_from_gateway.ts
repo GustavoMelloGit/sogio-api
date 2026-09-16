@@ -136,7 +136,6 @@ export class SyncSubscriptionFromGatewayUseCase
       external_reference: event.external_reference,
       external_event_at: event.occurred_at,
     });
-    subscription.recordPlanChoice(event.occurred_at);
     await this.subscriptionRepository.save(subscription);
 
     if (!this.#changed(previous, subscription)) return;
@@ -189,7 +188,6 @@ export class SyncSubscriptionFromGatewayUseCase
         external_event_at: event.occurred_at,
       });
     }
-    subscription.recordPlanChoice(event.occurred_at);
 
     await this.subscriptionRepository.save(subscription);
 

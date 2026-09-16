@@ -110,21 +110,6 @@ export class SubscriptionPostgresRepository implements SubscriptionRepository {
     return existing.external_customer_reference;
   }
 
-  async recordPlanChoiceIfAbsent(
-    subscription_id: string,
-    chosen_at: Date
-  ): Promise<void> {
-    await db
-      .update(subscriptionsTable)
-      .set({ plan_chosen_at: chosen_at, updated_at: new Date() })
-      .where(
-        and(
-          eq(subscriptionsTable.id, subscription_id),
-          isNull(subscriptionsTable.plan_chosen_at)
-        )
-      );
-  }
-
   async save(subscription: Subscription): Promise<void> {
     const existing = await db.query.subscriptionsTable.findFirst({
       where: eq(subscriptionsTable.id, subscription.id),
@@ -143,7 +128,6 @@ export class SubscriptionPostgresRepository implements SubscriptionRepository {
       external_reference: subscription.external_reference,
       external_customer_reference: subscription.external_customer_reference,
       external_event_at: subscription.external_event_at,
-      plan_chosen_at: subscription.plan_chosen_at,
       created_at: subscription.created_at,
       updated_at: subscription.updated_at,
       deleted_at: subscription.deleted_at,

@@ -26,10 +26,5 @@ export interface SubscriptionRepository {
     reference: string
   ): Promise<string>;
 
-  recordPlanChoiceIfAbsent(
-    subscription_id: string,
-    chosen_at: Date
-  ): Promise<void>;
-
   save(subscription: Subscription): Promise<void>;
 }

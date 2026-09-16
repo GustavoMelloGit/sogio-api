@@ -31,7 +31,6 @@ export const subscriptionSchema = baseEntitySchema
     external_customer_reference: z.string().max(255).nullable().optional(),
 
     external_event_at: z.date().nullable().optional(),
-    plan_chosen_at: z.date().nullable().optional(),
   })
   .refine(data => data.status !== "trialing" || !!data.trial_ends_at, {
     message: "trial_ends_at is required while status is trialing",
@@ -102,7 +101,6 @@ export class Subscription {
       external_reference: null,
       external_customer_reference: null,
       external_event_at: null,
-      plan_chosen_at: null,
       created_at: now,
       updated_at: now,
     });
@@ -268,15 +266,6 @@ export class Subscription {
     this.#touch();
   }
 
-  recordPlanChoice(chosen_at: Date = new Date()): void {
-    if (this.#data.plan_chosen_at) {
-      return;
-    }
-
-    this.#data.plan_chosen_at = chosen_at;
-    this.#touch();
-  }
-
   changePlan(input: ChangePlanInput): void {
     const now = input.now ?? new Date();
 
@@ -369,14 +358,6 @@ export class Subscription {
 
   get external_event_at() {
     return this.#data.external_event_at ?? null;
-  }
-
-  get plan_chosen_at() {
-    return this.#data.plan_chosen_at ?? null;
-  }
-
-  get needs_plan_choice() {
-    return !this.#data.plan_chosen_at;
   }
 
   get has_paid_cycle() {
