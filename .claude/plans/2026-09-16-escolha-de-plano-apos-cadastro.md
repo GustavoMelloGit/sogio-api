@@ -2,134 +2,187 @@
 
 ## Objective
 
-Hoje o cadastro cria uma `Subscription` no Free automaticamente (`StartFreeSubscriptionOnUserCreated` → `EnsureFreeSubscriptionUseCase`), e o sistema não consegue distinguir "escolheu o Free" de "nunca escolheu". O front vai bloquear o app logo depois do cadastro até a pessoa escolher o plano inicial — Free (confirma e segue) ou Pro (vai direto para o Checkout, com trial de 14 dias). O bloqueio precisa sobreviver a fechar a aba, trocar de dispositivo e abandonar o Checkout, então o fato "a escolha inicial já foi feita" tem que morar na API.
+O front mostra a tela de planos **uma vez, logo depois do cadastro**, sem bloqueio persistente: quem escolhe o Pro vai para o Checkout (trial de 14 dias); quem continua no Free, fecha a aba ou abandona o Checkout segue no Free. A API não guarda "escolha pendente". O que ela garante é a regra de negócio "todo usuário tem uma assinatura, e quem não é Pro é Free", agora também sob demanda, pela rota do Free.
 
-Na mesma entrega: as URLs de retorno do Checkout e do Portal apontam para `/settings/billing`, mas o front moveu o produto para baixo de `/app` — hoje quem volta do Stripe cai num 404.
+Na mesma entrega, as URLs de retorno do Checkout e do Portal passam a apontar para `/app`, onde o produto mora no front. Hoje quem volta do Stripe cai num 404.
 
 ## Personas
 
-- **Orquestrador** — conduz o fluxo Arquiteto → Desenvolvedor → Analista de Segurança
-- **Arquiteto** (`model: opus`) — este plano, vocabulário e decisões
-- **Desenvolvedor** (`model: sonnet`) — implementação
-- **Analista de Segurança** (`model: opus`) — revisão do `return_to` (open redirect) e da rota nova
+- **Orquestrador**: conduz Arquiteto → Desenvolvedor → Analista de Segurança
+- **Arquiteto** (`model: opus`): este plano
+- **Desenvolvedor** (`model: sonnet`): implementação
+- **Analista de Segurança** (`model: opus`): revisão da rota do Free fora do portão de platform access e do `return_to`
 
-## Contrato já combinado com o front (não reabrir)
+## Revisão desta versão: o que foi descartado e por quê
 
-1. `GET /billing/subscription` ganha `needs_plan_choice: boolean` — `true` só quando existe `Subscription` e a escolha inicial nunca foi registrada; `false` quando não há `Subscription` nenhuma. A tool `get_subscription_status` compartilha o caso de uso e expõe o mesmo campo.
-2. `POST /billing/subscription/free-plan` — autenticada, sem corpo, `204`. Registra que a pessoa escolheu ficar no Free. Idempotente: com a escolha já registrada (inclusive numa assinatura Pro do gateway) é no-op silencioso `204`, e **nunca troca o plano**. `404` sem `Subscription`.
-3. A escolha também é registrada quando uma assinatura do gateway começa/ativa/entra em trial via webhook, e quando `GrantPlanUseCase` concede um plano. Criar sessão de Checkout **não** registra — abandonar o Checkout devolve a pessoa à tela de escolha.
-4. `POST /billing/checkout-session` aceita `return_to: "billing" | "onboarding"` opcional (default `"billing"`), validado por enum:
+A primeira versão (commits `4b6f4ad`…`a3ca788`) modelava um bloqueio persistente no front. O usuário trocou por uma tela mostrada uma vez, e com isso sai tudo o que só existia para esse bloqueio:
+
+- **`needs_plan_choice`** (no `GET /billing/subscription` e na tool `get_subscription_status`): sem bloqueio persistente, não há pendência a informar.
+- **`plan_chosen_at`** (coluna, agregado, `recordPlanChoice`, `recordPlanChoiceIfAbsent`, registro em `GrantPlanUseCase`/`SyncSubscriptionFromGatewayUseCase`, migration `0018` com backfill): era o armazenamento da pendência. As antigas D-1, D-2, D-3 e D-6 caem juntas.
+- **`ConfirmFreePlanChoiceUseCase`**: dava `404` sem assinatura e só gravava a escolha. O comentário do usuário na PR pede o contrário (criar o Free), e isso já é o que `EnsureFreeSubscriptionUseCase` faz.
+- **Tool `confirm_free_plan_choice`**: seria um no-op garantido para todo mundo que alcança o `/mcp` (D-4).
+- **Rota atrás do portão de platform access** (antiga D-4): tornaria inalcançável o único caso em que a rota tem efeito (D-3).
+
+**Mantido sem mudança:** `return_to` no Checkout e os caminhos sob `/app` no Checkout e no Portal (antiga D-5, agora D-5).
+
+## Contrato com o front
+
+1. `GET /billing/subscription` volta exatamente ao contrato de `origin/main`: **sem** `needs_plan_choice`. O mesmo vale para a tool `get_subscription_status`.
+2. `POST /billing/subscription/free-plan`: autenticada, sem corpo, `allowWithoutPlatformAccess: true`, resposta `204`.
+   - Usuário **sem** `Subscription`: cria a assinatura Free (`active`, perpétua) e registra a entrada `started` no Histórico.
+   - Usuário **com** `Subscription` (Free, Pro em trial, ativo, `past_due`, cancelado ou vencido): no-op. **Nunca troca o plano** e nunca reabre acesso de uma conta bloqueada que tenha assinatura.
+   - Nunca `404` nem `403` por falta de assinatura. Os únicos não-2xx previstos são `401` (sem sessão) e `404 Plan` quando o catálogo não tem o plano `free`. Esse segundo caso é falha operacional, a mesma que hoje derruba o próprio cadastro.
+   - Sem `rateLimitPolicy`/`userRateLimitPolicy`: é no máximo um `INSERT` na vida da conta (`subscriptions.user_id` é único), e depois disso cada chamada custa uma leitura indexada.
+3. `POST /billing/checkout-session` aceita `return_to: "billing" | "onboarding"` opcional (default `"billing"`), validado por enum:
    - `billing`: `/app/settings/billing?checkout=success` e `/app/settings/billing?checkout=canceled`
    - `onboarding`: `/app?checkout=success` e `/app?checkout=canceled`
-5. `POST /billing/portal-session` volta para `/app/settings/billing?portal=return`.
+4. `POST /billing/portal-session` volta para `/app/settings/billing?portal=return`.
+
+**Observação para o front (não é conflito).** `RegisterUserUseCase` espera os handlers de `UserCreatedEvent` terminarem antes de emitir a sessão. Então, no fluxo normal, a assinatura Free já existe quando o front recebe a resposta do cadastro, e "Continuar no Free" é um `204` sem efeito. O front não deve depender dessa chamada para seguir adiante: pode disparar e navegar. A rota só muda estado para uma conta cujo cadastro falhou no handler (catálogo sem `free`, erro de banco) e que entrou depois pelo login. Depois de um `204`, o front deve reler o `GET` uma vez em vez de repetir a chamada em loop: uma conta com assinatura e catálogo sem `free` continua com `blocked_reason: "no_subscription"`.
 
 ## Decisões arquiteturais
 
-### D-1 — O fato é "escolha de plano", e ele pertence a `Subscription`
+### D-1: A API não tem o conceito de "escolha de plano"
 
-A escolha inicial é um fato sobre o vínculo entre o usuário e o plano — exatamente o que `Subscription` modela —, não sobre identidade (`auth`) nem sobre acesso. Fica em `billing`, dentro do agregado `Subscription`, como `plan_chosen_at` (timestamp anulável).
+O fato de negócio é o que o domínio já dizia: cada `User` tem exatamente uma `Subscription`, e quem não assina um plano pago está no Free. Mostrar a tela uma única vez é UX, e UX não vira estado no `billing`. Nada entra no agregado `Subscription`, no `Entitlement` ou no banco. A linguagem ubíqua da API para a rota é **garantir a assinatura Free**, e não "confirmar escolha".
 
-**Não é entitlement.** `Entitlement` é o que as travas de acesso consomem (`core/infra/http`, `core/infra/mcp`, `property_management`); a escolha de plano não libera nem bloqueia nada na API — quem bloqueia é o front. Colocar o campo no `Entitlement` faria o Open Host Service de acesso carregar estado de onboarding. `GetSubscriptionStatusUseCase` passa a ler a `Subscription` pelo repositório, além do `EntitlementService`: são duas leituras nessa rota, aceitas porque a rota não é um portão (a regra "capacidade nunca é uma segunda ida ao banco" vale para as travas, não para esta leitura).
+### D-2: A rota do Free é o segundo gatilho de `EnsureFreeSubscriptionUseCase`
 
-**A API não impõe a escolha.** Nenhuma rota, tool ou portão passa a recusar quem ainda não escolheu — o bloqueio é de UX, no front. Uma conta com `needs_plan_choice: true` continua usando a API e o `/mcp` exatamente como hoje (no Free, o `/mcp` já está fechado por `ai_assistant`).
+`EnsureFreeSubscriptionUseCase` já é o escritor único da regra "sem assinatura, cria no Free; com assinatura, não toca". Hoje ele é disparado pelo cadastro (`StartFreeSubscriptionOnUserCreated`). A rota vira o segundo gatilho da **mesma** regra, e nenhum caso de uso novo é criado. Com isso:
 
-**Nome.** `plan_chosen_at` no banco e no agregado; `needs_plan_choice` na resposta HTTP e como getter derivado do agregado (`plan_chosen_at === null`), no mesmo idioma de `has_paid_cycle`. O timestamp é **escrito uma vez**: registrar de novo é no-op, então ele é sempre o instante da primeira escolha, e nunca volta a `null`.
+- Uma assinatura criada pela rota é indistinguível de uma criada pelo cadastro: mesmo `Subscription.create`, mesmo `SubscriptionStartedEvent`, mesma entrada `started` no Histórico.
+- "Nunca troca o plano" vale por construção, porque o caso de uso retorna antes de ler o catálogo quando a assinatura existe.
+- O `user_id` vem **só** da sessão. A rota não tem corpo nem parâmetro, e o controller monta `{ user_id: user.id }`.
+- `ConfirmFreePlanChoiceUseCase` é apagado. O controller deixa de falar em "escolha de plano" e é nomeado a partir do caso de uso (ex.: `EnsureFreeSubscriptionController`). O caminho `/billing/subscription/free-plan` fica como está, porque é o contrato com o front.
 
-### D-2 — Invariante: `plan_chosen_at` nulo implica Free e nenhuma assinatura no gateway
+**Risco aceito: duplo clique numa conta sem assinatura.** Duas chamadas simultâneas leem "sem assinatura" e as duas tentam inserir. A restrição única em `subscriptions.user_id` preserva "exatamente uma `Subscription` por `User`". A perdedora falha com `500` antes de despachar `SubscriptionStartedEvent`, então não sobra estado parcial nem Histórico duplicado, e uma nova tentativa responde `204`. Tratar a corrida mudaria o caminho de escrita que o cadastro também usa, por um caso que o fluxo de cadastro não produz (ver a observação para o front). Não se paga.
 
-Toda transição que tira uma `Subscription` do Free recém-criado registra a escolha: `GrantPlanUseCase` e as duas sincronizações que colocam uma assinatura do gateway em `trialing`/`active` (`SyncSubscriptionFromGatewayUseCase.#syncTrialing` e `#syncToActive`). `cancel`/`markPastDue` só alcançam uma assinatura que tem `external_reference`, e ela só é gravada por essas mesmas sincronizações. Por isso a rota do Free não precisa conferir o plano atual: se a escolha ainda não foi registrada, a pessoa está no Free por construção.
+### D-3: `allowWithoutPlatformAccess: true`
 
-O registro é **explícito nos casos de uso**, não escondido dentro de `activate`/`changePlan`/`startTrialUntil`: `activate` também é renovação e é chamado por `Subscription.create`; amarrar a escolha a ele esconderia a regra num efeito colateral. O instante registrado no caminho do webhook é `event.occurred_at`.
+**Por quê.** O único estado que a rota muda é, por definição, um estado bloqueado: conta sem `Subscription` ⇒ `blocked_reason: "no_subscription"`. Atrás do portão, a rota daria `403` justamente no único caso em que tem efeito, e o comentário do usuário ("crie uma subscription pra ele, pro free") ficaria inalcançável pela API para todo não-admin. Ela entra na mesma família do Checkout e do Portal: uma rota que uma conta bloqueada precisa alcançar para sair do bloqueio. Com ela, a frase do `CLAUDE.md` "uma conta sem `Subscription` fica bloqueada até intervenção manual" deixa de ser verdade.
 
-Casos que deliberadamente **não** registram:
+**Só a conta sem assinatura sai do bloqueio pela rota; nenhuma conta bloqueada que tenha assinatura se desbloqueia por ela.** Verificação por motivo de bloqueio:
 
-- **Criar sessão de Checkout** — abandonar o Checkout tem que devolver a pessoa à tela.
-- **`checkout_completed` (`BindGatewayCustomerUseCase`)** — o contrato amarra a escolha à assinatura começando, não ao fim da sessão. Consequência para o front: logo depois de `?checkout=success`, `needs_plan_choice` pode continuar `true` por alguns segundos, até o webhook da assinatura chegar.
-- **`subscription_state_changed` com Price desconhecido no trial** (`#syncTrialing` sem plano resolvido) — nada muda localmente e o erro já é logado; é caso de catálogo quebrado, com intervenção manual.
-- **`incomplete`/`paused`** — ignorados como hoje; uma assinatura `incomplete` ainda não é uma escolha consumada.
+| Situação                                           | Tem `Subscription`? | Efeito da rota                                                                                          |
+| -------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------- |
+| `no_subscription`, sem linha                       | não                 | cria o Free: o estado que o cadastro teria produzido, só com as capacidades do Free                     |
+| `no_subscription` porque o catálogo não tem `free` | sim                 | no-op, segue bloqueada                                                                                  |
+| `trial_expired` (trial do Pro vencido)             | sim                 | no-op, segue bloqueada; a saída continua sendo o Checkout/Portal                                        |
+| `period_expired` (Pro vencido)                     | sim                 | no-op, segue bloqueada                                                                                  |
+| `payment_failed` (`past_due` fora da carência)     | sim                 | no-op, segue bloqueada                                                                                  |
+| Pro cancelado (dentro ou fora do período)          | sim                 | não está bloqueada; no-op, plano e status intactos (fora do período já resolve para o Free pela policy) |
+| Admin sem assinatura                               | não                 | já passa pelo portão; ganha o Free, sem risco                                                           |
 
-### D-3 — Confirmar o Free é uma escrita atômica, não `save()` da linha inteira
+**Não abre caminho para zerar o trial.** Uma linha de `subscriptions` só some junto com o `User` (`ON DELETE cascade` no purge LGPD), e nenhum caminho apaga só a assinatura. Portanto não dá para fabricar o estado "sem assinatura" numa conta que já teve uma e ganhar outro trial pelo Checkout.
 
-`SubscriptionPostgresRepository.save()` regrava todas as colunas. Se a confirmação do Free lesse a assinatura e salvasse a linha inteira enquanto o webhook do Pro ativa a mesma assinatura (duas abas, cliques simultâneos), a escrita velha apagaria `plan_id`/`status`/`external_reference` do Pro — e o evento do gateway já teria sido reivindicado em `processed_gateway_events`, então nada o reprocessa até o próximo evento, que pode vir dias depois: uma pessoa pagando sem o Pro. Por isso a confirmação usa `recordPlanChoiceIfAbsent(subscription_id, chosen_at)`, um `UPDATE ... SET plan_chosen_at WHERE id = ? AND plan_chosen_at IS NULL` — mesmo idioma de `linkCustomerReferenceIfAbsent`, que já existe pelo mesmo motivo (corrida entre Checkout e webhook).
+### D-4: Sem tool MCP, com a exceção registrada
 
-Risco considerado e **não** tratado: um `save()` de linha inteira feito a partir de uma leitura anterior à confirmação poderia devolver `plan_chosen_at` a `null`. O único caminho realista é `BindGatewayCustomerUseCase` (`checkout_completed`) concorrendo com um clique no Free — e ele se corrige sozinho, porque o webhook da assinatura registra a escolha logo depois. `cancel`/`markPastDue` só tocam assinaturas que já têm a escolha registrada. Um `coalesce` em `save()` não se paga.
+A regra do projeto proíbe justificar a ausência de tool pela capacidade ("capacidade decide quem alcança, nunca se ela nasce"). Então o motivo **não** é "o Free não tem `/mcp`". O motivo que vale é o **platform access**: `/mcp` exige `has_platform_access` de todo não-admin antes de qualquer tool, e o único caso em que o caso de uso tem efeito (conta sem `Subscription`) é justamente o caso sem platform access. Para todo usuário que alcança uma tool, ela seria um no-op por construção. A conclusão não muda se o Free ganhar `ai_assistant` um dia.
 
-### D-4 — `POST /billing/subscription/free-plan` fica atrás do portão de platform access
+Exceção a registrar em "Demais exceções" do `CLAUDE.md`: **garantia da assinatura Free** (`POST /billing/subscription/free-plan`), cujo único efeito é inalcançável pelo `/mcp`, que exige platform access.
 
-A rota **não** declara `allowWithoutPlatformAccess`. A lista de exceções existe para rotas que uma conta bloqueada precisa alcançar para sair do bloqueio (conta própria, LGPD, Checkout, Portal). Uma conta com a escolha pendente está, por D-2, num Free perpétuo e `active` — sempre com acesso. Uma conta bloqueada nunca tem a escolha pendente, e a saída dela continua sendo Checkout/Portal.
+Continuam sem tool pelas exceções já documentadas: `POST /billing/checkout-session` e `POST /billing/portal-session` ("sessões de pagamento que devolvem URL para um humano abrir"; o `return_to` não muda isso) e o webhook ("webhooks de terceiros").
 
-Consequência aceita: pela API HTTP, uma conta **sem** `Subscription` toma `403` do portão antes de chegar ao `404` do caso de uso (o `404` segue alcançável para admin, que passa pelo portão, e é o que o caso de uso lança). O front nunca chama a rota nesse caso, porque `needs_plan_choice` é `false` sem `Subscription`.
+### D-5: `return_to` é enum fechado; a URL é montada no servidor (mantida)
 
-Sem `rateLimitPolicy`/`userRateLimitPolicy`: é uma escrita barata, idempotente e sem efeito externo — depois da primeira chamada é uma leitura só, o mesmo custo de `GET /billing/subscription`. Mesmo tratamento das rotas de escrita de `notification`.
+`return_to` nunca é um caminho: é uma chave (`billing`, `onboarding`) que o caso de uso traduz para um par de caminhos fixos, sempre prefixados por `FRONT_BASE_URL`. Qualquer outro valor dá `422`. O default `"billing"` é aplicado no schema do controller. As chaves e os caminhos vivem em `create_checkout_session.ts`, e o controller importa a lista para o `z.enum`. Nada disso muda nesta revisão.
 
-### D-5 — `return_to` é enum fechado; a URL é montada no servidor
+### D-6: A migration `0018` é apagada, sem migration de drop
 
-`return_to` nunca é um caminho: é uma chave (`billing`, `onboarding`) que o caso de uso traduz para um par de caminhos fixos, sempre prefixados por `FRONT_BASE_URL`. Qualquer outro valor é `422`. O default `"billing"` é aplicado no schema do controller, preservando o contrato de quem já chama sem o campo. As chaves e os caminhos vivem em `create_checkout_session.ts` (o caso de uso já era o dono dos caminhos); o controller importa a lista de chaves para o `z.enum`, então não há uma segunda cópia.
+Apagar `drizzle/0018_tired_blue_marvel.sql` e `drizzle/meta/0018_snapshot.json` e remover a entrada `idx: 18` de `drizzle/meta/_journal.json`, deixando `drizzle/` byte a byte igual a `origin/main`. **Não** criar uma `0019` com `DROP COLUMN`. Motivos:
 
-### D-6 — Migration com backfill
+- A migration nunca chegou a um banco que importe. O deploy (`.github/workflows/deploy.yml`) faz `git reset --hard origin/main` e roda `db:migrate` a partir de `main`, e a PR nunca foi mergeada. Nenhum `__drizzle_migrations` de produção tem essa linha.
+- A suíte de testes aplica o schema por `drizzle-kit push --force` (`tests/test_database.ts`), nunca pelas migrations. O banco de teste de cada worktree perde a coluna sozinho no próximo `bun run test`.
+- Uma `0019` de drop deixaria em `main`, para sempre, um par add+backfill+drop de uma coluna que nunca existiu em produção, além de uma `0018` cujo backfill não serve para nada.
 
-Coluna nova anulável `plan_chosen_at timestamptz` e, na mesma migration, `UPDATE "subscriptions" SET "plan_chosen_at" = "created_at" WHERE "plan_chosen_at" IS NULL` — toda conta existente conta como quem já escolheu, então ninguém de hoje vê a tela. Mesmo formato de backfill de `0013` e `0017`. Só adiciona coluna, então `drizzle-kit generate` não abre o prompt de rename.
+**Verificação:** `git diff origin/main -- drizzle/` vazio, e `bun run db:migration` (`drizzle-kit generate`) não gera arquivo nenhum depois de reverter o schema. Se gerar, schema e snapshot divergiram e a reversão está incompleta.
 
-Janela de deploy: `db:migrate` roda antes do `pm2 restart`. Quem se cadastrar entre a migration e o restart nasce com `null` pelo binário antigo e verá a tela uma vez — é o comportamento correto para uma conta nova.
-
-A suíte aplica o schema por `push`, nunca o SQL das migrations; o backfill é testado executando os `UPDATE` do próprio arquivo da migration contra o banco de teste.
-
-## Superfície MCP
-
-- **`confirm_free_plan_choice` — tool nova.** É ação do próprio usuário, e nenhuma exceção documentada cobre "confirmar a escolha de plano". `get_subscription_status` passa a expor `needs_plan_choice`; sem a tool, uma IA veria a pendência sem conseguir resolvê-la. Hoje quem tem a escolha pendente está no Free e o `/mcp` está fechado para o Free por `ai_assistant` — a regra do projeto é explícita: capacidade decide quem alcança a superfície, nunca se ela nasce. A descrição da tool diz com todas as letras que ela **não** faz downgrade nem troca de plano, para uma IA não usá-la quando um assinante Pro pede para "voltar ao grátis" e reportar sucesso falso. Anotações: `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`. Resposta `{ success: true }`, como `delete_ledger_entry`.
-- **`POST /billing/checkout-session` e `POST /billing/portal-session`** — continuam sem tool: exceção documentada "sessões de pagamento que devolvem URL para um humano abrir". O `return_to` não muda isso.
-- **Webhook** — exceção "webhooks de terceiros", como já era.
+**Única ressalva:** um banco **local de desenvolvimento** em que alguém rodou `bun run db:migrate` nesta branch fica com a coluna `plan_chosen_at` órfã e uma linha a mais em `__drizzle_migrations`. É inofensivo: a coluna é anulável e o Drizzle ignora colunas fora do schema, e a próxima migration real terá `when` maior e será aplicada normalmente. Para limpar, basta `ALTER TABLE "subscriptions" DROP COLUMN IF EXISTS "plan_chosen_at"` à mão nesse banco.
 
 ## Mapped Changes
 
-- **`src/core/infra/database/drizzle/schemas/billing_schemas.ts`** — coluna `plan_chosen_at` em `subscriptionsTable`
-- **`drizzle/0018_*.sql` + `drizzle/meta/`** — migration gerada por `bun run db:migration`, com o `UPDATE` de backfill acrescentado
-- **`src/billing/domain/entity/subscription.ts`** — `plan_chosen_at` no schema, `null` em `create()`, `recordPlanChoice(chosen_at)` write-once, getters `plan_chosen_at` e `needs_plan_choice`
-- **`src/billing/domain/repository/subscription_repository.ts`** — `recordPlanChoiceIfAbsent(subscription_id, chosen_at)`
-- **`src/billing/infra/database/postgres_repository/subscription_postgres_repository.ts`** — implementação atômica; `save()` persiste `plan_chosen_at`
-- **`src/billing/application/use_case/confirm_free_plan_choice.ts`** — caso de uso novo
-- **`src/billing/application/use_case/get_subscription_status.ts`** — `needs_plan_choice`, com `SubscriptionRepository` injetado
-- **`src/billing/application/use_case/grant_plan.ts`** — registra a escolha
-- **`src/billing/application/use_case/sync_subscription_from_gateway.ts`** — registra a escolha em `#syncTrialing` e `#syncToActive`
-- **`src/billing/application/use_case/create_checkout_session.ts`** — `return_to` e caminhos sob `/app`
-- **`src/billing/application/use_case/create_billing_portal_session.ts`** — caminho sob `/app`
-- **`src/billing/presentation/controller/confirm_free_plan_choice.controller.ts`** — controller novo (`204`)
-- **`src/billing/presentation/controller/get_subscription_status.controller.ts`** — `needs_plan_choice` no `outputSchema` e na doc
-- **`src/billing/presentation/controller/create_checkout_session.controller.ts`** — `return_to` no `inputSchema` e na doc
-- **`src/billing/presentation/mcp_tool/confirm_free_plan_choice.mcp_tool.ts`** — tool nova
-- **`src/billing/presentation/mcp_tool/get_subscription_status.mcp_tool.ts`** — descrição menciona `needs_plan_choice`
-- **`src/billing/infra/di/billing_di.ts`** — fábricas novas e dependência nova de `GetSubscriptionStatusUseCase`
-- **`src/core/infra/http/routes/routes.ts`** — rota nova
-- **`src/core/infra/mcp/routes.ts`** — tool nova no array
-- **`tests/billing/`** e **`tests/core/mcp_routes.test.ts`** — ver tasks
-- **`CLAUDE.md`** — seção de billing
+**Voltam exatamente ao conteúdo de `origin/main`:**
+
+- **`src/core/infra/database/drizzle/schemas/billing_schemas.ts`**: sai a coluna `plan_chosen_at`
+- **`drizzle/meta/_journal.json`**: sai a entrada `0018`
+- **`src/billing/domain/entity/subscription.ts`**: saem `plan_chosen_at`, `recordPlanChoice` e `needs_plan_choice`
+- **`src/billing/domain/repository/subscription_repository.ts`**: sai `recordPlanChoiceIfAbsent`
+- **`src/billing/infra/database/postgres_repository/subscription_postgres_repository.ts`**: sai `recordPlanChoiceIfAbsent` e o campo em `save()`
+- **`src/billing/application/use_case/grant_plan.ts`**: sai `recordPlanChoice()`
+- **`src/billing/application/use_case/sync_subscription_from_gateway.ts`**: saem as duas chamadas de `recordPlanChoice`
+- **`src/billing/application/use_case/get_subscription_status.ts`**: sai `needs_plan_choice` e a dependência de `SubscriptionRepository`
+- **`src/billing/presentation/controller/get_subscription_status.controller.ts`**: sai o campo do `outputSchema`, da descrição e do exemplo
+- **`src/billing/presentation/mcp_tool/get_subscription_status.mcp_tool.ts`**: descrição original
+- **`src/core/infra/mcp/routes.ts`**: sai `makeConfirmFreePlanChoiceTool()`
+- **`tests/core/mcp_routes.test.ts`**: sai `confirm_free_plan_choice` da lista
+- **`tests/billing/subscription_entitlement_service.test.ts`**: sai o stub de `recordPlanChoiceIfAbsent`
+
+**Apagados:**
+
+- **`drizzle/0018_tired_blue_marvel.sql`** e **`drizzle/meta/0018_snapshot.json`** (D-6)
+- **`src/billing/application/use_case/confirm_free_plan_choice.ts`** (D-2)
+- **`src/billing/presentation/mcp_tool/confirm_free_plan_choice.mcp_tool.ts`** (D-4)
+- **`tests/billing/subscription_plan_choice.test.ts`**, **`tests/billing/plan_choice_recorded_by_gateway.test.ts`** e **`tests/billing/plan_choice_backfill_migration.test.ts`**: testam só o que saiu
+
+**Alterados:**
+
+- **`src/billing/presentation/controller/confirm_free_plan_choice.controller.ts`**: renomeado a partir do caso de uso (ex.: `ensure_free_subscription.controller.ts`). Chama `EnsureFreeSubscriptionUseCase` com `{ user_id: user.id }`. A OpenAPI descreve "garante a assinatura; cria o Free se não houver; nunca troca plano", com respostas `204`, `401` e `404` (catálogo sem `free`)
+- **`src/billing/infra/di/billing_di.ts`**: saem as fábricas de `ConfirmFreePlanChoice*`, e o construtor de `GetSubscriptionStatusUseCase` volta ao original. A fábrica do controller reusa `makeEnsureFreeSubscriptionUseCase()`
+- **`src/core/infra/http/routes/routes.ts`**: a rota ganha `allowWithoutPlatformAccess: true` (D-3)
+- **`tests/billing/confirm_free_plan_choice.test.ts`**: reescrito como teste da rota do Free (ex.: `tests/billing/ensure_free_subscription_route.test.ts`); ver task 1
+- **`tests/billing/get_subscription_status.test.ts`**: asserção de ausência de `needs_plan_choice`; ver task 2
+- **`CLAUDE.md`**: ver task 4
+
+**Sem mudança (ficam como na PR):** `create_checkout_session.ts`, `create_checkout_session.controller.ts`, `create_billing_portal_session.ts`, `tests/billing/create_checkout_session.test.ts`, `tests/billing/create_billing_portal_session.test.ts`.
 
 ## Tasks
 
-1. **Schema, migration e agregado** — coluna, migration com backfill, `Subscription` com `plan_chosen_at`/`recordPlanChoice`/`needs_plan_choice`, repositório (`save` + `recordPlanChoiceIfAbsent`)
+A PR #80 já está publicada: tudo vai em commits novos, sem reescrever o histórico.
+
+1. **Rota do Free sobre `EnsureFreeSubscriptionUseCase`, sem tool MCP** (D-2, D-3, D-4)
+   - Apagar `ConfirmFreePlanChoiceUseCase` e a tool `confirm_free_plan_choice`. Renomear e reescrever o controller. Ajustar `billing_di.ts` (só as fábricas da confirmação). Colocar `allowWithoutPlatformAccess: true` na rota em `routes.ts`. Tirar a tool de `src/core/infra/mcp/routes.ts` e de `tests/core/mcp_routes.test.ts`.
+   - Testes: reescrever `tests/billing/confirm_free_plan_choice.test.ts` (novo nome) com os casos:
+     - conta **sem** `Subscription` → `204`; passa a existir uma assinatura no plano `free`, `active`, com `current_period_end` nulo; existe uma entrada `started` no Histórico; `GET /billing/subscription` agora dá `has_platform_access: true`. Isso prova ao mesmo tempo que a rota é alcançável sem platform access e que ela desbloqueia esse caso
+     - Free existente → `204`; mesmo `id` de assinatura, `updated_at` intacto, nenhuma entrada nova no Histórico
+     - Pro do gateway (`active` e `trialing`) → `204`; `plan_id`, `status` e `external_reference` intactos
+     - conta bloqueada **com** assinatura (`blockUser` de `tests/helpers/block_user.ts` → `payment_failed`) → `204`, não `403`; o `GET` segue `has_platform_access: false` com o mesmo `blocked_reason`
+     - Pro vencido (`period_expired`) e Pro cancelado → `204`; plano e status intactos
+     - sem sessão → `401`
+     - admin sem assinatura → `204` e ganha o Free
+   - Sai o que testava `recordPlanChoiceIfAbsent`, o `404` por falta de assinatura, o `403` do portão e a tool.
    - Dependencies: none
-2. **Registro da escolha nas transições** — `GrantPlanUseCase` e `SyncSubscriptionFromGatewayUseCase`
-   - Dependencies: task 1
-3. **Confirmação do Free** — caso de uso, controller, rota, tool MCP, DI
-   - Dependencies: task 1
-4. **`needs_plan_choice` no status** — caso de uso, controller, descrição da tool, DI
-   - Dependencies: task 1
-5. **URLs de retorno** — `return_to` no Checkout e caminhos sob `/app` no Checkout e no Portal
-   - Dependencies: none
-6. **Testes** — idempotência do agregado; caso de uso e rota do Free (204, no-op em Pro sem trocar plano, 404 sem assinatura); `needs_plan_choice` no `GET`; webhook registrando a escolha (trial e active) e Checkout não registrando; URLs de retorno para os dois `return_to` e `422` para valor fora do enum; Portal; tool nova na lista do `/mcp`; backfill da migration
-   - Dependencies: tasks 2, 3, 4, 5
-7. **`CLAUDE.md`** — registrar escolha de plano, rota nova e URLs de retorno na seção de billing
-   - Dependencies: tasks 2, 3, 4, 5
-8. **Revisão de segurança**
-   - Dependencies: tasks 6, 7
-
-## Revisão de Segurança
-
-Sem achado crítico nem moderado. Pontos verificados:
-
-- **Open redirect (`return_to`)** — enum fechado com `z.enum`, default aplicado no schema; o caso de uso traduz a chave para caminhos constantes prefixados por `FRONT_BASE_URL`. URL absoluta, caminho, `//host`, variação de caixa e string vazia viram `422` (travado por teste). Nenhum valor do chamador chega à URL.
-- **`POST /billing/subscription/free-plan`** — o alvo sai só da sessão (`user.id`), sem corpo, sem parâmetro de rota: não há IDOR nem mass assignment. Autenticada por cookie, a escrita passa por `assertSameSiteRequest` (`Origin` da allowlist), como toda escrita. A única escrita é `UPDATE ... SET plan_chosen_at WHERE id AND plan_chosen_at IS NULL`, parametrizada pelo Drizzle, e não altera plano, status nem referências do gateway — inclusive sob concorrência com o webhook (D-3).
-- **Webhook** — a escolha é registrada depois da verificação de assinatura, da reivindicação de idempotência e do descarte de evento velho; nenhum caminho novo alcança transição de domínio com evento não verificado.
-- **MCP** — `confirm_free_plan_choice` passa pelo mesmo portão de transporte (`ai_assistant`, platform access, 300 req/min) e pelo mesmo caso de uso; a descrição impede o uso como "downgrade" que reportaria sucesso falso.
-- 🔵 **INFORMATIVO — sem rate limit dedicado na rota nova.** Escrita idempotente, sem efeito externo; depois da primeira chamada é uma leitura só. Mesmo tratamento das escritas de `notification` (D-4).
-- **LGPD** — `plan_chosen_at` é metadado de uso ligado à conta, com finalidade declarada (estado de onboarding), sem dado pessoal novo; sai junto com a assinatura no purge da conta (`subscriptions.user_id` com `ON DELETE cascade`). Nenhum log novo.
+2. **Tirar `needs_plan_choice` da leitura de status** (D-1)
+   - `get_subscription_status.ts`, o controller, a descrição da tool e o construtor em `billing_di.ts` voltam a `origin/main`.
+   - Testes: em `tests/billing/get_subscription_status.test.ts`, afirmar que o corpo do `GET` não tem a chave `needs_plan_choice`.
+   - Dependencies: task 1 (as duas mexem em `billing_di.ts`)
+3. **Remover `plan_chosen_at` do modelo e do banco** (D-1, D-6)
+   - Reverter o schema Drizzle, `Subscription`, a interface e a implementação do repositório, `GrantPlanUseCase` e `SyncSubscriptionFromGatewayUseCase`. Apagar a `0018` (sql + snapshot + entrada do journal). Reverter o stub em `tests/billing/subscription_entitlement_service.test.ts`. Apagar `subscription_plan_choice.test.ts`, `plan_choice_recorded_by_gateway.test.ts` e `plan_choice_backfill_migration.test.ts`.
+   - Verificar `git diff origin/main -- drizzle/` vazio e que `bun run db:migration` não gera arquivo.
+   - Dependencies: tasks 1, 2 (os consumidores de `needs_plan_choice` e `recordPlanChoiceIfAbsent` precisam sair antes, para o `typecheck` seguir verde)
+4. **`CLAUDE.md`**
+   - Reescrever "Escolha de plano após o cadastro" em poucas linhas:
+     - a tela é só do front e aparece uma vez; a API não tem pendência nem coluna
+     - `POST /billing/subscription/free-plan` é o gatilho sob demanda de `EnsureFreeSubscriptionUseCase` (cria o Free sem assinatura, no-op com assinatura, nunca troca plano, registra `started`)
+     - `allowWithoutPlatformAccess: true` com o motivo de D-3
+     - no fluxo normal a chamada é no-op, porque o cadastro espera o handler
+     - manter o link para este plano
+   - Em "Bounded Context `billing`", acrescentar a rota do Free à lista de exceções do portão e trocar "uma conta sem `Subscription` fica bloqueada até intervenção manual" pela saída via rota do Free.
+   - Em "Demais exceções" da superfície MCP, acrescentar a garantia da assinatura Free com o motivo de D-4 (platform access, não capacidade).
+   - Manter o parágrafo das URLs de retorno como está.
+   - Dependencies: tasks 1, 2, 3
+5. **Verificação final**
+   - `bun run typecheck`, `bun run lint:check`, `bun run format:check` e `bun run test` verdes.
+   - `grep -rn "plan_chosen_at\|needs_plan_choice\|recordPlanChoice\|confirm_free_plan_choice\|ConfirmFreePlanChoice" src tests drizzle CLAUDE.md` vazio.
+   - `git diff origin/main --stat` restrito a: Checkout/Portal (`return_to` e `/app`) e seus testes; controller, DI e rota do Free com o teste dela; `get_subscription_status.test.ts`; `CLAUDE.md`; este plano.
+   - Dependencies: task 4
+6. **Revisão de segurança** (Analista)
+   - Foco:
+     - rota de escrita com `allowWithoutPlatformAccess: true` (tabela de D-3; nenhuma conta com assinatura muda de estado)
+     - alvo só pela sessão (IDOR, mass assignment)
+     - escrita autenticada por cookie passando por `assertSameSiteRequest`
+     - ausência de rate limit (D-2 e contrato)
+     - corrida do duplo clique (risco aceito em D-2)
+     - `return_to` sem caminho vindo do chamador (D-5)
+     - exceção MCP de D-4
+   - Registrar o resultado neste plano.
+   - Dependencies: task 5
