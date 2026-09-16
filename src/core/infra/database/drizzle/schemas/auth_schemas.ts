@@ -1,4 +1,10 @@
-import { pgTable, varchar } from "drizzle-orm/pg-core";
+import {
+  index,
+  pgTable,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { baseSchema } from "./base_schema";
 import { propertiesTable } from "./property_schemas";
@@ -15,4 +21,29 @@ export const usersTable = pgTable("users", {
 
 export const usersRelations = relations(usersTable, ({ many }) => ({
   properties: many(propertiesTable),
+}));
+
+export const sessionsTable = pgTable(
+  "sessions",
+  {
+    ...baseSchema,
+    user_id: uuid()
+      .references(() => usersTable.id, { onDelete: "cascade" })
+      .notNull(),
+    secret_digest: varchar({ length: 64 }).notNull().unique(),
+    expires_at: timestamp({ withTimezone: true, mode: "date" }).notNull(),
+    last_used_at: timestamp({ withTimezone: true, mode: "date" }).notNull(),
+    revoked_at: timestamp({ withTimezone: true, mode: "date" }),
+  },
+  table => [
+    index("sessions_user_id_idx").on(table.user_id),
+    index("sessions_expires_at_idx").on(table.expires_at),
+  ]
+);
+
+export const sessionsRelations = relations(sessionsTable, ({ one }) => ({
+  user: one(usersTable, {
+    fields: [sessionsTable.user_id],
+    references: [usersTable.id],
+  }),
 }));

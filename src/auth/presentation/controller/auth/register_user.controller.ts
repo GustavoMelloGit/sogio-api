@@ -2,10 +2,12 @@ import z from "zod";
 import type { RegisterUserUseCase } from "../../../../auth/application/use_case/register_user";
 import { passwordSchema } from "../../../domain/entity/user";
 import {
+  ControllerHttpResponse,
   HttpControllerMethod,
   type Controller,
   type ControllerRequest,
 } from "../../../../core/presentation/controller/controller";
+import { buildSessionCookie } from "../../http/session_cookie";
 import type { OpenApiOperation } from "../../../../core/presentation/open_api/open_api_types";
 import {
   bodyFromZod,
@@ -21,7 +23,11 @@ const inputSchema = z.object({
 });
 
 const outputSchema = z.object({
-  token: z.string().describe("JWT bearer token"),
+  token: z
+    .string()
+    .describe(
+      "Segredo da sessão. Também vai no cookie httpOnly desta resposta; o corpo o repete para quem chama a API fora do navegador."
+    ),
   user: z.object({
     id: z.uuid(),
     name: z.string(),
@@ -41,7 +47,8 @@ export class RegisterUserController implements Controller {
 
   openApiSpec: OpenApiOperation = {
     summary: "Register user",
-    description: "Creates a new user account and returns a JWT token.",
+    description:
+      "Creates a new user account, sets the session cookie and returns the session secret.",
     tags: ["Auth"],
     requestBody: bodyFromZod(inputSchema, {
       example: {
@@ -61,6 +68,12 @@ export class RegisterUserController implements Controller {
 
   async handle(request: ControllerRequest) {
     const output = await this.useCase.execute(request.body as Input);
-    return output;
+
+    return new ControllerHttpResponse({
+      status: 200,
+      body: output,
+      headers: { "Set-Cookie": buildSessionCookie(output.token) },
+      cache: "no-store",
+    });
   }
 }

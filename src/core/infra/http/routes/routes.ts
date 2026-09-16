@@ -201,6 +201,11 @@ const authControllers: Route[] = [
   {
     authenticated: true,
     allowWithoutPlatformAccess: true,
+    controller: authDi.makeSignOutController(),
+  },
+  {
+    authenticated: true,
+    allowWithoutPlatformAccess: true,
     controller: authDi.makeGetUserController(),
   },
   {
@@ -404,6 +409,19 @@ const controllers = [
   ...marketingControllers,
   healthController,
 ];
+
+const authenticatedPublicCors = controllers.filter(
+  ({ authenticated, adminOnly, controller }) =>
+    (authenticated || adminOnly) && controller.corsPolicy === "public"
+);
+
+if (authenticatedPublicCors.length > 0) {
+  throw new Error(
+    `Rotas autenticadas não podem usar corsPolicy "public": ${authenticatedPublicCors
+      .map(({ controller }) => `${controller.method} ${controller.path}`)
+      .join(", ")}`
+  );
+}
 
 const routeMap = new Map<
   string,

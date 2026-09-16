@@ -16,9 +16,8 @@ import {
 
 /**
  * `McpIdentityResolver` now verifies the OAuth access token issued by the
- * Auth BC's delegated-access subdomain (task 13) instead of the app's JWT
- * session token — there is no environment carve-out that still accepts a
- * JWT here. Every credential below is therefore minted the way the real
+ * Auth BC's delegated-access subdomain (task 13) instead of the app's own
+ * session — there is no environment carve-out that still accepts one here. Every credential below is therefore minted the way the real
  * `/mcp` gate expects: app registration + consent + issued credential
  * (`tests/helpers/fixtures/delegated_access.ts`), bound to this server's
  * canonical `/mcp` resource URL.

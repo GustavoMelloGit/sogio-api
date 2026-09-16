@@ -46,8 +46,8 @@ export const PENDING_REQUEST_ID_PARAM = "request_id";
  * Public by necessity — the plan's contract has the front consult this
  * *before* the user has necessarily logged in — but never blind to an
  * identified caller: `AuthMiddleware.handleOptional` resolves a user from
- * whatever session the front happens to already have (a previously issued
- * app JWT), without ever failing the request when there isn't one. That is
+ * whatever session the front happens to already have, without ever failing
+ * the request when there isn't one. That is
  * the only way `has_existing_consent` can be computed for the reconnection
  * shortcut without either (a) requiring login before this call, which the
  * contract doesn't do, or (b) leaking whether *some* user has consented,
@@ -106,7 +106,7 @@ export class GetPendingAuthorizationRequestController implements Controller {
       );
     }
 
-    const user = await this.authMiddleware.handleOptional(request);
+    const user = await this.authMiddleware.handleOptional(request, true);
 
     const result = await this.useCase.execute({
       identifier,

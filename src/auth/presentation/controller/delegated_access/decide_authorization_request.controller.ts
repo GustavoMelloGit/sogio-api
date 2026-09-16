@@ -23,8 +23,8 @@ const VALID_DECISIONS: readonly AuthorizationDecision[] = ["approve", "deny"];
  * endpoint for it — the plan's contract only skips *showing* the consent
  * UI, not the call itself).
  *
- * Authenticated by the app's own session (JWT Bearer, `authenticated:
- * true` in routes.ts) — never by any OAuth parameter. The user consenting
+ * Authenticated by the app's own session (cookie or Bearer,
+ * `authenticated: true` in routes.ts) — never by any OAuth parameter. The user consenting
  * is whoever is logged in *right now*, resolved the same way every other
  * authenticated route in this API resolves it.
  *

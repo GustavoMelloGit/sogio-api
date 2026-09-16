@@ -27,7 +27,6 @@
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@types/bun": "latest",
-    "@types/jsonwebtoken": "^9.0.10",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
@@ -46,7 +45,6 @@
     "@tuya/tuya-connector-nodejs": "^2.1.2",
     "date-fns": "^4.4.0",
     "drizzle-orm": "^0.44.7",
-    "jsonwebtoken": "^9.0.3",
     "node-ical": "^0.20.1",
     "pg": "^8.21.0",
     "resend": "^6.20.0",

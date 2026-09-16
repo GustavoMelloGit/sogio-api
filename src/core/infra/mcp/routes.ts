@@ -84,8 +84,8 @@ export type McpRouteDependencies = {
  * and never instantiates a `McpServer`/transport pair or reaches a tool
  * handler. The credential accepted here is the OAuth access token issued by
  * the Auth BC's delegated-access subdomain (task 13) — resolution goes
- * through `MiddlewareDi.makeCredentialVerifier()`, never a JWT session
- * token, and there is no environment branch that falls back to one. On
+ * through `MiddlewareDi.makeCredentialVerifier()`, never the app's own
+ * session, and there is no environment branch that falls back to one. On
  * success, the resolved `Requester`'s `user` is handed to `createMcpServer`,
  * which binds every tool registered for this request to that same caller
  * (see `mcp_tool.ts`); tools still only ever see the `User`, never the rest

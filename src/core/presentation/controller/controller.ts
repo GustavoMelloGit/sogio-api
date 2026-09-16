@@ -26,6 +26,8 @@ export type ControllerRequest = {
   body: Record<string, unknown>;
   query: Record<string, string>;
   headers: Record<string, string>;
+  cookies: Record<string, string>;
+  sessionCredential?: { secret: string; source: "header" | "cookie" };
   method: HttpControllerMethod;
   url: string;
   /**

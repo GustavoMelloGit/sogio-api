@@ -12,6 +12,8 @@ import { AuthPostgresRepository } from "../../src/auth/infra/database/postgres_r
 import { PasswordResetRequestPostgresRepository } from "../../src/auth/infra/database/postgres_repository/password_reset_request_postgres_repository";
 import { CryptoDelegatedSecretService } from "../../src/auth/infra/service/crypto_delegated_secret_service";
 import { BunHasher } from "../../src/auth/infra/service/bun_hasher";
+import { SessionManager } from "../../src/auth/application/service/session_manager";
+import { SessionPostgresRepository } from "../../src/auth/infra/database/postgres_repository/session_postgres_repository";
 import { RequestPasswordResetUseCase } from "../../src/auth/application/use_case/request_password_reset";
 import { ResetPasswordUseCase } from "../../src/auth/application/use_case/reset_password";
 
@@ -40,7 +42,11 @@ function makeResetUseCase() {
     new AuthPostgresRepository(),
     new PasswordResetRequestPostgresRepository(),
     new CryptoDelegatedSecretService(),
-    new BunHasher()
+    new BunHasher(),
+    new SessionManager(
+      new SessionPostgresRepository(),
+      new CryptoDelegatedSecretService()
+    )
   );
 }
 

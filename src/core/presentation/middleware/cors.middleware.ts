@@ -9,8 +9,8 @@ export class CorsMiddleware {
   private readonly allowedHeaders: string[];
 
   constructor() {
-    const isProduction = env.NODE_ENV === "production";
-    if (isProduction) {
+    const isLocal = env.NODE_ENV === "development" || env.NODE_ENV === "test";
+    if (!isLocal) {
       // Explicit allowlist (E8), configurable via CORS_ALLOWED_ORIGINS —
       // never a wildcard, which combined with credentials below is `*`.
       this.allowedOrigins = [...corsAllowedOrigins];
@@ -138,7 +138,7 @@ export class CorsMiddleware {
     return headers;
   }
 
-  private isOriginAllowed(origin: string | null): boolean {
+  isOriginAllowed(origin: string | null): boolean {
     if (!origin) {
       return false;
     }

@@ -4,6 +4,9 @@ import {
   SessionManager,
   type ISessionManager,
 } from "../../application/service/session_manager";
+import { SessionPostgresRepository } from "../database/postgres_repository/session_postgres_repository";
+import { SignOutUseCase } from "../../application/use_case/sign_out";
+import { SignOutController } from "../../presentation/controller/auth/sign_out.controller";
 import { RegisterUserUseCase } from "../../application/use_case/register_user";
 import { SignInUseCase } from "../../application/use_case/sign_in";
 import { PurgeUserDataUseCase } from "../../application/use_case/purge_user_data";
@@ -106,7 +109,11 @@ export class AuthDi {
     this.#aiAssistantAccess = aiAssistantAccess;
     this.#authRepository = new AuthPostgresRepository();
     this.#hasher = new BunHasher();
-    this.#sessionManager = new SessionManager();
+    this.#delegatedSecretService = new CryptoDelegatedSecretService();
+    this.#sessionManager = new SessionManager(
+      new SessionPostgresRepository(),
+      this.#delegatedSecretService
+    );
     this.#appRegistrationRepository = new AppRegistrationPostgresRepository();
     this.#authorizationRequestRepository =
       new AuthorizationRequestPostgresRepository();
@@ -114,7 +121,6 @@ export class AuthDi {
     this.#authorizationCodeRepository =
       new AuthorizationCodePostgresRepository();
     this.#issuedCredentialRepository = new IssuedCredentialPostgresRepository();
-    this.#delegatedSecretService = new CryptoDelegatedSecretService();
     this.#refreshRotationGraceCache = new InMemoryRefreshRotationGraceCache();
     this.#passwordResetRequestRepository =
       new PasswordResetRequestPostgresRepository();
@@ -133,6 +139,14 @@ export class AuthDi {
       this.#sessionManager,
       this.#eventDispatcher
     );
+  }
+
+  makeSignOutUseCase() {
+    return new SignOutUseCase(this.#sessionManager);
+  }
+
+  makeSignOutController() {
+    return new SignOutController(this.makeSignOutUseCase());
   }
 
   makeSignInUseCase() {
@@ -199,7 +213,11 @@ export class AuthDi {
 
   // Password management (change + email-based recovery)
   makeChangePasswordUseCase() {
-    return new ChangePasswordUseCase(this.#authRepository, this.#hasher);
+    return new ChangePasswordUseCase(
+      this.#authRepository,
+      this.#hasher,
+      this.#sessionManager
+    );
   }
 
   makeChangePasswordController() {
@@ -229,7 +247,8 @@ export class AuthDi {
       this.#authRepository,
       this.#passwordResetRequestRepository,
       this.#delegatedSecretService,
-      this.#hasher
+      this.#hasher,
+      this.#sessionManager
     );
   }
 

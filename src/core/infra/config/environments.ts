@@ -19,7 +19,6 @@ const envSchema = z
     NODE_ENV: z
       .enum(["development", "test", "sandbox", "production"])
       .default("development"),
-    JWT_SECRET: z.string().trim(),
     TUYA_DEVICE_ID: z.string().trim(),
     TUYA_CLIENT_ID: z.string().trim(),
     TUYA_CLIENT_SECRET: z.string().trim(),
@@ -76,6 +75,23 @@ const envSchema = z
      * refresh, it never affects correctness, so there is nothing to force
      * an operator to set explicitly.
      */
+    SESSION_ABSOLUTE_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(60 * 60 * 24 * 30),
+    SESSION_INACTIVITY_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(60 * 60 * 24 * 14),
+    SESSION_COOKIE_NAME: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .default("sogio_session"),
+    SESSION_COOKIE_DOMAIN: z.string().trim().max(255).optional(),
     ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
     /**
      * Lifetime of an opaque MCP refresh token, in seconds ("vida longa" —
@@ -247,6 +263,9 @@ export const refreshRotationGraceWindowMs =
 export const consentAbsoluteLifetimeMs =
   env.CONSENT_ABSOLUTE_LIFETIME_SECONDS * 1000;
 export const consentInactivityTtlMs = env.CONSENT_INACTIVITY_TTL_SECONDS * 1000;
+
+export const sessionAbsoluteTtlMs = env.SESSION_ABSOLUTE_TTL_SECONDS * 1000;
+export const sessionInactivityTtlMs = env.SESSION_INACTIVITY_TTL_SECONDS * 1000;
 
 /** Only used in development, where the schema above still allows it to be absent. */
 export const resendEmailFrom =

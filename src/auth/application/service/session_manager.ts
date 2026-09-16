@@ -1,55 +1,79 @@
-import jwt from "jsonwebtoken";
 import { UnauthorizedError } from "../../../core/application/error/unauthorized_error";
-import { env } from "../../../core/infra/config/environments";
-import type { UserRole } from "../../domain/entity/user";
+import {
+  sessionAbsoluteTtlMs,
+  sessionInactivityTtlMs,
+} from "../../../core/infra/config/environments";
+import { Session } from "../../domain/entity/session";
+import type { SessionRepository } from "../../domain/repository/session_repository";
+import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
+
+export type VerifiedSession = {
+  userId: string;
+  sessionId: string;
+};
 
 export interface ISessionManager {
-  createSession(userId: string, role: UserRole): Promise<string>;
-  verifySession(token: string): Promise<{ userId: string; role: UserRole }>;
+  createSession(userId: string): Promise<string>;
+  verifySession(secret: string): Promise<VerifiedSession>;
+  revokeSession(secret: string): Promise<void>;
+  revokeAllForUser(userId: string, exceptSecret?: string): Promise<void>;
 }
 
+const TOUCH_THROTTLE_MS = 5 * 60 * 1000;
+
 export class SessionManager implements ISessionManager {
-  constructor() {}
+  constructor(
+    private readonly sessionRepository: SessionRepository,
+    private readonly secretService: DelegatedSecretService
+  ) {}
 
-  async createSession(userId: string, role: UserRole): Promise<string> {
-    const token = this.#sign(userId, role);
+  async createSession(userId: string): Promise<string> {
+    const { secret, digest } = this.secretService.generate();
+    const now = new Date();
 
-    return token;
+    await this.sessionRepository.create(
+      Session.create({
+        user_id: userId,
+        secret_digest: digest,
+        expires_at: new Date(now.getTime() + sessionAbsoluteTtlMs),
+        last_used_at: now,
+      })
+    );
+
+    return secret;
   }
 
-  async verifySession(
-    token: string
-  ): Promise<{ userId: string; role: UserRole }> {
-    const payload = this.#verify(token);
+  async verifySession(secret: string): Promise<VerifiedSession> {
+    const session = await this.sessionRepository.findBySecretDigest(
+      this.secretService.digest(secret)
+    );
 
-    if (!payload.userId) {
+    const now = new Date();
+
+    if (!session || !session.isValid(now, sessionInactivityTtlMs)) {
       throw new UnauthorizedError("Unauthorized");
     }
 
-    return payload;
-  }
-
-  #sign(userId: string, role: UserRole): string {
-    return jwt.sign({ userId, role }, env.JWT_SECRET, { expiresIn: "1d" });
-  }
-
-  #verify(token: string): { userId: string; role: UserRole } {
-    try {
-      const decoded = jwt.verify(token, env.JWT_SECRET);
-
-      if (typeof decoded !== "object" || !("userId" in decoded)) {
-        throw new UnauthorizedError("Unauthorized");
-      }
-
-      const role: UserRole =
-        "role" in decoded &&
-        (decoded.role === "admin" || decoded.role === "user")
-          ? (decoded.role as UserRole)
-          : "user";
-
-      return { userId: decoded.userId as string, role };
-    } catch {
-      throw new UnauthorizedError("Unauthorized");
+    if (now.getTime() - session.last_used_at.getTime() > TOUCH_THROTTLE_MS) {
+      await this.sessionRepository.touch(session.id, now);
     }
+
+    return { userId: session.user_id, sessionId: session.id };
+  }
+
+  async revokeSession(secret: string): Promise<void> {
+    await this.sessionRepository.revokeBySecretDigest(
+      this.secretService.digest(secret)
+    );
+  }
+
+  async revokeAllForUser(userId: string, exceptSecret?: string): Promise<void> {
+    const current = exceptSecret
+      ? await this.sessionRepository.findBySecretDigest(
+          this.secretService.digest(exceptSecret)
+        )
+      : null;
+
+    await this.sessionRepository.revokeAllForUser(userId, current?.id);
   }
 }

@@ -7,11 +7,12 @@ import { UnauthorizedError } from "../../application/error/unauthorized_error";
 /**
  * Transport-level credential gate for `/mcp`. Depends on a single
  * abstraction exposed by the Auth BC — `CredentialVerifier` — never on
- * OAuth or JWT directly (Decisão Arquitetural 2): this class only knows how
+ * OAuth or on the app session directly (Decisão Arquitetural 2): this class
+ * only knows how
  * to pull a bearer token out of the header and hand it to whatever
  * implementation `MiddlewareDi` wires up.
  *
- * The JWT-based check this class used to perform
+ * The app-session check this class used to perform
  * (`SessionManager.verifySession` + `AuthRepository.findUserById`) is gone
  * — not disabled by configuration, deleted (task 13 / Decisão Arquitetural
  * 10). There is no environment branch here and none should ever be added:

@@ -3,6 +3,7 @@ import type { PasswordResetRequestRepository } from "../../domain/repository/pas
 import type { DelegatedSecretService } from "../../domain/service/delegated_secret_service";
 import { UnauthorizedError } from "../../../core/application/error/unauthorized_error";
 import type { Hasher } from "../service/hasher";
+import type { ISessionManager } from "../service/session_manager";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 
 type Input = {
@@ -26,7 +27,8 @@ export class ResetPasswordUseCase implements UseCase<Input, void> {
     private readonly authRepository: AuthRepository,
     private readonly passwordResetRequestRepository: PasswordResetRequestRepository,
     private readonly secretService: DelegatedSecretService,
-    private readonly hasher: Hasher
+    private readonly hasher: Hasher,
+    private readonly sessionManager: ISessionManager
   ) {}
 
   async execute(input: Input): Promise<void> {
@@ -46,5 +48,7 @@ export class ResetPasswordUseCase implements UseCase<Input, void> {
     const newPasswordHash = await this.hasher.hash(input.newPassword);
     user.changePassword(newPasswordHash);
     await this.authRepository.updatePassword(user.id, user.password);
+
+    await this.sessionManager.revokeAllForUser(user.id);
   }
 }

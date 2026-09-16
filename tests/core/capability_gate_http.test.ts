@@ -145,7 +145,7 @@ describe("requiredCapability gate through BunHttpControllerAdapter (D-5, D-6)", 
       email: "capability.admin@sogio.dev",
       password: "password123",
     });
-    const token = await createAuthToken(user.id, "admin");
+    const token = await createAuthToken(user.id);
 
     const res = await fetch(`${baseUrl}${deniedController.path}`, {
       headers: { Authorization: "Bearer " + token },

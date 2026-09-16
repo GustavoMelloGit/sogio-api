@@ -158,7 +158,7 @@ export async function issueCredentialFixture(input: {
  * single ready-to-use `/mcp` access token — the fixture equivalent of
  * driving the full `/authorize` + `/token` flow, for tests that only care
  * about the resulting credential (task 13: the MCP path authenticates with
- * this instead of a JWT session token). `resource` defaults to `undefined`,
+ * this instead of an app session). `resource` defaults to `undefined`,
  * which `issueCredentialFixture` resolves to a placeholder that will *not*
  * match a real server's canonical `/mcp` URL — callers that exercise actual
  * audience verification must pass the real `expectedResource` explicitly.

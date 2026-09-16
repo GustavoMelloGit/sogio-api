@@ -20,6 +20,7 @@ import {
 } from "../../../presentation/controller/controller";
 import { CorsMiddleware } from "../../../presentation/middleware/cors.middleware";
 import { MiddlewareDi } from "../../../../auth/infra/di/middleware";
+import type { SessionCredential } from "../../../../auth/presentation/middleware/auth.middleware";
 import { serializeDatesRecursively } from "../utils/date_serializer";
 import { CoreDi } from "../../di/core_di";
 import { resolveCallerIp } from "../../rate_limit/caller_ip_resolver";
@@ -32,8 +33,35 @@ import {
   MAX_REQUEST_BODY_BYTES,
 } from "../body/body_limits";
 
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 const middlewareDi = new MiddlewareDi();
 const corsMiddleware = new CorsMiddleware();
+
+function assertSameSiteRequest(
+  request: Request,
+  credential: SessionCredential
+): void {
+  if (credential.source !== "cookie") {
+    return;
+  }
+
+  if (!UNSAFE_METHODS.has(request.method)) {
+    return;
+  }
+
+  if (!corsMiddleware.isOriginAllowed(request.headers.get("Origin"))) {
+    throw new ForbiddenError("Origin not allowed");
+  }
+}
 const coreDi = new CoreDi();
 const logger = coreDi.makeLogger();
 const rateLimiter = coreDi.makeRateLimiter();
@@ -53,6 +81,7 @@ class ControllerRequestParser {
         body: {},
         query: this.#parseQuery(),
         headers: this.#parseHeaders(),
+        cookies: this.#parseCookies(),
         method: this.request.method as HttpControllerMethod,
         url: this.request.url,
         peerIp,
@@ -68,6 +97,7 @@ class ControllerRequestParser {
       body: this.#parseBody(),
       query: this.#parseQuery(),
       headers: this.#parseHeaders(),
+      cookies: this.#parseCookies(),
       method: this.request.method as HttpControllerMethod,
       url: this.request.url,
       peerIp,
@@ -204,6 +234,35 @@ class ControllerRequestParser {
 
   #parseHeaders(): Record<string, string> {
     return Object.fromEntries(this.request.headers.entries());
+  }
+
+  #parseCookies(): Record<string, string> {
+    const header = this.request.headers.get("cookie");
+
+    if (!header) {
+      return {};
+    }
+
+    const cookies: Record<string, string> = {};
+
+    for (const part of header.split(";")) {
+      const separator = part.indexOf("=");
+
+      if (separator === -1) {
+        continue;
+      }
+
+      const name = part.slice(0, separator).trim();
+      const value = part.slice(separator + 1).trim();
+
+      if (!name || name in cookies) {
+        continue;
+      }
+
+      cookies[name] = safeDecode(value);
+    }
+
+    return cookies;
   }
 
   #collectUnique(
@@ -426,7 +485,19 @@ export function BunHttpControllerAdapter(
       let user: User | undefined;
       if (requiresAuth) {
         const authMiddleware = middlewareDi.makeAuthMiddleware();
-        user = await authMiddleware.handle(controllerRequest);
+        const credential = authMiddleware.extract(
+          controllerRequest,
+          controller.corsPolicy !== "public"
+        );
+
+        if (!credential) {
+          throw new UnauthorizedError("Unauthorized");
+        }
+
+        assertSameSiteRequest(request, credential);
+
+        user = await authMiddleware.authenticate(credential);
+        controllerRequest.sessionCredential = credential;
       }
 
       if (adminOnly && user?.role !== "admin") {

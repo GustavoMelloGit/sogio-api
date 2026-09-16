@@ -3,11 +3,13 @@ import type { AuthRepository } from "../../domain/repository/auth_repository";
 import { UnauthorizedError } from "../../../core/application/error/unauthorized_error";
 import { ValidationError } from "../../../core/application/error/validation_error";
 import type { Hasher } from "../service/hasher";
+import type { ISessionManager } from "../service/session_manager";
 import type { UseCase } from "../../../core/application/use_case/use_case";
 
 type Input = {
   currentPassword: string;
   newPassword: string;
+  currentSessionSecret?: string;
 };
 
 /**
@@ -19,7 +21,8 @@ type Input = {
 export class ChangePasswordUseCase implements UseCase<Input, void> {
   constructor(
     private readonly authRepository: AuthRepository,
-    private readonly hasher: Hasher
+    private readonly hasher: Hasher,
+    private readonly sessionManager: ISessionManager
   ) {}
 
   async execute(input: Input, user: User): Promise<void> {
@@ -46,5 +49,10 @@ export class ChangePasswordUseCase implements UseCase<Input, void> {
     const newPasswordHash = await this.hasher.hash(input.newPassword);
     user.changePassword(newPasswordHash);
     await this.authRepository.updatePassword(user.id, user.password);
+
+    await this.sessionManager.revokeAllForUser(
+      user.id,
+      input.currentSessionSecret
+    );
   }
 }
