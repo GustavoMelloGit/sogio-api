@@ -43,7 +43,7 @@ export class CreateCheckoutSessionController implements Controller {
   openApiSpec: OpenApiOperation = {
     summary: "Create a checkout session",
     description:
-      "Creates a hosted checkout session for the given plan and returns its URL. The caller only ever gets redirected — no card data ever reaches this API. `return_to` picks where the gateway sends the user back, from a fixed set: `billing` (default) returns to the billing settings page, `onboarding` returns to the app home, where the initial plan choice happens. Both append `checkout=success` or `checkout=canceled`. Creating a session never records the initial plan choice — only the subscription actually starting does.",
+      "Creates a hosted checkout session for the given plan and returns its URL. The caller only ever gets redirected — no card data ever reaches this API. `return_to` picks where the gateway sends the user back, from a fixed set: `billing` (default) returns to the billing settings page, `onboarding` returns to the app home. Both append `checkout=success` or `checkout=canceled`.",
     tags: ["Billing"],
     requestBody: bodyFromZod(inputSchema, {
       example: {
