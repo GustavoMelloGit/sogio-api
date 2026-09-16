@@ -89,6 +89,33 @@ describe("POST /billing/subscription/free-plan", () => {
     expect(status.has_platform_access).toBe(true);
   });
 
+  it("locks concurrent calls on an account with none to exactly one Free subscription", async () => {
+    const { user } = await createUserFixture({
+      name: "Conta Sem Assinatura Concorrente",
+      email: "ensure-free.concurrent@sogio.dev",
+      password: "password123",
+    });
+    await removeSubscriptionOf(user.id);
+    const token = await createAuthToken(user.id);
+
+    await Promise.all(
+      Array.from({ length: 5 }, () => ensureFreeSubscription(token))
+    );
+
+    const rows = await db.query.subscriptionsTable.findMany({
+      where: eq(subscriptionsTable.user_id, user.id),
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.plan_id).toBe(FREE_PLAN_ID);
+
+    const history = await subscriptionHistoryRepository.historyOfUser(user.id, {
+      page: 1,
+      limit: 20,
+    });
+    expect(history.pagination.total).toBe(1);
+    expect(history.data[0]?.entry.type).toBe("started");
+  });
+
   it("is a no-op for an account already on Free", async () => {
     const { user } = await createUserFixture({
       name: "Conta Free",
