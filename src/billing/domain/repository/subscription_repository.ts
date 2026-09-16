@@ -25,6 +25,5 @@ export interface SubscriptionRepository {
     subscription_id: string,
     reference: string
   ): Promise<string>;
-
   save(subscription: Subscription): Promise<void>;
 }
