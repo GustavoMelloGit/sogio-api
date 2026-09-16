@@ -89,7 +89,10 @@ describe("CreateCheckoutSessionUseCase (DA-4)", () => {
     );
 
     await expect(
-      useCase.execute({ plan_code: "does-not-exist" }, user)
+      useCase.execute(
+        { plan_code: "does-not-exist", return_to: "billing" },
+        user
+      )
     ).rejects.toThrow();
   });
 
@@ -108,7 +111,7 @@ describe("CreateCheckoutSessionUseCase (DA-4)", () => {
     );
 
     await expect(
-      useCase.execute({ plan_code: "free" }, user)
+      useCase.execute({ plan_code: "free", return_to: "billing" }, user)
     ).rejects.toThrow();
   });
 
@@ -127,7 +130,7 @@ describe("CreateCheckoutSessionUseCase (DA-4)", () => {
     );
 
     await expect(
-      useCase.execute({ plan_code: "pro" }, user)
+      useCase.execute({ plan_code: "pro", return_to: "billing" }, user)
     ).rejects.toMatchObject({ name: "IllegalStateError" });
   });
 
@@ -146,7 +149,10 @@ describe("CreateCheckoutSessionUseCase (DA-4)", () => {
       FRONT_BASE_URL
     );
 
-    const result = await useCase.execute({ plan_code: "pro" }, user);
+    const result = await useCase.execute(
+      { plan_code: "pro", return_to: "billing" },
+      user
+    );
 
     expect(result.url).toBe("https://checkout.stripe.com/test-session");
     expect(gateway.createCustomerCalls).toHaveLength(1);
@@ -177,7 +183,7 @@ describe("CreateCheckoutSessionUseCase (DA-4)", () => {
       FRONT_BASE_URL
     );
 
-    await useCase.execute({ plan_code: "pro" }, user);
+    await useCase.execute({ plan_code: "pro", return_to: "billing" }, user);
 
     expect(gateway.createCheckoutSessionCalls[0]?.trial_period_days).toBe(14);
   });
@@ -206,7 +212,7 @@ describe("CreateCheckoutSessionUseCase (DA-4)", () => {
       FRONT_BASE_URL
     );
 
-    await useCase.execute({ plan_code: "pro" }, user);
+    await useCase.execute({ plan_code: "pro", return_to: "billing" }, user);
 
     expect(
       gateway.createCheckoutSessionCalls[0]?.trial_period_days
@@ -242,7 +248,7 @@ describe("CreateCheckoutSessionUseCase (DA-4)", () => {
     );
 
     await expect(
-      useCase.execute({ plan_code: "pro" }, user)
+      useCase.execute({ plan_code: "pro", return_to: "billing" }, user)
     ).rejects.toMatchObject({ name: "ConflictError" });
     expect(gateway.createCheckoutSessionCalls).toHaveLength(0);
   });
@@ -276,7 +282,10 @@ describe("CreateCheckoutSessionUseCase (DA-4)", () => {
       FRONT_BASE_URL
     );
 
-    const result = await useCase.execute({ plan_code: "pro" }, user);
+    const result = await useCase.execute(
+      { plan_code: "pro", return_to: "billing" },
+      user
+    );
     expect(result.url).toBe("https://checkout.stripe.com/test-session");
   });
 });
