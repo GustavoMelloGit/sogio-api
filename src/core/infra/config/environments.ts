@@ -22,6 +22,8 @@ const envSchema = z
     TUYA_DEVICE_ID: z.string().trim(),
     TUYA_CLIENT_ID: z.string().trim(),
     TUYA_CLIENT_SECRET: z.string().trim(),
+    GOOGLE_CLIENT_ID: z.string().trim().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().trim().optional(),
     /**
      * Public, canonical base URL of this API, with no trailing slash. This is
      * the source of truth for identity that must never drift from the
@@ -229,6 +231,17 @@ const envSchema = z
     {
       message: "STRIPE_WEBHOOK_SECRET is required outside development",
       path: ["STRIPE_WEBHOOK_SECRET"],
+    }
+  )
+  .refine(data => data.NODE_ENV === "development" || !!data.GOOGLE_CLIENT_ID, {
+    message: "GOOGLE_CLIENT_ID is required outside development",
+    path: ["GOOGLE_CLIENT_ID"],
+  })
+  .refine(
+    data => data.NODE_ENV === "development" || !!data.GOOGLE_CLIENT_SECRET,
+    {
+      message: "GOOGLE_CLIENT_SECRET is required outside development",
+      path: ["GOOGLE_CLIENT_SECRET"],
     }
   );
 
