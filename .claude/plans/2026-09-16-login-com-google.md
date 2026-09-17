@@ -254,7 +254,7 @@ Validações que ficam, num validador puro de claims em infra (sem rede, nunca l
 - `aud` igual a `GOOGLE_CLIENT_ID`; se vier lista, precisa conter o client id, e `azp` precisa ser igual a ele.
 - `exp` no futuro; `iat` não pode estar no futuro além de uma folga de relógio pequena e fixa.
 - `sub` não vazio, até 255 caracteres; `email` válido, até 255.
-- `email_verified` lido como booleano literal (IA-2): qualquer outra coisa vira `false`, não falha, para a policy responder `email_not_verified`.
+- `email_verified` lido como booleano literal (IA-2): qualquer outra coisa vira `false`, não falha, para a policy responder `email_not_verified`. Mesmo `true`, só conta quando Google é autoridade sobre o domínio: email termina em `@gmail.com` (sem distinção de caixa) ou o claim `hd` chega como string não vazia (Google Workspace); fora disso vira `false`. `hd` presente com tipo errado conta como ausente, não invalida o token.
 - `name` opcional.
 - Tamanho do token limitado antes de decodificar; token malformado é falha.
 
@@ -356,7 +356,7 @@ O que ele não faz: não impede nada, não bloqueia a senha e não pede confirma
   - `status=signed_in` ou `status=linked`: `router.replace(returnPath(return_to))`. `linked` pode mostrar "Conta Google vinculada".
   - `error=canceled`: volta ao login sem alarde, preservando o `from`.
   - `error=expired`: "A tentativa expirou. Tente de novo."
-  - `error=email_not_verified`: "Seu email no Google não está verificado."
+  - `error=email_not_verified`: "Não conseguimos confirmar este email pelo Google. Entre com email e senha."
   - `error=account_conflict`: "Já existe uma conta com este email ligada a outra conta Google. Entre com a senha ou recupere a senha."
   - `error=unavailable`: "Não foi possível entrar com o Google agora."
   - Todo `return_to` passa por `returnPath()`.
