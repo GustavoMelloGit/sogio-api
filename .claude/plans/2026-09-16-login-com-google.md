@@ -593,3 +593,13 @@ A suíte roda com `bun run test` e nunca fixa variável de ambiente para passar.
 - One Tap ou qualquer ID token recebido pelo navegador (IA-7).
 - Normalização geral de email (R-3) e verificação de posse de email no cadastro por senha (a correção estrutural de R-1).
 - Tela de métodos de entrada ou aparelhos conectados.
+
+## Revisão de Segurança (2026-09-16)
+
+1. **Crítico, corrigido.** `email_verified` só vale quando o Google é autoridade sobre o email (`@gmail.com` ou `hd` presente). Fora disso, um endereço que mudou de dono permitiria vincular o Google de quem teve a caixa no passado à conta do dono atual, e redefinir a senha não removeria o vínculo. Aprovado pelo usuário, com a consequência aceita de que conta Google com email de outro provedor entra por email e senha.
+2. **Moderado, corrigido.** `GET /auth/google/start` passou a declarar `parameterSource: "query"`, descartar `return_to` duplicado e transformar exceção inesperada em `302` com `error=unavailable`, sem logar mensagem de erro.
+3. **Informativo, corrigido.** Exceções depois da reivindicação no callback carregam `reason: "unexpected_error"`, e o log registra só o nome do erro e o código do Postgres.
+4. **Informativo, aceito.** O aviso de vínculo não roda na mesma transação do vínculo: segue o idioma dos demais handlers de `notification`, que capturam e logam a falha. Uma falha ao enfileirar o aviso não desfaz o vínculo.
+5. **Informativo, corrigido.** A troca de código usa `redirect: "error"`, e a premissa de TLS verificado (sem `NODE_TLS_REJECT_UNAUTHORIZED`) foi registrada em IA-7.
+6. **Informativo, corrigido.** A serialização do cookie de vínculo recebe o ambiente como parâmetro, e os dois ramos (`__Host-` com `Secure`, e local) são testados.
+7. **Informativo, aceito.** Rate limit por IP completo, sem agregação por prefixo IPv6, no mesmo padrão já aceito em `/authorize`.
