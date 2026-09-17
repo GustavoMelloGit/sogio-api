@@ -3,31 +3,43 @@ import { isLocalEnvironment } from "./session_cookie";
 
 const COOKIE_NAME = "google_sign_in_verifier";
 
+function cookieNameFor(isLocal: boolean): string {
+  return isLocal ? COOKIE_NAME : `__Host-${COOKIE_NAME}`;
+}
+
 export function externalSignInCookieName(): string {
-  return isLocalEnvironment() ? COOKIE_NAME : `__Host-${COOKIE_NAME}`;
+  return cookieNameFor(isLocalEnvironment());
 }
 
 export function buildExternalSignInCookie(
   codeVerifier: string,
   maxAgeSeconds: number
 ): string {
-  return serialize(codeVerifier, maxAgeSeconds);
+  return serializeExternalSignInCookie(
+    codeVerifier,
+    maxAgeSeconds,
+    isLocalEnvironment()
+  );
 }
 
 export function buildClearedExternalSignInCookie(): string {
-  return serialize("", 0);
+  return serializeExternalSignInCookie("", 0, isLocalEnvironment());
 }
 
-function serialize(value: string, maxAgeSeconds: number): string {
+export function serializeExternalSignInCookie(
+  value: string,
+  maxAgeSeconds: number,
+  isLocal: boolean
+): string {
   const attributes = [
-    `${externalSignInCookieName()}=${value}`,
+    `${cookieNameFor(isLocal)}=${value}`,
     "Path=/",
     "HttpOnly",
     "SameSite=Lax",
     `Max-Age=${maxAgeSeconds}`,
   ];
 
-  if (!isLocalEnvironment()) {
+  if (!isLocal) {
     attributes.push("Secure");
   }
 
