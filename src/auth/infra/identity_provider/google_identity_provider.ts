@@ -50,6 +50,7 @@ export class GoogleIdentityProvider implements ExternalIdentityProvider {
           grant_type: "authorization_code",
           code_verifier: input.code_verifier,
         }),
+        redirect: "error",
         signal: AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),
       });
     } catch {
