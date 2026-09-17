@@ -8,6 +8,7 @@ import type { OpenApiOperation } from "../../../../core/presentation/open_api/op
 import type { RateLimitPolicy } from "../../../../core/application/rate_limit/rate_limit_policy";
 import type { Logger } from "../../../../core/application/logger/logger";
 import { frontBaseUrl } from "../../../../core/infra/config/environments";
+import { pgErrorCode } from "../../../../core/infra/database/postgres_error";
 import type {
   CompleteExternalSignInResult,
   CompleteExternalSignInUseCase,
@@ -89,7 +90,14 @@ export class CompleteGoogleSignInController implements Controller {
     peerIp: string | null
   ): ControllerHttpResponse {
     if (result.outcome === "denied") {
-      this.#log("error", result.error, result.reason, peerIp);
+      this.#log(
+        "error",
+        result.error,
+        result.reason,
+        peerIp,
+        undefined,
+        result.cause
+      );
       return this.#redirect(
         buildGoogleSignInResultUrl(
           frontBaseUrl,
@@ -139,7 +147,8 @@ export class CompleteGoogleSignInController implements Controller {
     outcome: string,
     reason: string | undefined,
     peerIp: string | null,
-    userId?: string
+    userId?: string,
+    cause?: unknown
   ): void {
     const context: Record<string, unknown> = {
       endpoint: "google_sign_in_callback",
@@ -155,6 +164,14 @@ export class CompleteGoogleSignInController implements Controller {
 
     if (userId) {
       context.user_id = userId;
+    }
+
+    if (cause instanceof Error) {
+      context.error_name = cause.name;
+      const code = pgErrorCode(cause);
+      if (code) {
+        context.error_code = code;
+      }
     }
 
     if (result === "success") {

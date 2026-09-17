@@ -27,7 +27,8 @@ export type CompleteExternalSignInDeniedReason =
   | "provider_error"
   | "token_exchange_failed"
   | "claims_invalid"
-  | "nonce_mismatch";
+  | "nonce_mismatch"
+  | "unexpected_error";
 
 export type CompleteExternalSignInDeniedError =
   | "expired"
@@ -48,6 +49,7 @@ export type CompleteExternalSignInResult =
       error: CompleteExternalSignInDeniedError;
       reason?: CompleteExternalSignInDeniedReason;
       return_to: string | null;
+      cause?: unknown;
     };
 
 function deriveAccountName(name: string | null, email: string): string {
@@ -94,8 +96,8 @@ export class CompleteExternalSignInUseCase
       claimed = await this.externalSignInRequestRepository.claim(
         this.secretService.digest(state)
       );
-    } catch {
-      return this.#denied("unavailable", null);
+    } catch (error) {
+      return this.#denied("unavailable", null, "unexpected_error", error);
     }
 
     if (!claimed) {
@@ -112,8 +114,8 @@ export class CompleteExternalSignInUseCase
         claimed,
         returnTo
       );
-    } catch {
-      return this.#denied("unavailable", returnTo);
+    } catch (error) {
+      return this.#denied("unavailable", returnTo, "unexpected_error", error);
     }
   }
 
@@ -264,8 +266,9 @@ export class CompleteExternalSignInUseCase
   #denied(
     error: CompleteExternalSignInDeniedError,
     returnTo: string | null,
-    reason?: CompleteExternalSignInDeniedReason
+    reason?: CompleteExternalSignInDeniedReason,
+    cause?: unknown
   ): CompleteExternalSignInResult {
-    return { outcome: "denied", error, reason, return_to: returnTo };
+    return { outcome: "denied", error, reason, return_to: returnTo, cause };
   }
 }
