@@ -20,6 +20,7 @@ const googleIdTokenPayloadSchema = z.object({
   sub: z.string().min(1).max(MAX_SUBJECT_LENGTH),
   email: z.email().max(MAX_EMAIL_LENGTH),
   email_verified: z.unknown().optional(),
+  hd: z.unknown().optional(),
   name: z.unknown().optional(),
   nonce: z.unknown().optional(),
 });
@@ -71,10 +72,20 @@ export function parseGoogleIdTokenClaims(
   return {
     subject: claims.sub,
     email: claims.email,
-    email_verified: claims.email_verified === true,
+    email_verified:
+      claims.email_verified === true &&
+      googleIsAuthoritativeOver(claims.email, claims.hd),
     name: typeof claims.name === "string" ? claims.name : null,
     nonce: typeof claims.nonce === "string" ? claims.nonce : null,
   };
+}
+
+function googleIsAuthoritativeOver(email: string, hd: unknown): boolean {
+  if (email.toLowerCase().endsWith("@gmail.com")) {
+    return true;
+  }
+
+  return typeof hd === "string" && hd.length > 0;
 }
 
 function audienceMatches(

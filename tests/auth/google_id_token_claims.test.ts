@@ -33,7 +33,7 @@ function validPayload(
     exp: nowSeconds + 3600,
     iat: nowSeconds,
     sub: "1234567890",
-    email: "user@example.com",
+    email: "user@gmail.com",
     email_verified: true,
     name: "Ada Lovelace",
     nonce: "nonce-value",
@@ -50,7 +50,7 @@ describe("parseGoogleIdTokenClaims (DA-15)", () => {
 
     expect(identity).toEqual({
       subject: "1234567890",
-      email: "user@example.com",
+      email: "user@gmail.com",
       email_verified: true,
       name: "Ada Lovelace",
       nonce: "nonce-value",
