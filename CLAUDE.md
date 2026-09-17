@@ -51,7 +51,7 @@ Os testes ficam em `tests/<bounded context>/<test name>.test.ts`.
 
 Sem isso, dois agentes em worktrees diferentes se destroem: o helper `truncate()` (`tests/helpers/database.ts`) roda `TRUNCATE ... CASCADE`, então uma suíte apaga as fixtures da outra no meio do run. Nunca apontar duas worktrees para o mesmo banco.
 
-> **Pré-requisito**: o arquivo `.env.test` (gitignored, copiado para cada worktree) deve conter a variável `DATABASE_URL` com as credenciais reais do banco local, a variável `API_BASE_URL` (ex: `http://localhost:4000`) — obrigatória fora de `development` desde a introdução dos documentos de descoberta OAuth —, a variável `FRONT_BASE_URL` (ex: `http://localhost:5173`) — obrigatória fora de `development` desde a introdução do `/authorize` (redirect de consentimento do protocolo OAuth) —, as variáveis `RESEND_API_KEY` e `PASSWORD_RESET_EMAIL_FROM` — obrigatórias fora de `development` desde a introdução da recuperação de senha por email —, e as variáveis `STRIPE_SECRET_KEY` e `STRIPE_WEBHOOK_SECRET` — obrigatórias fora de `development` desde a integração com o gateway de pagamento; em `test` todas podem ser valores fake, já que os adapters Resend e Stripe nunca são exercidos de verdade nos testes (a verificação de assinatura do webhook é testada localmente, assinando o payload com o mesmo segredo fake — ver `tests/billing/stripe_webhook_verifier.test.ts`).
+> **Pré-requisito**: o arquivo `.env.test` (gitignored, copiado para cada worktree) deve conter a variável `DATABASE_URL` com as credenciais reais do banco local, a variável `API_BASE_URL` (ex: `http://localhost:4000`) — obrigatória fora de `development` desde a introdução dos documentos de descoberta OAuth —, a variável `FRONT_BASE_URL` (ex: `http://localhost:5173`) — obrigatória fora de `development` desde a introdução do `/authorize` (redirect de consentimento do protocolo OAuth) —, as variáveis `RESEND_API_KEY` e `PASSWORD_RESET_EMAIL_FROM` — obrigatórias fora de `development` desde a introdução da recuperação de senha por email —, as variáveis `STRIPE_SECRET_KEY` e `STRIPE_WEBHOOK_SECRET` — obrigatórias fora de `development` desde a integração com o gateway de pagamento —, e as variáveis `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` — obrigatórias fora de `development` desde a introdução da entrada com Google; em `test` todas podem ser valores fake, já que os adapters Resend, Stripe e Google nunca são exercidos de verdade nos testes (a verificação de assinatura do webhook é testada localmente, assinando o payload com o mesmo segredo fake — ver `tests/billing/stripe_webhook_verifier.test.ts` —, e o callback do Google troca o dublê da porta pelo `GoogleIdentityProvider` real só em produção).
 
 ## Arquitetura
 
@@ -99,7 +99,7 @@ O módulo `src/core/` provê infraestrutura compartilhada: tipo base de entidade
 
 **Administração não entra no MCP.** Caso de uso que opera sobre a **aplicação inteira** — configuração global, dados de todos os usuários — em vez dos dados do usuário logado **não tem tool MCP**, e não é dívida a pagar depois: é exclusão deliberada. Na prática isso cobre o BC `backoffice` inteiro e qualquer rota `adminOnly`. O MCP existe para o usuário dirigir a própria conta; administrar a plataforma não é ação de usuário.
 
-Demais exceções: material de credencial (cadastro, login, troca e recuperação de senha), o próprio protocolo OAuth que emite o token do `/mcp` e seus documentos de descoberta, webhooks de terceiros, links públicos não autenticados, exclusão de conta por LGPD, sessões de pagamento que devolvem URL para um humano abrir, e rotas de operação (`/health`, `/docs`). Toda exceção usada precisa estar registrada no plano da entrega.
+Demais exceções: material de credencial (cadastro, login, entrada com Google, troca e recuperação de senha), o próprio protocolo OAuth que emite o token do `/mcp` e seus documentos de descoberta, webhooks de terceiros, links públicos não autenticados, exclusão de conta por LGPD, sessões de pagamento que devolvem URL para um humano abrir, e rotas de operação (`/health`, `/docs`). Toda exceção usada precisa estar registrada no plano da entrega.
 
 ### Bounded Context `billing`
 
@@ -157,7 +157,7 @@ O mecanismo genérico de notificação proativa. Um BC de origem publica um even
 
 `NOTIFICATION_TYPE_REGISTRY` (`domain/notification_type/`) é a declaração em código dos tipos que existem — `key`, `label`, canais padrão, `optional`, o schema Zod do `payload` e o `content` por idioma. Um tipo com `optional: false` é sempre entregue e `PUT /notifications/preferences` recusa desligá-lo com 422. Preferência ausente **nunca é erro**: cai no default, mesmo idioma de `CapabilitySet.of()` (I-4). Tipo desconhecido chegando em `notify()` é logado e descartado, nunca lançado — uma notificação mal declarada não pode derrubar a operação de negócio que a originou.
 
-Os eventos ligados hoje são `SubscriptionPaymentFailedEvent` e `SubscriptionTrialEndingEvent` — este último nasce do webhook `customer.subscription.trial_will_end` do Stripe, normalizado como `subscription_trial_will_end` e traduzido em evento de domínio por `AnnounceTrialEndingUseCase`; o gateway avisa sozinho, então não é preciso varrer assinaturas atrás de trials vencendo. Deliberadamente **não** foram ligados os eventos de estadia: `StayCanceledEvent` está sob a invariante DA-13/R-15 e travado por teste, e mexer nela merece PR própria. `notifications.user_id` e `notification_preferences.user_id` referenciam `users` com `ON DELETE cascade`, então o purge LGPD já leva tudo junto — há teste travando isso.
+Os eventos ligados hoje são `SubscriptionPaymentFailedEvent`, `SubscriptionTrialEndingEvent` e `IdentityLinkedEvent` — o segundo nasce do webhook `customer.subscription.trial_will_end` do Stripe, normalizado como `subscription_trial_will_end` e traduzido em evento de domínio por `AnnounceTrialEndingUseCase` (o gateway avisa sozinho, então não é preciso varrer assinaturas atrás de trials vencendo); o terceiro nasce em `auth`, quando `CompleteExternalSignInUseCase` vincula uma identidade Google a uma conta que já existia — é o aviso de segurança que mitiga R-1 (pre-account hijacking) de `.claude/plans/2026-09-16-login-com-google.md`, sem impedir nada nem bloquear a senha. Deliberadamente **não** foram ligados os eventos de estadia: `StayCanceledEvent` está sob a invariante DA-13/R-15 e travado por teste, e mexer nela merece PR própria. `notifications.user_id` e `notification_preferences.user_id` referenciam `users` com `ON DELETE cascade`, então o purge LGPD já leva tudo junto — há teste travando isso.
 
 **O texto é renderizado na entrega, no idioma do destinatário.** `notifications` não guarda `title`/`body`: guarda `type` + `payload` (`jsonb`), os fatos do evento, independentes de idioma. `NotificationContentRenderer` (`domain/service/`) produz o par título/corpo imediatamente antes de chamar o canal, usando o `locale` e o `time_zone` do usuário — que chegam pelo `NotificationRecipient`, já montado pelo join que `claimDue` fazia para pegar nome e email, sem query nova. O canal recebe o conteúdo pronto e continua sem conhecer idioma. Consequência aceita: quem troca de idioma entre a criação e a entrega recebe no idioma **novo**.
 
@@ -230,6 +230,13 @@ A sessão do usuário no front é um **segredo opaco de 32 bytes**, entregue uma
 `sessions` — mesmo padrão (E10) das credenciais OAuth e do pedido de
 recuperação de senha.
 
+Ela nasce por três caminhos — login por senha, cadastro por senha e o
+callback da entrada com Google — e é a mesma sessão nos três, criada pelo
+mesmo `ISessionManager.createSession` e serializada pelo mesmo
+`buildSessionCookie`. O cookie de vínculo do fluxo Google
+(`google_sign_in_verifier`, ver "Entrada com Google") não é sessão: guarda só
+o verificador PKCE, nunca autentica nada, e o `AuthMiddleware` nunca o lê.
+
 Ela chega à API de duas formas, e é a mesma sessão nas duas:
 
 - **Cookie `httpOnly`** (`SESSION_COOKIE_NAME`), que é como o navegador
@@ -255,6 +262,24 @@ rota só quebraria para quem usa o app.
 O `/mcp` segue em trilho separado (`issued_credentials` + `CredentialVerifier`)
 e não enxerga cookie nenhum.
 
+### Entrada com Google
+
+Duas rotas de navegação de topo — nunca chamadas por `fetch` — conduzem o fluxo inteiro pelo lado da API, sem o front carregar SDK do Google ou tocar em credencial: `GET /auth/google/start` monta a URL de autorização do Google (`response_type=code`, PKCE `S256`, `nonce`, `prompt=select_account`) e redireciona; `GET /auth/google/callback` troca o `code`, valida o ID token e devolve `302` para a rota fixa de resultado do front. Os dois casos de uso, `StartExternalSignInUseCase` e `CompleteExternalSignInUseCase` (`src/auth/application/use_case/`), vivem em `auth`; o adaptador do provedor fica isolado em `src/auth/infra/identity_provider/` (`GoogleIdentityProvider`, `google_id_token_claims.ts`) atrás da porta `ExternalIdentityProvider`.
+
+**A identidade vinculada (`LinkedIdentity`) é resolvida pelo `sub` do Google, nunca pelo email, e a resolução é final.** `resolveExternalAccount` (`domain/service/external_account_resolution_policy.ts`) é uma policy pura: um `sub` já vinculado à conta A sempre entra como A, mesmo que o Google agora ateste o email de outra conta B — B nunca é tocada, nunca é vinculada. Só quando o `sub` ainda não está vinculado é que o email conta (comparado sem distinção de caixa, e só quando `email_verified` é literalmente `true`), decidindo entre vincular a uma conta existente, criar uma conta nova sem senha, ou recusar com `account_conflict` (mais de uma conta encontrada com aquele email, ou a única encontrada já tem outra identidade Google).
+
+**Vínculo automático mantém a senha da conta, e isso é risco aceito (R-1).** O cadastro por email e senha não verifica posse do email; quem cadastrar o email de outra pessoa antes dela mantém a senha depois que a dona verdadeira entrar pelo Google e a identidade for vinculada automaticamente. A mitigação, sem reabrir essa decisão, é avisar: todo vínculo a uma conta existente dispara `IdentityLinkedEvent` (`domain/event/`, payload: `user_id` e provedor, nunca email nem `sub`), consumido por `NotifyOnIdentityLinked` (`notification/application/handler/`), que enfileira a notificação `identity_linked` (`optional: false`, canal email) avisando que a conta Google foi vinculada e sugerindo redefinir a senha para quem nunca criou uma. Criar conta pelo Google **não** dispara esse evento — só `UserCreatedEvent`, sem mudança nenhuma.
+
+**Conta criada pelo Google nasce sem senha.** `User.password` é anulável, e a primeira senha de uma conta assim só nasce pela recuperação de senha por email — nunca pela troca autenticada, para que uma sessão roubada não plante uma credencial que sobrevive à revogação de sessões. `GET /auth/me` expõe `has_password` (`User.hasPassword`) para o front escolher entre "Trocar senha" e "Definir senha"; login por senha de uma conta sem senha responde o mesmo `401` de senha errada ou conta inexistente, e `ChangePasswordUseCase` responde `409` com uma mensagem fixa apontando para a recuperação, antes de qualquer comparação de hash.
+
+**Estado transitório: uma tabela mais um cookie, nada secreto persistido.** `ExternalSignInRequest` (tabela `external_sign_in_requests`) guarda só digests (`state_digest`, `nonce_digest`) e o `code_challenge` do PKCE — nunca o segredo. O segredo (o verificador PKCE) vive só no navegador, num cookie `HttpOnly`, `SameSite=Lax` chamado `google_sign_in_verifier` (`presentation/http/external_sign_in_cookie.ts`; ganha o prefixo `__Host-` fora de desenvolvimento), e o callback só avança se o verificador do cookie bater com o `code_challenge` gravado — um `state` levado para outro navegador nunca passa. O pedido é consumido atomicamente na primeira apresentação do `state`, qualquer que seja o desfecho, e os vencidos saem no mesmo timer horário que já expurga sessões (`src/index.ts`).
+
+**Destino de retorno e rota de resultado.** `return_to` viaja como parâmetro de `GET /auth/google/start`, validado por `isAcceptableReturnDestination` (`domain/service/return_destination_policy.ts`, caminho relativo do front, sem redirect aberto) e gravado no pedido — depois disso o cliente não o controla mais. Toda saída do fluxo, sucesso ou falha, é `302` para uma única rota fixa do front (`GOOGLE_SIGN_IN_RESULT_PATH`, `/login/google`), nunca direto para `return_to`: sucesso leva `?status=signed_in|linked|account_created`, falha leva `?error=canceled|expired|email_not_verified|account_conflict|unavailable`, os dois com `&return_to=...` quando houver. Quem decide para onde navegar a partir de `status`/`error` é o front.
+
+**O ID token do Google não tem a assinatura verificada, de propósito.** `parseGoogleIdTokenClaims` (`infra/identity_provider/google_id_token_claims.ts`) confere `iss`, `aud`/`azp`, `exp`, `iat`, tamanho e forma — nunca a assinatura JWS. A premissa (IA-7, `.claude/personas/arquiteto.md`) é que o token só chega por comunicação direta e autenticada com o endpoint de token do Google (TLS + `client_secret`), o caminho em que a própria OpenID Connect Core 1.0 dispensa a verificação de assinatura; um fluxo futuro que recebesse um ID token pelo navegador (One Tap, app nativo) está fora de escopo e exigiria verificação com biblioteca.
+
+`linked_identities.user_id` referencia `users` com `ON DELETE cascade`, então `PurgeUserDataUseCase` leva a identidade vinculada junto sem alteração — mesmo padrão de `sessions` e `notifications`.
+
 ### Variáveis de Ambiente
 
 Definidas em `src/core/infra/config/environments.ts`:
@@ -273,6 +298,7 @@ Definidas em `src/core/infra/config/environments.ts`:
 - `CORS_ALLOWED_ORIGINS` — lista opcional de origens permitidas para CORS, separadas por vírgula; se ausente, cai para `[FRONT_BASE_URL]`
 - `STRIPE_SECRET_KEY` — chave secreta da API do Stripe. Obrigatória fora de `development`
 - `STRIPE_WEBHOOK_SECRET` — segredo de assinatura usado para verificar o header `Stripe-Signature` no webhook. Obrigatória fora de `development`
+- `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` — credenciais OAuth do provedor Google, usadas pela entrada com Google (`GoogleIdentityProvider`). Obrigatórias fora de `development`; ausentes em `development`, as duas rotas redirecionam para o front com `error=unavailable` sem contatar o Google. A redirect URI **não** é variável: é derivada, `${API_BASE_URL}/auth/google/callback` — mesmo princípio do `issuer` do protocolo OAuth, a configuração é a fonte de verdade, nunca o header `Host`
 - `NOTIFICATION_DELIVERY_INTERVAL_SECONDS` — intervalo do timer que drena a fila de notificações, em segundos; default 30
 - `NOTIFICATION_DELIVERY_BATCH_SIZE` — quantas notificações cada rodada de drenagem arrenda; default 20
 
