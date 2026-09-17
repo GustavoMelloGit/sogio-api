@@ -222,4 +222,139 @@ describe("parseGoogleIdTokenClaims (DA-15)", () => {
 
     expect(parseGoogleIdTokenClaims(oversized, CLIENT_ID)).toBeNull();
   });
+
+  describe("authoritative google email (IA-2)", () => {
+    it("trusts a verified @gmail.com email with no hd", () => {
+      const identity = parseGoogleIdTokenClaims(
+        buildIdToken(
+          validPayload({ email: "user@gmail.com", email_verified: true })
+        ),
+        CLIENT_ID
+      );
+
+      expect(identity?.email_verified).toBe(true);
+    });
+
+    it("trusts a verified @GMAIL.COM email regardless of domain casing", () => {
+      const identity = parseGoogleIdTokenClaims(
+        buildIdToken(
+          validPayload({ email: "user@GMAIL.COM", email_verified: true })
+        ),
+        CLIENT_ID
+      );
+
+      expect(identity?.email_verified).toBe(true);
+    });
+
+    it("trusts a verified email on another domain when hd is a non-empty string", () => {
+      const identity = parseGoogleIdTokenClaims(
+        buildIdToken(
+          validPayload({
+            email: "user@company.com",
+            email_verified: true,
+            hd: "company.com",
+          })
+        ),
+        CLIENT_ID
+      );
+
+      expect(identity?.email_verified).toBe(true);
+    });
+
+    it("distrusts a verified email on another domain with no hd, without failing the token", () => {
+      const identity = parseGoogleIdTokenClaims(
+        buildIdToken(
+          validPayload({ email: "user@outlook.com", email_verified: true })
+        ),
+        CLIENT_ID
+      );
+
+      expect(identity).not.toBeNull();
+      expect(identity?.email_verified).toBe(false);
+    });
+
+    it("treats an empty hd as absent, without failing the token", () => {
+      const identity = parseGoogleIdTokenClaims(
+        buildIdToken(
+          validPayload({
+            email: "user@outlook.com",
+            email_verified: true,
+            hd: "",
+          })
+        ),
+        CLIENT_ID
+      );
+
+      expect(identity).not.toBeNull();
+      expect(identity?.email_verified).toBe(false);
+    });
+
+    it("treats a numeric hd as absent, without failing the token", () => {
+      const identity = parseGoogleIdTokenClaims(
+        buildIdToken(
+          validPayload({
+            email: "user@outlook.com",
+            email_verified: true,
+            hd: 12345,
+          })
+        ),
+        CLIENT_ID
+      );
+
+      expect(identity).not.toBeNull();
+      expect(identity?.email_verified).toBe(false);
+    });
+
+    it("treats an object hd as absent, without failing the token", () => {
+      const identity = parseGoogleIdTokenClaims(
+        buildIdToken(
+          validPayload({
+            email: "user@outlook.com",
+            email_verified: true,
+            hd: { domain: "outlook.com" },
+          })
+        ),
+        CLIENT_ID
+      );
+
+      expect(identity).not.toBeNull();
+      expect(identity?.email_verified).toBe(false);
+    });
+
+    it("distrusts a lookalike domain that merely ends differently, gmail.com.evil.com", () => {
+      const identity = parseGoogleIdTokenClaims(
+        buildIdToken(
+          validPayload({
+            email: "user@gmail.com.evil.com",
+            email_verified: true,
+          })
+        ),
+        CLIENT_ID
+      );
+
+      expect(identity?.email_verified).toBe(false);
+    });
+
+    it("distrusts a lookalike domain that merely contains gmail, notgmail.com", () => {
+      const identity = parseGoogleIdTokenClaims(
+        buildIdToken(
+          validPayload({ email: "user@notgmail.com", email_verified: true })
+        ),
+        CLIENT_ID
+      );
+
+      expect(identity?.email_verified).toBe(false);
+    });
+
+    it("keeps email_verified false for @gmail.com when Google reports it unverified", () => {
+      const identity = parseGoogleIdTokenClaims(
+        buildIdToken(
+          validPayload({ email: "user@gmail.com", email_verified: false })
+        ),
+        CLIENT_ID
+      );
+
+      expect(identity?.email_verified).toBe(false);
+    });
+  });
 });
