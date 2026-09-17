@@ -13,6 +13,7 @@ import type {
   StartExternalSignInUseCase,
 } from "../../../application/use_case/start_external_sign_in";
 import { buildExternalSignInCookie } from "../../http/external_sign_in_cookie";
+import { parseUniqueQueryParams } from "../delegated_access/unique_query_params";
 import {
   GOOGLE_SIGN_IN_START_PATH,
   buildGoogleSignInResultUrl,
@@ -27,6 +28,7 @@ const RATE_LIMIT_POLICY: RateLimitPolicy = {
 export class StartGoogleSignInController implements Controller {
   path = GOOGLE_SIGN_IN_START_PATH;
   method = HttpControllerMethod.GET;
+  parameterSource = "query" as const;
   rateLimitPolicy = RATE_LIMIT_POLICY;
 
   openApiSpec: OpenApiOperation = {
@@ -58,11 +60,18 @@ export class StartGoogleSignInController implements Controller {
   ) {}
 
   async handle(request: ControllerRequest): Promise<ControllerHttpResponse> {
-    const result = await this.useCase.execute({
-      return_to: request.query.return_to,
-    });
+    const query = parseUniqueQueryParams(request.url);
 
-    return this.#respond(result, request.peerIp);
+    try {
+      const result = await this.useCase.execute({
+        return_to: query?.return_to,
+      });
+
+      return this.#respond(result, request.peerIp);
+    } catch {
+      this.#log("error", "unavailable", request.peerIp, "unexpected_error");
+      return this.#unavailableRedirect();
+    }
   }
 
   #respond(
@@ -71,9 +80,7 @@ export class StartGoogleSignInController implements Controller {
   ): ControllerHttpResponse {
     if (result.outcome === "unavailable") {
       this.#log("error", "unavailable", peerIp);
-      return this.#redirect(
-        buildGoogleSignInResultUrl(frontBaseUrl, { error: "unavailable" }, null)
-      );
+      return this.#unavailableRedirect();
     }
 
     this.#log("success", "redirect", peerIp);
@@ -97,6 +104,12 @@ export class StartGoogleSignInController implements Controller {
     });
   }
 
+  #unavailableRedirect(): ControllerHttpResponse {
+    return this.#redirect(
+      buildGoogleSignInResultUrl(frontBaseUrl, { error: "unavailable" }, null)
+    );
+  }
+
   #redirect(location: string): ControllerHttpResponse {
     return new ControllerHttpResponse({
       status: 302,
@@ -108,7 +121,8 @@ export class StartGoogleSignInController implements Controller {
   #log(
     result: "success" | "error",
     outcome: string,
-    peerIp: string | null
+    peerIp: string | null,
+    reason?: string
   ): void {
     const context: Record<string, unknown> = {
       endpoint: "google_sign_in_start",
@@ -117,6 +131,10 @@ export class StartGoogleSignInController implements Controller {
       provider: "google",
       rate_limit_key: peerIp,
     };
+
+    if (reason) {
+      context.reason = reason;
+    }
 
     if (result === "success") {
       this.logger.info("google_sign_in_start", context);
