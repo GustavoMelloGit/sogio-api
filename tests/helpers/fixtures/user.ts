@@ -39,6 +39,29 @@ export async function createUserFixture(input: {
   return { user, plainPassword: input.password };
 }
 
+export async function createPasswordlessUserFixture(input: {
+  name: string;
+  email: string;
+}): Promise<{ user: User }> {
+  const entity = User.create({
+    name: input.name,
+    email: input.email,
+    password: null,
+  });
+
+  const repository = new AuthPostgresRepository();
+  const user = await repository.addUser(entity);
+
+  const ensureFreeSubscriptionUseCase = new EnsureFreeSubscriptionUseCase(
+    new SubscriptionPostgresRepository(),
+    new PlanPostgresRepository(),
+    inMemoryEventDispatcher
+  );
+  await ensureFreeSubscriptionUseCase.execute({ user_id: user.id });
+
+  return { user };
+}
+
 export async function createAdminFixture(input: {
   name: string;
   email: string;
