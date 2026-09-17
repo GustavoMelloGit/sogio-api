@@ -811,6 +811,7 @@ describe("CompleteExternalSignInUseCase", () => {
     expect(result).toMatchObject({
       outcome: "denied",
       error: "unavailable",
+      reason: "unexpected_error",
       return_to: RETURN_TO,
     });
     expect(await usersWithEmail(email)).toHaveLength(0);
@@ -843,6 +844,7 @@ describe("CompleteExternalSignInUseCase", () => {
     expect(result).toMatchObject({
       outcome: "denied",
       error: "unavailable",
+      reason: "unexpected_error",
       return_to: RETURN_TO,
     });
     expect(await usersWithEmail(email)).toHaveLength(0);

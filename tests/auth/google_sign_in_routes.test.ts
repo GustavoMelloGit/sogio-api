@@ -11,6 +11,8 @@ import { CompleteExternalSignInUseCase } from "../../src/auth/application/use_ca
 import { StartExternalSignInUseCase } from "../../src/auth/application/use_case/start_external_sign_in";
 import { SessionManager } from "../../src/auth/application/service/session_manager";
 import { computeS256Challenge } from "../../src/auth/domain/service/pkce_policy";
+import type { ExternalSignInRequest } from "../../src/auth/domain/entity/external_sign_in_request";
+import type { ExternalSignInRequestRepository } from "../../src/auth/domain/repository/external_sign_in_request_repository";
 import { AuthPostgresRepository } from "../../src/auth/infra/database/postgres_repository/auth_postgres_repository";
 import { ExternalSignInRequestPostgresRepository } from "../../src/auth/infra/database/postgres_repository/external_sign_in_request_postgres_repository";
 import { LinkedIdentityPostgresRepository } from "../../src/auth/infra/database/postgres_repository/linked_identity_postgres_repository";
@@ -75,6 +77,32 @@ const startWithoutProvider = new StartGoogleSignInController(
   new SilentLogger()
 );
 
+class ThrowingExternalSignInRequestRepository
+  implements ExternalSignInRequestRepository
+{
+  create(): Promise<ExternalSignInRequest> {
+    throw new Error("external_sign_in_requests write failed");
+  }
+
+  claim(): Promise<ExternalSignInRequest | null> {
+    throw new Error("external_sign_in_requests write failed");
+  }
+
+  deleteExpired(): Promise<number> {
+    throw new Error("external_sign_in_requests write failed");
+  }
+}
+
+const startWithFailingRepository = new StartGoogleSignInController(
+  new StartExternalSignInUseCase(
+    provider,
+    new ThrowingExternalSignInRequestRepository(),
+    secretService,
+    REDIRECT_URI
+  ),
+  new SilentLogger()
+);
+
 const doubleServer = Bun.serve({
   port: 0,
   routes: {
@@ -95,10 +123,25 @@ const doubleServer = Bun.serve({
   },
 });
 
+const failingStartServer = Bun.serve({
+  port: 0,
+  routes: {
+    [startWithFailingRepository.path]: {
+      [HttpControllerMethod.GET]: BunHttpControllerAdapter(
+        startWithFailingRepository,
+        false,
+        makeTestEntitlementService()
+      ),
+    },
+  },
+});
+
 const doubleBaseUrl = `http://localhost:${doubleServer.port}`;
+const failingStartBaseUrl = `http://localhost:${failingStartServer.port}`;
 
 afterAll(() => {
   doubleServer.stop();
+  failingStartServer.stop();
 });
 
 type StartedSignIn = {
@@ -275,20 +318,17 @@ describe("Google sign-in routes", () => {
       }
     );
 
-    it.todo(
-      "discards a duplicated return_to and still sends the browser to Google",
-      async () => {
-        const { response, location, state } = await startSignIn(
-          "?return_to=%2Fapp&return_to=%2Fsettings"
-        );
+    it("discards a duplicated return_to and still sends the browser to Google", async () => {
+      const { response, location, state } = await startSignIn(
+        "?return_to=%2Fapp&return_to=%2Fsettings"
+      );
 
-        expect(response.status).toBe(302);
-        expect(`${location.origin}${location.pathname}`).toBe(
-          GOOGLE_AUTHORIZATION_ENDPOINT
-        );
-        expect((await requestRowOf(state))?.return_to).toBeNull();
-      }
-    );
+      expect(response.status).toBe(302);
+      expect(`${location.origin}${location.pathname}`).toBe(
+        GOOGLE_AUTHORIZATION_ENDPOINT
+      );
+      expect((await requestRowOf(state))?.return_to).toBeNull();
+    });
 
     it("an unconfigured provider sends the browser to the front with error=unavailable, without a verifier cookie", async () => {
       const response = await fetch(
@@ -302,6 +342,17 @@ describe("Google sign-in routes", () => {
       expect(await db.select().from(externalSignInRequestsTable)).toHaveLength(
         0
       );
+    });
+
+    it("an unexpected exception while recording the request sends the browser to the front with error=unavailable, without a verifier cookie", async () => {
+      const response = await fetch(
+        `${failingStartBaseUrl}${GOOGLE_SIGN_IN_START_PATH}${returnToQuery("/app")}`,
+        { redirect: "manual" }
+      );
+
+      await expectFrontResultRedirect(response, { error: "unavailable" });
+      expect(readSetCookie(response, VERIFIER_COOKIE)).toBeUndefined();
+      expectNoSessionCookie(response);
     });
   });
 
