@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { Locale } from "../../../core/domain/locale/locale";
+import {
+  IDENTITY_PROVIDERS,
+  type IdentityProvider,
+} from "../../../auth/domain/entity/linked_identity";
 
 export const NOTIFICATION_CHANNELS = ["email"] as const;
 
@@ -87,6 +91,10 @@ function defineNotificationType<Key extends string, Schema extends z.ZodType>(
   };
 }
 
+const IDENTITY_PROVIDER_LABELS: Record<IdentityProvider, string> = {
+  google: "Google",
+};
+
 export const NOTIFICATION_TYPE_REGISTRY = [
   defineNotificationType({
     key: "subscription_payment_failed",
@@ -126,6 +134,32 @@ export const NOTIFICATION_TYPE_REGISTRY = [
         title: "Your trial is ending",
         body: `Your trial ends on ${format.date(payload.trial_ends_at)}. Pick a plan to keep your access to the platform.`,
       }),
+    },
+  }),
+  defineNotificationType({
+    key: "identity_linked",
+    label: {
+      "pt-BR": "Identidade vinculada",
+      "en-US": "Identity linked",
+    },
+    default_channels: ["email"],
+    optional: false,
+    payload: z.object({ provider: z.enum(IDENTITY_PROVIDERS) }),
+    content: {
+      "pt-BR": payload => {
+        const provider = IDENTITY_PROVIDER_LABELS[payload.provider];
+        return {
+          title: `Conta ${provider} vinculada ao Sogio`,
+          body: `Sua conta ${provider} foi vinculada à sua conta Sogio. Se você nunca criou uma senha no Sogio, redefina a senha agora.`,
+        };
+      },
+      "en-US": payload => {
+        const provider = IDENTITY_PROVIDER_LABELS[payload.provider];
+        return {
+          title: `${provider} account linked to Sogio`,
+          body: `Your ${provider} account was linked to your Sogio account. If you never created a password on Sogio, reset your password now.`,
+        };
+      },
     },
   }),
 ] as const satisfies readonly NotificationTypeRegistryEntry[];

@@ -1,5 +1,6 @@
 import z from "zod";
 import type { ChangePasswordUseCase } from "../../../application/use_case/change_password";
+import { NO_PASSWORD_MESSAGE } from "../../../application/use_case/change_password";
 import { passwordSchema } from "../../../domain/entity/user";
 import type { User } from "../../../domain/entity/user";
 import {
@@ -51,6 +52,7 @@ export class ChangePasswordController implements Controller {
     responses: {
       "204": noContentResponse("Password changed successfully"),
       "401": errorResponse("Incorrect current password"),
+      "409": errorResponse(NO_PASSWORD_MESSAGE),
       "422": validationErrorResponse(),
     },
   };

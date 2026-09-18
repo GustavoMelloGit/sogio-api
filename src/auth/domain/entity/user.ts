@@ -19,7 +19,7 @@ export const passwordSchema = z.string().min(8).max(128);
 export const userSchema = baseEntitySchema.extend({
   name: z.string().min(1).max(100),
   email: z.email().max(255),
-  password: passwordSchema,
+  password: passwordSchema.nullable(),
   role: z.enum(["user", "admin"]).optional().default("user"),
   locale: localeSchema.optional().default(DEFAULT_LOCALE),
   time_zone: timeZoneSchema.optional().default(DEFAULT_TIME_ZONE),
@@ -82,6 +82,10 @@ export class User {
 
   get password() {
     return this.#data.password;
+  }
+
+  get hasPassword(): boolean {
+    return this.#data.password !== null;
   }
 
   get created_at() {

@@ -20,6 +20,10 @@ const MAX_CODE_VERIFIER_LENGTH = 512;
  * are known to be the same length — cheap to do, and this is exactly the
  * kind of secret-dependent comparison E4/E10 ask for where it's affordable.
  */
+export function computeS256Challenge(codeVerifier: string): string {
+  return crypto.createHash("sha256").update(codeVerifier).digest("base64url");
+}
+
 export function verifyPkceS256(
   codeVerifier: string,
   codeChallenge: string
@@ -31,10 +35,7 @@ export function verifyPkceS256(
     return false;
   }
 
-  const computed = crypto
-    .createHash("sha256")
-    .update(codeVerifier)
-    .digest("base64url");
+  const computed = computeS256Challenge(codeVerifier);
 
   if (computed.length !== codeChallenge.length) {
     return false;

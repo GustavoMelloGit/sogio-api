@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import {
   User,
   type UserData,
@@ -87,6 +87,14 @@ export class AuthPostgresRepository implements AuthRepository {
     });
 
     return user ? User.reconstitute(rowToUserData(user)) : null;
+  }
+
+  async findUsersByEmailCaseInsensitive(email: string): Promise<User[]> {
+    const rows = await currentExecutor().query.usersTable.findMany({
+      where: sql`lower(${usersTable.email}) = lower(${email})`,
+    });
+
+    return rows.map(row => User.reconstitute(rowToUserData(row)));
   }
 
   async updatePassword(userId: string, passwordHash: string): Promise<void> {

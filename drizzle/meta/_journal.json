@@ -127,6 +127,13 @@
       "when": 1789520197492,
       "tag": "0017_tearful_prism",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789599913033,
+      "tag": "0018_wet_ricochet",
+      "breakpoints": true
     }
   ]
 }

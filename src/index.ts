@@ -6,6 +6,7 @@ import { CoreDi } from "./core/infra/di/core_di";
 import type { Logger } from "./core/application/logger/logger";
 import { NotificationDi } from "./notification/infra/di/notification_di";
 import { SessionPostgresRepository } from "./auth/infra/database/postgres_repository/session_postgres_repository";
+import { ExternalSignInRequestPostgresRepository } from "./auth/infra/database/postgres_repository/external_sign_in_request_postgres_repository";
 import { sessionInactivityTtlMs } from "./core/infra/config/environments";
 
 async function checkDatabaseConnection(logger: Logger) {
@@ -48,13 +49,15 @@ async function main() {
   logger.info(`📄 OpenAPI JSON: ${baseUrl}/docs/spec`);
 
   startNotificationDelivery(logger);
-  startSessionCleanup(logger);
+  startHourlyCleanup(logger);
 }
 
 const REVOKED_SESSION_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 
-function startSessionCleanup(logger: Logger) {
+function startHourlyCleanup(logger: Logger) {
   const sessionRepository = new SessionPostgresRepository();
+  const externalSignInRequestRepository =
+    new ExternalSignInRequestPostgresRepository();
 
   const timer = setInterval(
     async () => {
@@ -70,6 +73,25 @@ function startSessionCleanup(logger: Logger) {
         }
       } catch (error) {
         logger.error("Session cleanup run crashed", {
+          error:
+            error instanceof Error
+              ? { name: error.name, message: error.message }
+              : String(error),
+        });
+      }
+
+      try {
+        const deleted = await externalSignInRequestRepository.deleteExpired(
+          new Date()
+        );
+
+        if (deleted > 0) {
+          logger.info("Expired external sign-in requests pruned", {
+            deleted,
+          });
+        }
+      } catch (error) {
+        logger.error("External sign-in request cleanup run crashed", {
           error:
             error instanceof Error
               ? { name: error.name, message: error.message }

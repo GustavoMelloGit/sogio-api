@@ -9,7 +9,7 @@ export const sessionCookieName = (): string =>
     ? env.SESSION_COOKIE_NAME
     : `__Secure-${env.SESSION_COOKIE_NAME}`;
 
-function isLocalEnvironment(): boolean {
+export function isLocalEnvironment(): boolean {
   return env.NODE_ENV === "development" || env.NODE_ENV === "test";
 }
 

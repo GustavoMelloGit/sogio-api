@@ -17,6 +17,7 @@ const outputSchema = z.object({
   email: z.email(),
   locale: z.string(),
   time_zone: z.string(),
+  has_password: z.boolean(),
   created_at: z.iso.datetime(),
   updated_at: z.iso.datetime(),
 });
@@ -44,6 +45,7 @@ export class GetUserController implements Controller {
       email: user.email,
       locale: user.locale,
       time_zone: user.time_zone,
+      has_password: user.hasPassword,
       created_at: user.created_at,
       updated_at: user.updated_at,
     };

@@ -14,6 +14,7 @@ const WIRED_EVENTS = [
   "user_created",
   "subscription_payment_failed",
   "subscription_trial_ending",
+  "identity_linked",
 ];
 
 function handlerCounts(): Record<string, number> {
@@ -34,6 +35,7 @@ describe("Event handler registration", () => {
       user_created: 1,
       subscription_payment_failed: 2,
       subscription_trial_ending: 1,
+      identity_linked: 1,
     });
   });
 
