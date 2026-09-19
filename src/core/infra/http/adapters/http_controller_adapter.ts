@@ -565,11 +565,28 @@ export function BunHttpControllerAdapter(
         );
       }
 
+      /**
+       * A controller returning `undefined` means "204, no body", and a 204
+       * must not carry one. This used to go through `Response.json(undefined)`
+       * with `status: 204`, which throws `TypeError: Value is not JSON
+       * serializable` on current Bun — `JSON.stringify(undefined)` is
+       * `undefined`, not a JSON document. The throw was caught by the handler
+       * below and served as `500`, so every 204 route (deleting a property
+       * setting, a ledger entry, changing a password) answered an error while
+       * having already committed its write. Nothing caught it earlier because
+       * CI runs only lint and typecheck; the suite is not part of it.
+       */
+      if (response === undefined) {
+        return corsMiddleware.addCorsHeaders(
+          new Response(null, { status: 204 }),
+          request.headers.get("Origin"),
+          controller.corsPolicy
+        );
+      }
+
       const serializedResponse = serializeDatesRecursively(response);
 
-      const jsonResponse = Response.json(serializedResponse, {
-        status: typeof response !== "undefined" ? 200 : 204,
-      });
+      const jsonResponse = Response.json(serializedResponse, { status: 200 });
       return corsMiddleware.addCorsHeaders(
         jsonResponse,
         request.headers.get("Origin"),
