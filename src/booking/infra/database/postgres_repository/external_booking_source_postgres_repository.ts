@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { type ExternalBookingSourcesRepository } from "../../../domain/repository/external_booking_source_repository";
 import { db } from "../../../../core/infra/database/drizzle/database";
 import { externalBookingSources } from "../../../../core/infra/database/drizzle/schema";
@@ -12,12 +12,29 @@ export class ExternalBookingSourcePostgresRepository
 {
   async allFromProperty(propertyId: string): Promise<ExternalBookingSource[]> {
     const bookingSources = await db.query.externalBookingSources.findMany({
-      where: eq(externalBookingSources.property_id, propertyId),
+      where: and(
+        eq(externalBookingSources.property_id, propertyId),
+        isNull(externalBookingSources.deleted_at)
+      ),
     });
 
     return bookingSources.map(bookingSource =>
       ExternalBookingSource.reconstitute(bookingSource)
     );
+  }
+
+  async externalBookingSourceOfId(
+    id: string
+  ): Promise<ExternalBookingSource | null> {
+    const bookingSource = await db.query.externalBookingSources.findFirst({
+      where: and(
+        eq(externalBookingSources.id, id),
+        isNull(externalBookingSources.deleted_at)
+      ),
+    });
+
+    if (!bookingSource) return null;
+    return ExternalBookingSource.reconstitute(bookingSource);
   }
 
   async save(externalBookingSource: ExternalBookingSource): Promise<void> {
@@ -38,5 +55,26 @@ export class ExternalBookingSourcePostgresRepository
     if (!result[0]) {
       throw new Error("Failed to save external booking source");
     }
+  }
+
+  async update(externalBookingSource: ExternalBookingSource): Promise<void> {
+    await db
+      .update(externalBookingSources)
+      .set({
+        platform_name: externalBookingSource.platform_name,
+        sync_url: externalBookingSource.sync_url,
+        updated_at: externalBookingSource.updated_at,
+      })
+      .where(eq(externalBookingSources.id, externalBookingSource.id));
+  }
+
+  async delete(externalBookingSource: ExternalBookingSource): Promise<void> {
+    await db
+      .update(externalBookingSources)
+      .set({
+        deleted_at: externalBookingSource.deleted_at,
+        updated_at: externalBookingSource.updated_at,
+      })
+      .where(eq(externalBookingSources.id, externalBookingSource.id));
   }
 }

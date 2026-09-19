@@ -69,6 +69,52 @@ export class ExternalBookingSource {
       .replace(/[\s-]+/g, "_");
   }
 
+  /**
+   * Returns a new source with the patched fields. `property_id` is absent
+   * from the patch on purpose: moving a calendar to another property is
+   * registering a different calendar, not editing this one — the same
+   * discipline that keeps `PropertySetting.key` immutable.
+   *
+   * `platform_name` goes through the same normalization `create()` applies,
+   * so a value written by an edit is indistinguishable from one written at
+   * creation.
+   */
+  public update(patch: {
+    platform_name?: string;
+    sync_url?: string;
+  }): ExternalBookingSource {
+    return new ExternalBookingSource({
+      ...this.#data,
+      platform_name:
+        patch.platform_name !== undefined
+          ? ExternalBookingSource.#normalizePlatformName(patch.platform_name)
+          : this.#data.platform_name,
+      sync_url:
+        patch.sync_url !== undefined ? patch.sync_url : this.#data.sync_url,
+      updated_at: new Date(),
+    });
+  }
+
+  /**
+   * Returns a new source marked as deleted (soft delete). The row is kept,
+   * but every read filters `deleted_at`, so a removed calendar stops being
+   * synced by `ReconcileExternalBookingsUseCase`.
+   *
+   * Unlike `PropertySetting.softDelete()`, `sync_url` is NOT redacted here:
+   * the column is `notNull`, so redacting it would need a migration. That is
+   * a known, accepted gap (R-1 in
+   * `.claude/plans/2026-09-19-crud-de-calendarios-externos.md`) — an iCal URL
+   * carries its own access token, so a removed row keeps a live capability
+   * URL until that migration happens.
+   */
+  public softDelete(): ExternalBookingSource {
+    return new ExternalBookingSource({
+      ...this.#data,
+      deleted_at: new Date(),
+      updated_at: new Date(),
+    });
+  }
+
   get id() {
     return this.#data.id;
   }
