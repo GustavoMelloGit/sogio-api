@@ -153,7 +153,7 @@ describe("POST /mcp", () => {
     expect(body.error).toBe("invalid_token");
   });
 
-  it("lists the 37 registered tools", async () => {
+  it("lists the 41 registered tools", async () => {
     const { user } = await createUserFixture({
       name: "João Silva",
       email: "joao.tools-list@sogio.dev",
@@ -184,6 +184,7 @@ describe("POST /mcp", () => {
         "cancel_stay",
         "create_property",
         "create_external_booking_source",
+        "delete_external_booking_source",
         "create_property_setting",
         "delete_ledger_entry",
         "delete_property",
@@ -192,6 +193,7 @@ describe("POST /mcp", () => {
         "get_property",
         "get_stay",
         "get_dashboard_overview",
+        "get_external_booking_source",
         "get_me",
         "get_property_setting",
         "get_subscription_history",
@@ -200,6 +202,7 @@ describe("POST /mcp", () => {
         "import_ledger_entries",
         "import_properties",
         "import_stays",
+        "list_external_booking_sources",
         "list_financial_movements",
         "list_notifications",
         "list_plans",
@@ -212,6 +215,7 @@ describe("POST /mcp", () => {
         "reconcile_external_bookings",
         "record_expense",
         "record_revenue",
+        "update_external_booking_source",
         "update_notification_preferences",
         "update_property",
         "update_property_setting",

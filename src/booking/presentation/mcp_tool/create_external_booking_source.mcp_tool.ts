@@ -42,12 +42,14 @@ export function makeCreateExternalBookingSourceTool(
       destructiveHint: false,
     },
     handler: async (input, user) => {
-      return useCase.execute({
-        property_id: input.property_id,
-        platform_name: input.platform_name,
-        sync_url: input.sync_url,
-        user_id: user.id,
-      });
+      return useCase.execute(
+        {
+          property_id: input.property_id,
+          platform_name: input.platform_name,
+          sync_url: input.sync_url,
+        },
+        user
+      );
     },
   };
 }

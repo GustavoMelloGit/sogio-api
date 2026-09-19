@@ -86,12 +86,14 @@ export class CreateExternalBookingSourceController implements Controller {
   async handle(request: ControllerRequest, user: User) {
     const input = request.body as Input;
 
-    const output = await this.useCase.execute({
-      platform_name: input.platform_name,
-      sync_url: input.sync_url,
-      property_id: input.property_id,
-      user_id: user.id,
-    });
+    const output = await this.useCase.execute(
+      {
+        platform_name: input.platform_name,
+        sync_url: input.sync_url,
+        property_id: input.property_id,
+      },
+      user
+    );
 
     return output;
   }
