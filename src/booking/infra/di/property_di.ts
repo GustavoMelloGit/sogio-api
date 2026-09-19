@@ -2,6 +2,10 @@ import type { CalendarAdapter } from "../../application/adapter/calendar_adapter
 import type { ExternalBookingSourcesRepository } from "../../domain/repository/external_booking_source_repository";
 import { BookStayUseCase } from "../../application/use_case/property/book_stay";
 import { CreateExternalBookingSourceUseCase } from "../../application/use_case/property/create_external_booking_source";
+import { DeleteExternalBookingSourceUseCase } from "../../application/use_case/property/delete_external_booking_source";
+import { GetExternalBookingSourceUseCase } from "../../application/use_case/property/get_external_booking_source";
+import { ListExternalBookingSourcesUseCase } from "../../application/use_case/property/list_external_booking_sources";
+import { UpdateExternalBookingSourceUseCase } from "../../application/use_case/property/update_external_booking_source";
 import { ReconcileExternalBookingsUseCase } from "../../application/use_case/property/reconcile_external_bookings";
 import { ImportBatchStaysUseCase } from "../../application/use_case/import_batch_stays";
 import type { BookingPolicy } from "../../domain/policy/booking_policy";
@@ -9,11 +13,19 @@ import type { StayRepository } from "../../domain/repository/stay_repository";
 import type { TenantRepository } from "../../domain/repository/tenant_repository";
 import { BookStayController } from "../../presentation/controller/property/book_stay.controller";
 import { CreateExternalBookingSourceController } from "../../presentation/controller/property/create_external_booking.controller";
+import { DeleteExternalBookingSourceController } from "../../presentation/controller/property/delete_external_booking_source.controller";
+import { GetExternalBookingSourceController } from "../../presentation/controller/property/get_external_booking_source.controller";
+import { ListExternalBookingSourcesController } from "../../presentation/controller/property/list_external_booking_sources.controller";
+import { UpdateExternalBookingSourceController } from "../../presentation/controller/property/update_external_booking_source.controller";
 import { ReconcileExternalBookingController } from "../../presentation/controller/property/reconcile_external_booking.controller";
 import { ImportStaysController } from "../../presentation/controller/import_stays.controller";
 import { makeBookStayTool } from "../../presentation/mcp_tool/book_stay.mcp_tool";
 import { makeImportStaysTool } from "../../presentation/mcp_tool/import_stays.mcp_tool";
 import { makeCreateExternalBookingSourceTool } from "../../presentation/mcp_tool/create_external_booking_source.mcp_tool";
+import { makeDeleteExternalBookingSourceTool } from "../../presentation/mcp_tool/delete_external_booking_source.mcp_tool";
+import { makeGetExternalBookingSourceTool } from "../../presentation/mcp_tool/get_external_booking_source.mcp_tool";
+import { makeListExternalBookingSourcesTool } from "../../presentation/mcp_tool/list_external_booking_sources.mcp_tool";
+import { makeUpdateExternalBookingSourceTool } from "../../presentation/mcp_tool/update_external_booking_source.mcp_tool";
 import { makeReconcileExternalBookingsTool } from "../../presentation/mcp_tool/reconcile_external_bookings.mcp_tool";
 import { ICalendarAdapter } from "../adapter/i_calendar_adapter";
 import { PostgresBookingPolicy } from "../database/postgres_policies/postgres_booking_policy";
@@ -34,10 +46,18 @@ import { ImportRunner } from "../../../core/application/import/import_runner";
 import type { PropertyCheckTimesService } from "../../../property_management/application/service/property_check_times_service";
 import { SettingPropertyCheckTimesService } from "../../../property_management/application/service/setting_property_check_times_service";
 import { PropertySettingPostgresRepository } from "../../../property_management/infra/database/postgres_repository/property_setting_postgres_repository";
+import type { PropertyRepository } from "../../../property_management/domain/repository/property_repository";
+import { PropertyPostgresRepository } from "../../../property_management/infra/database/postgres_repository/property_postgres_repository";
 
 export class PropertyDi {
   #tenantRepository: TenantRepository;
   #propertyRepository: BookingPropertyRepository;
+  /**
+   * `property_management`'s repository, kept alongside the booking-local one
+   * because `PropertyOwnershipPolicy` operates on `Property`, not
+   * `BookingProperty`. Same wiring `StayDi` already uses.
+   */
+  #ownershipPropertyRepository: PropertyRepository;
   #bookingPolicy: BookingPolicy;
   #stayRepository: StayRepository;
   #externalBookingSourceRepository: ExternalBookingSourcesRepository;
@@ -53,6 +73,7 @@ export class PropertyDi {
     this.#logger = new ConsoleLogger();
     this.#tenantRepository = new TenantPostgresRepository();
     this.#propertyRepository = new BookingPropertyPostgresRepository();
+    this.#ownershipPropertyRepository = new PropertyPostgresRepository();
     this.#bookingPolicy = new PostgresBookingPolicy();
     this.#stayRepository = new StayPostgresRepository();
     this.#externalBookingSourceRepository =
@@ -103,7 +124,31 @@ export class PropertyDi {
   makeCreateExternalBookingSourceUseCase() {
     return new CreateExternalBookingSourceUseCase(
       this.#externalBookingSourceRepository,
-      this.#propertyRepository
+      this.#ownershipPropertyRepository
+    );
+  }
+  makeListExternalBookingSourcesUseCase() {
+    return new ListExternalBookingSourcesUseCase(
+      this.#ownershipPropertyRepository,
+      this.#externalBookingSourceRepository
+    );
+  }
+  makeGetExternalBookingSourceUseCase() {
+    return new GetExternalBookingSourceUseCase(
+      this.#ownershipPropertyRepository,
+      this.#externalBookingSourceRepository
+    );
+  }
+  makeUpdateExternalBookingSourceUseCase() {
+    return new UpdateExternalBookingSourceUseCase(
+      this.#ownershipPropertyRepository,
+      this.#externalBookingSourceRepository
+    );
+  }
+  makeDeleteExternalBookingSourceUseCase() {
+    return new DeleteExternalBookingSourceUseCase(
+      this.#ownershipPropertyRepository,
+      this.#externalBookingSourceRepository
     );
   }
 
@@ -124,6 +169,26 @@ export class PropertyDi {
       this.makeCreateExternalBookingSourceUseCase()
     );
   }
+  makeListExternalBookingSourcesController() {
+    return new ListExternalBookingSourcesController(
+      this.makeListExternalBookingSourcesUseCase()
+    );
+  }
+  makeGetExternalBookingSourceController() {
+    return new GetExternalBookingSourceController(
+      this.makeGetExternalBookingSourceUseCase()
+    );
+  }
+  makeUpdateExternalBookingSourceController() {
+    return new UpdateExternalBookingSourceController(
+      this.makeUpdateExternalBookingSourceUseCase()
+    );
+  }
+  makeDeleteExternalBookingSourceController() {
+    return new DeleteExternalBookingSourceController(
+      this.makeDeleteExternalBookingSourceUseCase()
+    );
+  }
 
   // MCP Tools
   makeBookStayTool() {
@@ -132,6 +197,26 @@ export class PropertyDi {
   makeCreateExternalBookingSourceTool() {
     return makeCreateExternalBookingSourceTool(
       this.makeCreateExternalBookingSourceUseCase()
+    );
+  }
+  makeListExternalBookingSourcesTool() {
+    return makeListExternalBookingSourcesTool(
+      this.makeListExternalBookingSourcesUseCase()
+    );
+  }
+  makeGetExternalBookingSourceTool() {
+    return makeGetExternalBookingSourceTool(
+      this.makeGetExternalBookingSourceUseCase()
+    );
+  }
+  makeUpdateExternalBookingSourceTool() {
+    return makeUpdateExternalBookingSourceTool(
+      this.makeUpdateExternalBookingSourceUseCase()
+    );
+  }
+  makeDeleteExternalBookingSourceTool() {
+    return makeDeleteExternalBookingSourceTool(
+      this.makeDeleteExternalBookingSourceUseCase()
     );
   }
   makeImportStaysTool() {

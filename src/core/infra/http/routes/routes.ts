@@ -82,6 +82,22 @@ const propertyControllers: Route[] = [
   },
   {
     authenticated: true,
+    controller: propertyDi.makeListExternalBookingSourcesController(),
+  },
+  {
+    authenticated: true,
+    controller: propertyDi.makeGetExternalBookingSourceController(),
+  },
+  {
+    authenticated: true,
+    controller: propertyDi.makeUpdateExternalBookingSourceController(),
+  },
+  {
+    authenticated: true,
+    controller: propertyDi.makeDeleteExternalBookingSourceController(),
+  },
+  {
+    authenticated: true,
     requiredCapability: "bulk_import",
     controller: propertyDi.makeImportStaysController(),
   },
